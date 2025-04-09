@@ -35,6 +35,7 @@ interface GraphData {
 	setMessages: Dispatch<SetStateAction<BaseMessage[]>>;
 	streamMessage: (currentThreadId: string, params: GraphInput) => Promise<void>;
 	switchSelectedThread: (thread: Thread) => void;
+	runingId: string | undefined
 }
 
 type UserDataContextType = ReturnType<typeof useUser>;
@@ -67,10 +68,12 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 	const { toast } = useToast();
 	const { shareRun } = useRuns();
 	const [messages, setMessages] = useState<BaseMessage[]>([]);
+	const [curThreadId, setCurThreadId] = useState<string>();
 	const [selectedModel, setSelectedModel] = useState<ModelOptions>(
 		"anthropic_claude_3_7_sonnet",
 	);
 	const [_threadId, setThreadId] = useQueryState("threadId");
+	const [runingId, setRuningId] = useState<string>();
 
 	const [abortController, setAbortController] = useState<AbortController | null>(null);
 	useEffect(() => {
@@ -185,8 +188,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				},
 			},
 		});
-		
-		let runId: string | undefined = undefined;
+
 		let read_link_start_counter = 0;
 		let extract_content_start_counter = 0;
 		let read_link_end_counter = 0;
@@ -196,8 +198,8 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 
 		for await (const chunk of stream) {
 			console.log(chunk.data)
-			if (!runId && chunk.data?.metadata?.run_id) {
-				runId = chunk.data.metadata.run_id;
+			if (chunk.data?.metadata?.run_id) {
+				setRuningId(chunk.data.metadata.run_id);
 			}
 			if (chunk.data.event === "on_chain_start") {
 				const node = chunk?.data?.name;//metadata?.langgraph_node;
@@ -413,9 +415,9 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			}
 		}
 
-		if (runId) {
+		if (runingId) {
 			// Chain `.then` to not block the stream
-			shareRun(runId).then((sharedRunURL) => {
+			shareRun(runingId).then((sharedRunURL) => {
 				if (sharedRunURL) {
 					setMessages((prevMessages) => {
 						const langSmithToolCallMessage = new AIMessage({
@@ -435,6 +437,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 					});
 				}
 			});
+			setRuningId("")
 		}
 	};
 
@@ -553,6 +556,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			setMessages,
 			streamMessage,
 			switchSelectedThread,
+			runingId,
 		},
 	};
 

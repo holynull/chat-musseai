@@ -20,13 +20,14 @@ import { ThreadHistory } from "./thread-history";
 import { Toaster } from "./ui/toaster";
 import { useGraphContext } from "../contexts/GraphContext";
 import { useQueryState } from "nuqs";
+import { createClient } from "../contexts/utils"
 
 function ChatLangChainComponent(): React.ReactElement {
 	const { toast } = useToast();
 	const { threadsData, userData, graphData } = useGraphContext();
 	const { userId } = userData;
 	const { getUserThreads, createThread, getThreadById } = threadsData;
-	const { messages, setMessages, streamMessage, switchSelectedThread } =
+	const { messages, setMessages, streamMessage, switchSelectedThread, runingId } =
 		graphData;
 	const [isRunning, setIsRunning] = useState(false);
 	const [threadId, setThreadId] = useQueryState("threadId");
@@ -110,11 +111,19 @@ function ChatLangChainComponent(): React.ReactElement {
 		messages: messages,
 		isRunning,
 	});
-
+	const client = createClient();
 	const runtime = useExternalStoreRuntime({
 		messages: threadMessages,
 		isRunning,
 		onNew,
+		onCancel: async () => {
+			console.log("Cancel the Thread.")
+			if (threadId && runingId) {
+				await client.runs.cancel(threadId, runingId, false)
+			} else {
+				console.warn("No threadId: " + threadId)
+			}
+		}
 	});
 
 	return (
@@ -129,7 +138,7 @@ function ChatLangChainComponent(): React.ReactElement {
 			</div>
 			<div className="w-full h-full overflow-hidden">
 				<AssistantRuntimeProvider runtime={runtime}>
-					<ThreadChat submitDisabled={isSubmitDisabled} messages={messages} />
+					<ThreadChat submitDisabled={isSubmitDisabled} messages={messages} currentThreadId={threadId} />
 				</AssistantRuntimeProvider>
 			</div>
 			<Toaster />
