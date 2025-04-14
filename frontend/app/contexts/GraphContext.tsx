@@ -179,7 +179,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			// pdf_files: currentPDFs,
 		};
 
-		const stream = client.runs.stream(currentThreadId, "agent", {
+		const stream = client.runs.stream(currentThreadId, "musseai", {
 			input,
 			streamMode: "events",
 			config: {
@@ -195,11 +195,12 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 		let extract_content_end_counter = 0;
 		let first_read_content_run_id = "";
 		let first_extract_content_run_id = "";
+		let runing_id = ""
 
 		for await (const chunk of stream) {
 			console.log(chunk.data)
-			if (chunk.data?.metadata?.run_id) {
-				setRuningId(chunk.data.metadata.run_id);
+			if (!runingId && chunk.data?.metadata?.run_id) {
+				setRuningId(chunk.data.metadata.run_id)
 			}
 			if (chunk.data.event === "on_chain_start") {
 				const node = chunk?.data?.name;//metadata?.langgraph_node;
@@ -253,6 +254,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			}
 
 			if (chunk.data.event === "on_chat_model_stream") {
+
 				if (chunk.data.metadata.langgraph_node === "respond" ||
 					["node_llm_musseai", "node_llm_image", "node_llm_quote", "node_llm_search", "node_llm_swap", "node_llm_wallet"]
 						.includes(chunk.data.metadata.langgraph_node)) {
@@ -265,6 +267,19 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 					}
 					if (message.content != '') {
 						setMessages((prevMessages) => {
+							if (!runing_id) {
+								runing_id = chunk.data.metadata.run_id;
+								const answerHeaderToolMsg = new AIMessage({
+									content: "",
+									tool_calls: [
+										{
+											name: "answer_header",
+											args: { node_name: chunk.data.metadata.langgraph_node },
+										},
+									],
+								});
+								prevMessages = [...prevMessages, answerHeaderToolMsg];
+							}
 							const existingMessageIndex = prevMessages.findIndex(
 								(msg) => msg.id === message.id,
 							);
@@ -281,27 +296,17 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 									...prevMessages.slice(existingMessageIndex + 1),
 								];
 							} else {
-								const answerHeaderToolMsg = new AIMessage({
-									content: "",
-									tool_calls: [
-										{
-											name: "answer_header",
-											args: { node_name: chunk.data.metadata.langgraph_node },
-										},
-									],
-								});
 								const newMessage = new AIMessage({
 									...message,
 								});
-								return [...prevMessages, answerHeaderToolMsg, newMessage];
-								// return [...prevMessages, newMessage];
+								return [...prevMessages, newMessage];
 							}
 						});
 					}
 				}
 			}
 			if (chunk.data.event === "on_tool_end") {
-				if (["search_news", "search_webpage"].includes(chunk?.data?.name)) {
+				if (["search_news", "search_webpage", "access_links_content"].includes(chunk?.data?.name)) {
 					const output = chunk.data.data.output.content;
 					let sources = []
 					if (output) {
@@ -415,9 +420,9 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			}
 		}
 
-		if (runingId) {
+		if (runing_id) {
 			// Chain `.then` to not block the stream
-			shareRun(runingId).then((sharedRunURL) => {
+			shareRun(runing_id).then((sharedRunURL) => {
 				if (sharedRunURL) {
 					setMessages((prevMessages) => {
 						const langSmithToolCallMessage = new AIMessage({
@@ -437,6 +442,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 					});
 				}
 			});
+			runing_id = ""
 			setRuningId("")
 		}
 	};
@@ -454,80 +460,113 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 		).flatMap((msg, index, array) => {
 			if (msg.type === "human") {
 				// insert progress bar afterwards
-				const progressAIMessage = new AIMessage({
-					id: uuidv4(),
-					content: "",
-					tool_calls: [
-						{
-							name: "progress",
-							args: {
-								step: 4, // Set to done.
-							},
-						},
-					],
-				});
+				// 	const progressAIMessage = new AIMessage({
+				// 		id: uuidv4(),
+				// 		content: "",
+				// 		tool_calls: [
+				// 			{
+				// 				name: "progress",
+				// 				args: {
+				// 					step: 4, // Set to done.
+				// 				},
+				// 			},
+				// 		],
+				// 	});
 				return [
 					new HumanMessage({
 						...msg,
 						content: msg.content,
 					}),
-					progressAIMessage,
+					// progressAIMessage,
 				];
 			}
 
 			if (msg.type === "ai") {
-				const isLastAiMessage =
-					index === array.length - 1 || array[index + 1].type === "human";
-				if (isLastAiMessage) {
-					const routerMessage = threadValues.router
-						? new AIMessage({
-							content: "",
-							id: uuidv4(),
-							tool_calls: [
-								{
-									name: "router_logic",
-									args: threadValues.router,
-								},
-							],
-						})
-						: undefined;
-					const selectedDocumentsAIMessage = threadValues.documents?.length
-						? new AIMessage({
-							content: "",
-							id: uuidv4(),
-							tool_calls: [
-								{
-									name: "selected_documents",
-									args: {
-										documents: threadValues.documents,
-									},
-								},
-							],
-						})
-						: undefined;
-					const answerHeaderToolMsg = new AIMessage({
-						content: "",
-						tool_calls: [
-							{
-								name: "answer_header",
-								args: {},
-							},
-						],
-					});
+				let processedContent = '';
+				if (msg.content) {
+					if (Array.isArray(msg.content)) {
+						if (msg.content.length > 0) {
+							const content = msg.content[0];
+							processedContent = typeof content === 'object' && 'text' in content
+								? content.text
+								: String(content);
+						}
+					} else {
+						processedContent = String(msg.content);
+					}
+				}
+
+				const answerHeaderToolMsg = new AIMessage({
+					content: "",
+					tool_calls: [{
+						name: "answer_header",
+						args: { node_name: "" },
+					}],
+				});
+
+				if (processedContent && array[index - 1]?.type === 'human') {
 					return [
-						...(routerMessage ? [routerMessage] : []),
-						...(selectedDocumentsAIMessage ? [selectedDocumentsAIMessage] : []),
 						answerHeaderToolMsg,
 						new AIMessage({
 							...msg,
-							content: msg.content,
-						}),
+							content: processedContent,
+						})
 					];
 				}
-				return new AIMessage({
+
+				return [new AIMessage({
 					...msg,
-					content: msg.content,
-				});
+					content: processedContent,
+				})];
+			}
+
+			if (msg.type === "tool" && (msg.name === "search_webpage" || msg.name === "search_news" || msg.name === "access_links_content")) {
+				const output = msg.content;
+				let sources = []
+				if (output) {
+					try {
+						const result = JSON.parse(output);
+						if ("search_result" in result) {
+							sources = result["search_result"];
+						} else {
+							console.error("search_result not found in result");
+						}
+					} catch (error) {
+						console.error("Error parsing JSON:", error);
+					}
+				}
+				return [new AIMessage({
+					...msg,
+					content: "",
+					tool_calls: [
+						{
+							name: "source_list",
+							args: { sources: sources },
+						},
+					],
+				}), new AIMessage({
+					...msg,
+					content: "",
+					tool_calls: [
+						{
+							name: "progress",
+							args: {
+								step: { text: "Reading Links", progress: 100 },
+							},
+						},
+					],
+				}), new AIMessage({
+					...msg,
+					content: "",
+					tool_calls: [
+						{
+							name: "progress",
+							args: {
+								step: { text: "Extract Content", progress: 100 },
+							},
+						},
+					],
+				}),];
 			}
 
 			return []; // Return an empty array for any other message types

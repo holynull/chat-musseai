@@ -17,8 +17,8 @@ export function useRuns() {
 			return;
 		}
 
-		const { sharedRunURL } = await res.json();
-		return sharedRunURL;
+		const { success, message, sharedRunURL } = await res.json();
+		return success ? sharedRunURL : "";
 	};
 
 	return {

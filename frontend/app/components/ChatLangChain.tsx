@@ -4,6 +4,9 @@ import React, { useEffect, useRef, useState } from "react";
 import {
 	AppendMessage,
 	AssistantRuntimeProvider,
+	CompositeAttachmentAdapter,
+	SimpleImageAttachmentAdapter,
+	SimpleTextAttachmentAdapter,
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { v4 as uuidv4 } from "uuid";
@@ -21,6 +24,7 @@ import { Toaster } from "./ui/toaster";
 import { useGraphContext } from "../contexts/GraphContext";
 import { useQueryState } from "nuqs";
 import { createClient } from "../contexts/utils"
+import { add } from "date-fns";
 
 function ChatLangChainComponent(): React.ReactElement {
 	const { toast } = useToast();
@@ -93,6 +97,23 @@ function ChatLangChainComponent(): React.ReactElement {
 				content: message.content[0].text,
 				id: uuidv4(),
 			});
+			// const _attachments = message.attachments.filter(attachment => {
+			// 	if (attachment.contentType.indexOf('image') === 0) {
+			// 		return true;
+			// 	} else {
+			// 		return false;
+			// 	}
+			// })
+			if (message.attachments && message.attachments.length > 0) {
+				let content: any = [{ "type": "text", "text": message.content[0].text }]
+				for (let attachment of message.attachments) {
+					let _content: any = attachment.content && attachment.contentType.indexOf("image") === 0 && attachment.content.length > 0 ? attachment.content[0] : undefined;
+					if (content) {
+						content.push({ "type": "image_url", "image_url": { "url": _content.image } });
+					}
+				}
+				humanMessage.content = content;
+			}
 
 			setMessages((prevMessages) => [...prevMessages, humanMessage]);
 
@@ -123,7 +144,13 @@ function ChatLangChainComponent(): React.ReactElement {
 			} else {
 				console.warn("No threadId: " + threadId)
 			}
-		}
+		},
+		adapters: {
+			attachments: new CompositeAttachmentAdapter([
+				new SimpleImageAttachmentAdapter(),
+				new SimpleTextAttachmentAdapter(),
+			]),
+		},
 	});
 
 	return (
