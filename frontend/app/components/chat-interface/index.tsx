@@ -2,9 +2,8 @@
 
 import { ThreadPrimitive } from "@assistant-ui/react";
 import { type FC } from "react";
-import NextImage from "next/image";
 
-import { ArrowDownIcon } from "lucide-react";
+import { ArrowDownIcon, Wallet } from "lucide-react";
 import { useAnswerHeaderToolUI } from "../AnswerHeaderToolUI";
 import { useGeneratingQuestionsUI } from "../GeneratingQuestionsToolUI";
 import { useProgressToolUI } from "../ProgressToolUI";
@@ -18,10 +17,13 @@ import { ChatComposer, ChatComposerProps } from "./chat-composer";
 import { cn } from "@/app/utils/cn";
 import { useSourceList } from "../SourceList";
 import { useLangSmithLinkToolUI } from "../LangSmithLinkToolUI"
+import { WalletIndicator } from "../WalletIndicator";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
 }
+
+
 
 export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	const isEmpty = props.messages.length === 0;
@@ -59,18 +61,19 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 				<div className="flex items-center justify-center flex-grow my-auto">
 					<div className="flex flex-col items-center mx-4 md:mt-0 mt-24">
 						<div className="flex flex-row gap-1 items-center justify-center">
-							<p className="text-xl sm:text-2xl">Chat LangChain</p>
-							<NextImage
+							<p className="text-xl sm:text-2xl">Musse AI 🍺</p>
+							{/* <NextImage
 								src="/images/lc_logo.jpg"
 								className="rounded-3xl"
 								alt="LangChain Logo"
 								width={32}
 								height={32}
 								style={{ width: "auto", height: "auto" }}
-							/>
+							/> */}
 						</div>
-						<div className="mb-4 sm:mb-[24px] mt-1 sm:mt-2">
+						<div className="mb-4 sm:mb-[24px] mt-1 sm:mt-2 flex items-center gap-2 justify-center">
 							<SelectModel />
+							<WalletIndicator />
 						</div>
 						<div className="md:mb-8 mb-4">
 							<SuggestedQuestions />

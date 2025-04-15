@@ -19,6 +19,8 @@ export function convertThreadActualToThreadProps(
 				label = _content[0].text;
 			}
 		}
+	} else {
+		label = content;
 	}
 	return {
 		id: thread.thread_id,

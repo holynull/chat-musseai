@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { FC, useEffect, useRef, useState } from "react";
 import {
 	AppendMessage,
 	AssistantRuntimeProvider,
@@ -24,7 +24,7 @@ import { Toaster } from "./ui/toaster";
 import { useGraphContext } from "../contexts/GraphContext";
 import { useQueryState } from "nuqs";
 import { createClient } from "../contexts/utils"
-import { add } from "date-fns";
+import { WalletIndicator } from "./WalletIndicator";
 
 function ChatLangChainComponent(): React.ReactElement {
 	const { toast } = useToast();
@@ -153,11 +153,13 @@ function ChatLangChainComponent(): React.ReactElement {
 		},
 	});
 
+
 	return (
 		<div className="overflow-hidden w-full flex md:flex-row flex-col relative">
 			{messages.length > 0 ? (
-				<div className="absolute top-4 right-4 z-10">
+				<div className="absolute top-4 right-4 z-10 flex flex-col sm:flex-row gap-2 items-end sm:items-center">
 					<SelectModel />
+					<WalletIndicator />
 				</div>
 			) : null}
 			<div>

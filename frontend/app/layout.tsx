@@ -7,8 +7,8 @@ import { AppKit } from './contexts/appkit';
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-	title: "Chat LangChain",
-	description: "Chatbot for LangChain",
+	title: "Musse AI",
+	description: "Chatbot for Musse AI",
 };
 
 export default function RootLayout({
