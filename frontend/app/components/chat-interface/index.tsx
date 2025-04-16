@@ -18,6 +18,8 @@ import { cn } from "@/app/utils/cn";
 import { useSourceList } from "../SourceList";
 import { useLangSmithLinkToolUI } from "../LangSmithLinkToolUI"
 import { WalletIndicator } from "../WalletIndicator";
+import { useSendEVMTransaction } from "../SendEVMTransation";
+import { useSendSolanaTransaction } from "../SendSolanaTransation";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
@@ -35,6 +37,8 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	useRouterLogicUI();
 	useSourceList();
 	useLangSmithLinkToolUI();
+	useSendEVMTransaction();
+	useSendSolanaTransaction();
 
 	return (
 		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full">

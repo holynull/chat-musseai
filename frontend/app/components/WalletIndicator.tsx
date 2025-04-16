@@ -9,7 +9,8 @@ const NETWORK_CHAIN_ID_MAP = {
 	"56": "BSC",
 	"137": "Polygon",
 	"42161": "Arbitrum",
-	"10": "Optimism"
+	"10": "Optimism",
+	"5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "Solana"
 }
 
 export const WalletIndicator: FC<{}> = () => {

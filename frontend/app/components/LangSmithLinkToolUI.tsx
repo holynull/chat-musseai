@@ -13,7 +13,6 @@ export const useLangSmithLinkToolUI = () =>
           tooltip="View run in LangSmith"
           variant="ghost"
           className="transition-colors w-4 h-3 ml-3 mt-2 mb-[-8px]"
-          delayDuration={400}
           onClick={() => window.open(input.args.sharedRunURL, "_blank")}
         >
           <span className="flex flex-row items-center gap-1 w-11 h-7">

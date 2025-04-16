@@ -26,7 +26,7 @@ import { mainnet, bsc, tron, optimism, arbitrum, sepolia, polygon, solana } from
 import { useAppKit, useAppKitProvider, useAppKitAccount, useAppKitNetwork, useAppKitState, useAppKitEvents, useWalletInfo } from "@reown/appkit/react"
 import { useAppKitConnection } from '@reown/appkit-adapter-solana/react'
 import { json } from "stream/consumers";
-// import { wcModal } from "./appkit"
+import { wcModal } from "../contexts/appkit"
 
 interface GraphData {
 	messages: BaseMessage[];
@@ -100,9 +100,26 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 	const [isShowSendEvmTx, setShowSendEvmTx] = useState<boolean>(false)
 	const [isShowSendSolTx, setShowSendSolTx] = useState<boolean>(false)
 	const [isShowSendSolTxTW, setShowSendSolTxTW] = useState<boolean>(false)
+	const [walletStatus, setWalletStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>(
+		isConnected ? 'connected' : 'disconnected'
+	);
+	// 更新连接钱包函数
 	const connectWallet = async () => {
-		await open({ view: "Connect" })
+		try {
+			setWalletStatus('connecting');
+			await open({ view: "Connect" });
+			// AppKit会自动更新isConnected状态
+		} catch (error) {
+			setWalletStatus('error');
+			// 添加错误处理
+			console.error("Failed to connect wallet:", error);
+		}
 	}
+
+	// 在useEffect中监听连接状态变化
+	useEffect(() => {
+		setWalletStatus(isConnected ? 'connected' : 'disconnected');
+	}, [isConnected]);
 
 	const CHAIN_CONFIG = {
 		"ethereum": {
@@ -334,6 +351,106 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 						return [...prevMessages, searchResultToolMsg];
 					});
 				}
+				if (chunk?.data?.name === "connect_to_wallet") {
+					connectWallet()
+				}
+				if (chunk?.data?.name === 'change_network_to') {
+					let content = chunk.data.data.output.content;
+					const result = JSON.parse(content)
+					change_network_to(result)
+				}
+				if (["generate_transfer_native_token", "generate_approve_erc20", "generate_approve_trc20", "generate_transfer_erc20_tx_data"].includes(chunk.data.name)) {
+					let content = chunk.data.data.output.content;
+					const result = JSON.parse(content);
+					let chainType: "evm" | "sol" | "tron" | undefined = undefined;
+					let txData: any = null;
+					let txName: string = '';
+					if (Array.isArray(result) && result.length >= 2) {
+						txData = result[1] as any;
+						if (txData["chain_id"] != chainId && txData['chain_id'] !== 'tron') {
+							await _change_network_to(txData["chain_id"])
+						}
+						// setTxDataEvm(txData);
+						// setShowSendEvmTx(true);
+						chainType = 'evm';
+						txData = txData;
+						txName = txData['name']
+						setMessages((prevMessages) => {
+							const searchResultToolMsg = new AIMessage({
+								content: "",
+								tool_calls: [
+									{
+										name: "send_evm_transaction",
+										args: { txData: txData, name: txName, orderInfo: undefined },
+									},
+								],
+							});
+							return [...prevMessages, searchResultToolMsg];
+						});
+					}
+				}
+				if (chunk.data.name === 'generate_swap_tx_data') {
+					let content = chunk.data.data.output.content;
+					let result = JSON.parse(content);
+					let orderInfo: any = null;
+					let chainType = "";
+					let txData: any = null;
+					let txName: string = '';
+					if (Array.isArray(result) && result.length >= 2) {
+						result = result[1] as any;
+						if (result["success"]) {
+							orderInfo = result.order_info;
+							const swap_data = result["swap_data"] as any;
+							if (!swap_data.chain_type) {
+								throw new Error("Missing chain_type in swap data");
+							}
+							if (swap_data.chain_type === "evm") {
+								chainType = 'evm'
+								setMessages((prevMessages) => {
+									const searchResultToolMsg = new AIMessage({
+										content: "",
+										tool_calls: [
+											{
+												name: "send_evm_transaction",
+												args: { txData: txData, name: txName, orderInfo: orderInfo },
+											},
+										],
+									});
+									return [...prevMessages, searchResultToolMsg];
+								});
+							} else if (swap_data.chain_type === "solana") {
+								if (!connection) {
+									wcModal.switchNetwork(solana)
+								}
+								chainType = 'sol'
+								setMessages((prevMessages) => {
+									const searchResultToolMsg = new AIMessage({
+										content: "",
+										tool_calls: [
+											{
+												name: "send_solana_transaction",
+												args: { txData: txData, name: txName, orderInfo: orderInfo },
+											},
+										],
+									});
+									return [...prevMessages, searchResultToolMsg];
+								});
+							}
+							// else if (swap_data.chain_type === "tron") {
+							// 	if (!connection) {
+							// 		wcModal.switchNetwork(solana)
+							// 		// open({ view: "Connect" })
+							// 	}
+							// 	chainType = 'tron'
+
+							// } 
+							else {
+								throw new DOMException('Unsupported chain type:', swap_data.chain_type)
+							}
+
+						}
+					}
+				}
 			}
 			if (chunk.data.event === "on_chain_end") {
 				let node = chunk?.data?.name;//metadata?.langgraph_node;
@@ -487,9 +604,15 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 					if (Array.isArray(msg.content)) {
 						if (msg.content.length > 0) {
 							const content = msg.content[0];
-							processedContent = typeof content === 'object' && 'text' in content
-								? content.text
-								: String(content);
+							if (typeof content === 'object') {
+								processedContent = 'text' in content
+									? content.text
+									: "";
+							} else if (typeof content === 'string') {
+								processedContent = content
+							} else {
+								throw new DOMException("Unsupport content type: " + typeof content)
+							}
 						}
 					} else {
 						processedContent = String(msg.content);
@@ -567,6 +690,90 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 						},
 					],
 				}),];
+			}
+
+			if (msg.type === "tool" && ["generate_transfer_native_token", "generate_approve_erc20", "generate_approve_trc20", "generate_transfer_erc20_tx_data"].includes(msg.name)) {
+				const output = msg.content;
+				if (output) {
+					const result = JSON.parse(output);
+					let chainType: "evm" | "sol" | "tron" | undefined = undefined;
+					let txData: any = null;
+					let txName: string = '';
+					if (Array.isArray(result) && result.length >= 2) {
+						txData = result[1] as any;
+						chainType = 'evm';
+						txData = txData;
+						txName = txData['name']
+						return [new AIMessage({
+							content: "",
+							tool_calls: [
+								{
+									name: "send_evm_transaction",
+									args: { txData: txData, name: txName, orderInfo: undefined },
+								},
+							],
+						})];
+					}
+				}
+			}
+
+			if (msg.type === "tool" && msg.name === 'generate_swap_tx_data') {
+				const output = msg.content;
+				if (output) {
+					let result = JSON.parse(output);
+					let orderInfo: any = null;
+					let chainType = "";
+					let txData: any = null;
+					let txName: string = '';
+					if (Array.isArray(result) && result.length >= 2) {
+						result = result[1] as any;
+						if (result["success"]) {
+							orderInfo = result.order_info;
+							const swap_data = result["swap_data"] as any;
+							if (!swap_data.chain_type) {
+								throw new Error("Missing chain_type in swap data");
+							}
+							if (swap_data.chain_type === "evm") {
+								chainType = 'evm'
+								return [new AIMessage({
+									content: "",
+									tool_calls: [
+										{
+											name: "send_evm_transaction",
+											args: { txData: txData, name: txName, orderInfo: orderInfo },
+										},
+									],
+								})];
+							} else if (swap_data.chain_type === "solana") {
+								if (!connection) {
+									wcModal.switchNetwork(solana)
+								}
+								chainType = 'sol'
+								return [new AIMessage({
+									content: "",
+									tool_calls: [
+										{
+											name: "send_solana_transaction",
+											args: { txData: txData, name: txName, orderInfo: orderInfo },
+										},
+									],
+								})];
+							}
+							// else if (swap_data.chain_type === "tron") {
+							// 	if (!connection) {
+							// 		wcModal.switchNetwork(solana)
+							// 		// open({ view: "Connect" })
+							// 	}
+							// 	chainType = 'tron'
+
+							// } 
+							else {
+								throw new DOMException('Unsupported chain type:', swap_data.chain_type)
+							}
+
+						}
+					}
+				}
 			}
 
 			return []; // Return an empty array for any other message types
