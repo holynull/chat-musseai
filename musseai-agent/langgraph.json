@@ -1,0 +1,12 @@
+{
+	"dependencies": [
+		"."
+	],
+	"graphs": {
+		"musseai": "./src/graphs/graph_chatbot.py:graph"
+	},
+	"env": ".env",
+	"http": {
+		"app": "./src/webapp.py:app"
+	}
+}
