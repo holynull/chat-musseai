@@ -1,3 +1,4 @@
+"use client";
 import { add } from "date-fns";
 import { Tooltip } from "@radix-ui/react-tooltip";
 import { TooltipIconButton } from "./ui/assistant-ui/tooltip-icon-button";
@@ -18,9 +19,17 @@ export const WalletIndicator: FC<{}> = () => {
 	const { address, isConnected, caipAddress, status, embeddedWalletInfo } = useAppKitAccount()
 	const { caipNetwork, caipNetworkId, chainId, switchNetwork } = useAppKitNetwork()
 
-	const [walletStatus, setWalletStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>(
-		isConnected ? 'connected' : 'disconnected'
-	);
+	// 确保初始状态为 'disconnected'，防止服务器/客户端不匹配
+	const [walletStatus, setWalletStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+	const [isClient, setIsClient] = useState(false);
+
+
+
+	// 在组件挂载后更新状态
+	useEffect(() => {
+		setIsClient(true);
+		setWalletStatus(isConnected ? 'connected' : 'disconnected');
+	}, [isConnected]);
 	// 更新连接钱包函数
 	const connectWallet = async () => {
 		try {
@@ -45,6 +54,16 @@ export const WalletIndicator: FC<{}> = () => {
 		window.innerWidth < 768 ?
 			`${address.substring(0, 8)}...${address.substring(address.length - 6)}` :
 			`${address.substring(0, 6)}...${address.substring(address.length - 4)}` : '';
+
+	const [tooltipContent, setTooltipContent] = useState('Connect your wallet');
+
+	useEffect(() => {
+		if (status === 'connected') {
+			setTooltipContent(`Addr: ${formattedAddress} (${NETWORK_CHAIN_ID_MAP[chainId as keyof typeof NETWORK_CHAIN_ID_MAP] || 'Unknown Network'}, Chain ID: ${chainId || '?'}) `);
+		} else {
+			setTooltipContent('Connect your wallet');
+		}
+	}, [status, formattedAddress, chainId]);
 
 	const statusConfig = {
 		'disconnected': {
@@ -105,9 +124,7 @@ export const WalletIndicator: FC<{}> = () => {
 	return (
 		<div className="relative wallet-indicator">
 			<TooltipIconButton
-				tooltip={status === 'connected' ?
-					`Addr: ${formattedAddress} (${NETWORK_CHAIN_ID_MAP[chainId as keyof typeof NETWORK_CHAIN_ID_MAP] || 'Unknown Network'}, Chain ID: ${chainId || '?'}) ` :
-					'Connect your wallet'}
+				tooltip={tooltipContent}
 				variant="ghost"
 				className={`
 						inline-flex items-center justify-center gap-1.5
@@ -128,7 +145,7 @@ export const WalletIndicator: FC<{}> = () => {
 				<div className="flex items-center justify-center gap-1.5">
 					<Wallet
 						size={16}
-						className={`${config.iconColor} transition-transform ${isSelected ? 'scale-110' : ''}`}
+						className={`${isClient ? config.iconColor : statusConfig['disconnected'].iconColor} transition-transform ${isSelected ? 'scale-110' : ''}`}
 					/>
 				</div>
 			</TooltipIconButton>

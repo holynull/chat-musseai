@@ -20,6 +20,16 @@ import { useLangSmithLinkToolUI } from "../LangSmithLinkToolUI"
 import { WalletIndicator } from "../WalletIndicator";
 import { useSendEVMTransaction } from "../SendEVMTransation";
 import { useSendSolanaTransaction } from "../SendSolanaTransation";
+import { useAvailableTokens } from "../AvailableTokens";
+import { useSwapQuote } from "../SwapQuote";
+import { useTransactionRecords } from "../TransactionRecords";
+import { useTransactionDetail } from "../TransactionDetail";
+import { useGenerateApproveERC20 } from "../GenerateApproveERC20";
+import { useGetBalanceOfAddress } from "../GetBalanceOfAddress";
+import { useGetERC20Decimals } from "../GetERC20Decimals";
+import { useAllowanceERC20 } from "../AllowanceERC20";
+import { useGetSOLBalanceOfAddress } from "../GetSOLBalanceOfAddress";
+import { useGetSPLBalanceOfAddress } from "../GetSPLBalanceOfAddress";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
@@ -39,6 +49,16 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	useLangSmithLinkToolUI();
 	useSendEVMTransaction();
 	useSendSolanaTransaction();
+	useAvailableTokens();
+	useSwapQuote();
+	useTransactionRecords();
+	useTransactionDetail();
+	useGenerateApproveERC20();
+	useGetBalanceOfAddress();
+	useGetERC20Decimals();
+	useAllowanceERC20();
+	useGetSOLBalanceOfAddress();
+	useGetSPLBalanceOfAddress();
 
 	return (
 		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full">
