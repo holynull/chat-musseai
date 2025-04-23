@@ -95,7 +95,7 @@ export const useSourceList = () => useAssistantToolUI({
 			filtered.map(() => false),
 		);
 		return (
-			<div className="flex flex-col mb-4">
+			<div className="flex flex-col mb-4 sm:mt-6 md:mt-8">
 				<span className="flex flex-row gap-2 items-center justify-start pb-4 text-gray-300">
 					<Globe className="w-5 h-5" />
 					<p className="text-xl">Search Result</p>

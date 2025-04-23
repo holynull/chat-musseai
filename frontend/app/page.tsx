@@ -11,6 +11,7 @@ const theme = extendTheme({
 		global: {
 			body: {
 				color: '#f8f8f8', // 这将会修改 --chakra-colors-chakra-body-text
+				lineHeight: '.8em',
 			},
 		},
 	},

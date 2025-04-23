@@ -642,6 +642,69 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 						console.error(e)
 					}
 				}
+
+				if (chunk.data.name === 'getLatestQuote') {
+					let content = chunk.data.data.output.content;
+					try {
+						let result = JSON.parse(content);
+						setMessages((prevMessages) => {
+							const toolMsg = new AIMessage({
+								content: "",
+								tool_calls: [
+									{
+										name: "getLatestQuote",
+										args: { data: result },
+									},
+								],
+							});
+							return [...prevMessages, toolMsg];
+						});
+					} catch (e) {
+						console.error(e)
+					}
+				}
+
+				if (chunk.data.name === 'buy_sell_signal') {
+					let content = chunk.data.data.output.content;
+					try {
+						let result = JSON.parse(content);
+						setMessages((prevMessages) => {
+							const toolMsg = new AIMessage({
+								content: "",
+								tool_calls: [
+									{
+										name: "buy_sell_signal",
+										args: { data: result },
+									},
+								],
+							});
+							return [...prevMessages, toolMsg];
+						});
+					} catch (e) {
+						console.error(e)
+					}
+				}
+
+				if (chunk.data.name === 'getTokenMetadata') {
+					let content = chunk.data.data.output.content;
+					try {
+						let result = JSON.parse(content);
+						setMessages((prevMessages) => {
+							const toolMsg = new AIMessage({
+								content: "",
+								tool_calls: [
+									{
+										name: "getTokenMetadata",
+										args: { data: result },
+									},
+								],
+							});
+							return [...prevMessages, toolMsg];
+						});
+					} catch (e) {
+						console.error(e)
+					}
+				}
 			}
 			if (chunk.data.event === "on_chain_end") {
 				let node = chunk?.data?.name;//metadata?.langgraph_node;
@@ -1161,6 +1224,72 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 							tool_calls: [
 								{
 									name: "get_spl_token_balance",
+									args: { data: result },
+								},
+							],
+						})];
+					}
+					catch (e) {
+						return []
+					}
+				}
+			}
+
+			if (msg.type === "tool" && msg.name === 'getLatestQuote') {
+				const output = msg.content;
+				if (output) {
+					try {
+						let result = JSON.parse(output);
+						return [new AIMessage({
+							...msg,
+							content: "",
+							tool_calls: [
+								{
+									name: "getLatestQuote",
+									args: { data: result },
+								},
+							],
+						})];
+					}
+					catch (e) {
+						return []
+					}
+				}
+			}
+
+			if (msg.type === "tool" && msg.name === 'buy_sell_signal') {
+				const output = msg.content;
+				if (output) {
+					try {
+						let result = JSON.parse(output);
+						return [new AIMessage({
+							...msg,
+							content: "",
+							tool_calls: [
+								{
+									name: "buy_sell_signal",
+									args: { data: result },
+								},
+							],
+						})];
+					}
+					catch (e) {
+						return []
+					}
+				}
+			}
+
+			if (msg.type === "tool" && msg.name === 'getTokenMetadata') {
+				const output = msg.content;
+				if (output) {
+					try {
+						let result = JSON.parse(output);
+						return [new AIMessage({
+							...msg,
+							content: "",
+							tool_calls: [
+								{
+									name: "getTokenMetadata",
 									args: { data: result },
 								},
 							],

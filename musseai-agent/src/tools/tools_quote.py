@@ -107,14 +107,12 @@ def buy_sell_signal(symbol: str) -> str:
     oscillators = btc_usdt.get_analysis().oscillators
     moving_averages = btc_usdt.get_analysis().moving_averages
     indicators = btc_usdt.get_analysis().indicators
-    return "\n".join(
-        [
-            f"Summary:{summary}",
-            f"Oscillators:{oscillators}",
-            f"Moving Averages:{moving_averages}",
-            f"Indicators:{indicators}",
-        ]
-    )
+    return {
+        "summary": summary,
+        "oscillators": oscillators,
+        "moving_averages": moving_averages,
+        "indicators": indicators,
+    }
 
 
 tools = [getLatestQuote, getTokenMetadata, buy_sell_signal]

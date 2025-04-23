@@ -82,7 +82,7 @@ export const useTransactionRecords = () => useAssistantToolUI({
 		const data: TransactionRecord[] = input.args.data;
 
 		return data && data.length > 0 && (
-			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
+			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm sm:mt-6 md:mt-8">
 				<div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
 					<div className="flex items-center justify-between">
 						<h3 className="text-lg font-medium text-gray-800">Transaction Records</h3>

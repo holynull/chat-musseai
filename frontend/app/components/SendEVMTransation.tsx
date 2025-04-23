@@ -261,7 +261,7 @@ export const useSendEVMTransaction = () => useAssistantToolUI({
 		};
 
 		return txData && (
-			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
+			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm sm:mt-6 md:mt-8">
 				{/* Header */}
 				<div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
 					<div className="flex items-center justify-between">

@@ -30,6 +30,9 @@ import { useGetERC20Decimals } from "../GetERC20Decimals";
 import { useAllowanceERC20 } from "../AllowanceERC20";
 import { useGetSOLBalanceOfAddress } from "../GetSOLBalanceOfAddress";
 import { useGetSPLBalanceOfAddress } from "../GetSPLBalanceOfAddress";
+import { useLatestQuote } from "../LatestQuote";
+import { useBuySellSignal } from "../BuySellSignal";
+import { useGetTokenMetadata } from "../GetTokenMetadata";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
@@ -59,6 +62,9 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	useAllowanceERC20();
 	useGetSOLBalanceOfAddress();
 	useGetSPLBalanceOfAddress();
+	useLatestQuote();
+	useBuySellSignal();
+	useGetTokenMetadata();
 
 	return (
 		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full">

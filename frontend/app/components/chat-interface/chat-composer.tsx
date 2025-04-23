@@ -1,6 +1,6 @@
 "use client";
 
-import { ComposerPrimitive, ThreadPrimitive, useAttachment, useAttachmentRuntime, useComposerRuntime, SimpleImageAttachmentAdapter } from "@assistant-ui/react";
+import { ComposerPrimitive, ThreadPrimitive, useAttachment, useAttachmentRuntime, useComposerRuntime, SimpleImageAttachmentAdapter, useComposer } from "@assistant-ui/react";
 import { ComponentType, useMemo, type FC, useState, useEffect } from "react";
 
 import { PaperclipIcon, SendHorizontalIcon } from "lucide-react";
@@ -8,6 +8,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { TooltipIconButton } from "../ui/assistant-ui/tooltip-icon-button";
 import { cn } from "@/app/utils/cn";
 import Image from "next/image";
+import { ClipboardEvent } from 'react';
 
 
 export interface ChatComposerProps {
@@ -60,21 +61,6 @@ export const ImagePanel: ComponentType<any> = (data) => {
 	}, [state.file]);
 
 
-	// let file=data['file']
-	// const imageUrl = useMemo(() => {
-	// 	try {
-	// 		return URL.createObjectURL(file);
-	// 	} catch (error) {
-	// 		console.error('Error creating object URL:', error);
-	// 		return '';
-	// 	}
-	// }, [file]);
-	// const { remove, subscribe, getState } = useAttachmentRuntime()
-	// const _state = getState()
-	// subscribe(() => {
-	// 	console.log("lllllll")
-	// })
-	// remove()
 
 	return (
 		<div className="relative group flex flex-col items-center p-2 hover:bg-gray-700/30 rounded-md transition-colors">
@@ -172,6 +158,56 @@ export const ChatComposer: FC<ChatComposerProps> = (
 ) => {
 	const isEmpty = props.messages.length === 0;
 
+	const composerRuntime = useComposerRuntime();
+
+	const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+		const items = Array.from(e.clipboardData?.items || []);
+
+		// 处理所有可能的文件类型
+		for (const item of items) {
+			// 检查是否是文件类型
+			if (item.kind === 'file') {
+				const file = item.getAsFile();
+				if (file) {
+					// 检查文件大小 (例如：限制为10MB)
+					const maxSize = 10 * 1024 * 1024; // 10MB
+					if (file.size > maxSize) {
+						// 可以在这里添加提示逻辑，例如使用toast通知
+						console.warn(`文件大小超过限制: ${file.name} (${formatFileSize(file.size)})`);
+						continue;
+					}
+
+					// 根据文件类型分别处理
+					if (item.type.startsWith('image/')) {
+						// 处理图片
+						composerRuntime.addAttachment(file);
+					} else if (item.type.includes('pdf') ||
+						item.type.includes('document') ||
+						item.type.includes('text/plain')) {
+						// 处理文档类型
+						composerRuntime.addAttachment(file);
+					} else {
+						// 其他文件类型
+						composerRuntime.addAttachment(file);
+					}
+				}
+			}
+		}
+
+		// 如果有文件被添加，阻止默认粘贴行为
+		if (items.some(item => item.kind === 'file')) {
+			e.preventDefault();
+		}
+	};
+
+	// 辅助函数：格式化文件大小
+	const formatFileSize = (bytes: number): string => {
+		if (bytes < 1024) return bytes + ' B';
+		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+		if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+		return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+	};
+
 	return (
 		<>
 			<ComposerPrimitive.Root
@@ -187,6 +223,7 @@ export const ChatComposer: FC<ChatComposerProps> = (
 					placeholder="How can I..."
 					rows={1}
 					className="placeholder:text-gray-400 text-gray-100 max-h-40 flex-1 resize-none border-none bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed"
+					onPaste={handlePaste}
 				/>
 				<div className="flex-shrink-0">
 					<ThreadPrimitive.If running={false} >

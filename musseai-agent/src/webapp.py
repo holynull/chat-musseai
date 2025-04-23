@@ -1,4 +1,5 @@
 from typing import Dict, Optional
+import aiohttp
 from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 import requests
@@ -157,6 +158,107 @@ async def create_swap_order(request: GenerateSwapOrderRequest) -> dict:
         return result
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/api/tradingview/symbol_search")
+async def symbol_search(text: str):
+    """
+    搜索TradingView符号，并优化返回格式以便前端使用。
+
+    Args:
+        query (str): 要搜索的加密货币代码，例如 BTC, ETH, SOL 等
+
+    Returns:
+        dict: 包含搜索结果的字典，格式如下：
+            {
+                "symbols_remaining": int,  # 剩余结果数量
+                "symbols": [
+                    {
+                        "symbol": str,     # 交易对符号
+                        "description": str, # 描述
+                        "type": str,       # 类型
+                        "exchange": str,   # 交易所
+                        "currency_code": str, # 货币代码
+                        ...
+                    },
+                    ...
+                ]
+            }
+    """
+    # 确保query参数不为空
+    if not text:
+        return {"symbols_remaining": 0, "symbols": []}
+
+    # TradingView搜索API的URL
+    url = "https://symbol-search.tradingview.com/symbol_search/v3/"
+
+    # 优化请求参数，增加对加密货币的偏好
+    params = {
+        "text": text,
+        "hl": 1,
+        "exchange": "",
+        "lang": "en",
+        "search_type": "crypto",  # 指定搜索类型为加密货币
+        "domain": "production",
+        "sort_by_country": "US",
+        # "type": "crypto",  # 尝试优先返回加密货币结果
+        "promo": "true",
+    }
+
+    # 请求头
+    headers = {
+        "authority": "symbol-search.tradingview.com",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "en-US,en;q=0.9",
+        "cache-control": "no-cache",
+        "origin": "https://www.tradingview.com",
+        "pragma": "no-cache",
+        "referer": "https://www.tradingview.com/",
+        "sec-ch-ua": '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    }
+    # 获取系统代理设置
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+
+    # 根据URL协议选择代理
+    proxy = https_proxy if url.startswith("https") else http_proxy
+
+    # 发送请求
+    try:
+        async with aiohttp.ClientSession(proxy=proxy) as session:
+            async with session.get(url, params=params, headers=headers) as response:
+                if response.status != 200:
+                    return {
+                        "result": await response.json(),
+                        "error": f"TradingView API returned status code {response.status}",
+                        "symbols_remaining": 0,
+                        "symbols": [],
+                    }
+
+                # 解析JSON响应
+                data = await response.json()
+
+                # 优化返回结果
+                return data
+    except aiohttp.ClientError as e:
+        return {
+            "error": f"Request error: {str(e)}",
+            "symbols_remaining": 0,
+            "symbols": [],
+        }
+    except Exception as e:
+        return {
+            "error": f"Unexpected error: {str(e)}",
+            "symbols_remaining": 0,
+            "symbols": [],
+        }
 
 
 class CustomHeaderMiddleware(BaseHTTPMiddleware):
