@@ -6,24 +6,26 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card } from "../components/ui/card";
 import { useToast } from "../hooks/use-toast";
+import { motion } from "framer-motion";
+import Link from "next/link";
 
 export default function RegisterPage() {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
+	const [error, setError] = useState("");
 	const router = useRouter();
 	const { toast } = useToast();
 
+	const clearError = () => setError("");
+
 	const handleRegister = async (e: React.FormEvent) => {
 		e.preventDefault();
+		clearError();
 
 		if (password !== confirmPassword) {
-			toast({
-				title: "密码不匹配",
-				description: "请确保两次输入的密码一致",
-				variant: "destructive",
-			});
+			setError("密码不匹配，请确保两次输入的密码一致");
 			return;
 		}
 
@@ -42,81 +44,120 @@ export default function RegisterPage() {
 				router.push("/login");
 			}, 1000);
 		} catch (error) {
-			toast({
-				title: "注册失败",
-				description: "请稍后再试",
-				variant: "destructive",
-			});
+			setError("注册失败，请稍后再试");
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
 	return (
-		<div className="flex items-center justify-center min-h-screen bg-gray-900">
-			<Card className="w-full max-w-md p-8 space-y-6 bg-gray-800 text-white">
-				<div className="text-center">
-					<h1 className="text-2xl font-bold">创建 Musse AI 账号</h1>
-					<p className="text-gray-400 mt-2">请填写以下信息注册账号</p>
-				</div>
+		<div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center p-4">
+			<div className="absolute top-4 left-4">
+				<Link href="/" className="flex items-center text-gray-300 hover:text-white transition-colors">
+					<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+						<path d="M19 12H5M12 19l-7-7 7-7" />
+					</svg>
+					<span>Back to Home</span>
+				</Link>
+			</div>
+			<motion.div
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				transition={{ duration: 0.5 }}
+				className="w-full max-w-md"
+			>
+				<Card className="backdrop-blur-lg bg-gray-800/70 border border-gray-700 rounded-xl shadow-2xl">
+					<div className="p-8">
+						<div className="text-center mb-8">
+							<motion.div
+								initial={{ scale: 0.5 }}
+								animate={{ scale: 1 }}
+								transition={{ duration: 0.5 }}
+							>
+								<div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center">
+									<span className="text-2xl font-bold text-white">M</span>
+								</div>
+							</motion.div>
+							<h1 className="text-3xl font-bold text-white mb-2">Register for Musse AI</h1>
+							<p className="text-gray-400">Create your account to get started</p>
+						</div>
 
-				<form onSubmit={handleRegister} className="space-y-4">
-					<div className="space-y-2">
-						<label htmlFor="email" className="text-sm font-medium">邮箱</label>
-						<Input
-							id="email"
-							type="email"
-							placeholder="your@email.com"
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							required
-							className="bg-gray-700 border-gray-600"
-						/>
+						<form onSubmit={handleRegister} className="space-y-6">
+							<div className="space-y-2">
+								<label className="text-sm font-medium text-gray-300">Email</label>
+								<Input
+									type="email"
+									placeholder="your@email.com"
+									value={email}
+									onChange={(e) => setEmail(e.target.value)}
+									className="h-12 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500 transition-all"
+									required
+								/>
+							</div>
+
+							<div className="space-y-2">
+								<label className="text-sm font-medium text-gray-300">Password</label>
+								<Input
+									type="password"
+									placeholder="••••••••"
+									value={password}
+									onChange={(e) => setPassword(e.target.value)}
+									className="h-12 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500 transition-all"
+									required
+								/>
+							</div>
+
+							<div className="space-y-2">
+								<label className="text-sm font-medium text-gray-300">Confirm Password</label>
+								<Input
+									type="password"
+									placeholder="••••••••"
+									value={confirmPassword}
+									onChange={(e) => setConfirmPassword(e.target.value)}
+									className="h-12 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500 transition-all"
+									required
+								/>
+							</div>
+
+							{error && (
+								<motion.div
+									initial={{ opacity: 0, y: -10 }}
+									animate={{ opacity: 1, y: 0 }}
+									className="text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20"
+								>
+									{error}
+								</motion.div>
+							)}
+
+							<Button
+								disabled={isLoading}
+								className="w-full h-12 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-medium rounded-lg transition-all duration-300"
+							>
+								{isLoading ? (
+									<div className="flex items-center justify-center">
+										<div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+										Registering...
+									</div>
+								) : (
+									"Register"
+								)}
+							</Button>
+						</form>
+
+						<div className="mt-6 text-center text-sm">
+							<p className="text-gray-400">
+								Already have an account?{" "}
+								<a
+									href="/login"
+									className="text-purple-400 hover:text-purple-300 transition-colors duration-200"
+								>
+									Login
+								</a>
+							</p>
+						</div>
 					</div>
-
-					<div className="space-y-2">
-						<label htmlFor="password" className="text-sm font-medium">密码</label>
-						<Input
-							id="password"
-							type="password"
-							placeholder="••••••••"
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							required
-							className="bg-gray-700 border-gray-600"
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<label htmlFor="confirm-password" className="text-sm font-medium">确认密码</label>
-						<Input
-							id="confirm-password"
-							type="password"
-							placeholder="••••••••"
-							value={confirmPassword}
-							onChange={(e) => setConfirmPassword(e.target.value)}
-							required
-							className="bg-gray-700 border-gray-600"
-						/>
-					</div>
-
-					<Button
-						className="w-full"
-						disabled={isLoading}
-					>
-						{isLoading ? "注册中..." : "注册"}
-					</Button>
-				</form>
-
-				<div className="text-center text-sm">
-					<p className="text-gray-400">
-						已有账号？
-						<a href="/login" className="text-blue-400 hover:underline ml-1">
-							登录
-						</a>
-					</p>
-				</div>
-			</Card>
+				</Card>
+			</motion.div>
 		</div>
 	);
 }

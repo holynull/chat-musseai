@@ -10,6 +10,7 @@ export function useRuns() {
 			body: JSON.stringify({ runId }),
 			headers: {
 				"Content-Type": "application/json",
+				Authorization: `Bearer ${localStorage.getItem("auth_token")}`
 			},
 		});
 

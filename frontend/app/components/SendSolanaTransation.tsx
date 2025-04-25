@@ -256,7 +256,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 							try {
 								await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/generate_swap_order', {
 									method: 'POST',
-									headers: { 'Content-Type': 'application/json' },
+									headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
 									body: JSON.stringify({
 										hash: hash,
 										from_token_address: orderInfo.from_token_address,

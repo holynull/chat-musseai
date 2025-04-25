@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, Optional
 import aiohttp
 from fastapi import FastAPI, Request
@@ -273,22 +274,6 @@ class CustomHeaderMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(CustomHeaderMiddleware)
 
-origins = [
-    "*",
-    "http://localhost",
-    "http://localhost:3000",
-    "http://192.168.3.6:3000",
-    "http://musse.ai",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
 
 import secrets
 import hashlib
@@ -686,6 +671,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         # 如果是受保护的路径，则验证用户登录状态
         if is_protected:
             authorization = request.headers.get("Authorization")
+            logging.info("$" * 100)
+            logging.info(request.url)
+            logging.info(authorization)
 
             # 如果没有Authorization头，返回401未授权错误
             if not authorization:
@@ -697,7 +685,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
             # 提取token
             try:
-                scheme, token = authorization.split()
+                scheme, token = authorization.split(" ")
                 if scheme.lower() != "bearer":
                     return JSONResponse(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -742,3 +730,22 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
 # 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
 app.add_middleware(AuthenticationMiddleware)
+
+origins = [
+    "*",
+    "http://localhost",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://192.168.3.6:3000",
+    "http://192.168.3.6:3001",
+    "http://musse.ai",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)

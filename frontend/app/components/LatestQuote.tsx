@@ -145,7 +145,7 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 				currentContainer.innerHTML = '';
 
 				// 实现获取symbols数据的功能
-				fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tradingview/symbol_search?text=${symbol}`)
+				fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tradingview/symbol_search?text=${symbol}`, { headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` } })
 					.then(response => {
 						if (!response.ok) {
 							throw new Error(`HTTP error! Status: ${response.status}`);

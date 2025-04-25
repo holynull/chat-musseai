@@ -9,10 +9,13 @@ export function createClient() {
 	// 	},
 	// });
 	// return remoteChain;
-	  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api";
-	  return new Client({
-	    apiUrl,
-	  });
+	const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api";
+	return new Client({
+		apiUrl,
+		defaultHeaders: typeof window !== 'undefined' ? {
+			Authorization: `Bearer ${localStorage.getItem("auth_token")}`
+		} : {}
+	});
 }
 
 export function nodeToStep(node: string) {
