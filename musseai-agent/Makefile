@@ -65,3 +65,5 @@ help:
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
 
+dev:
+	langgraph dev --port 8080  --host 192.168.3.6

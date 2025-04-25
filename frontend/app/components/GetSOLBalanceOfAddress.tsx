@@ -36,13 +36,13 @@ export const useGetSOLBalanceOfAddress = () => useAssistantToolUI({
 			: "";
 
 		return (
-			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm sm:mt-6 md:mt-8">
+			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
 				<div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
 					<div className="flex items-center justify-between">
 						<h3 className="text-lg font-medium text-gray-800">SOL Balance</h3>
 						<div className="flex items-center">
 							<span className="text-sm text-gray-700 mr-2">Solana</span>
-							<img
+							<Image
 								src={data.solLogo || "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"}
 								alt="Solana Logo"
 								width={24}

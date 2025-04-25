@@ -125,7 +125,6 @@ export const WalletIndicator: FC<{}> = () => {
 		<div className="relative wallet-indicator">
 			<TooltipIconButton
 				tooltip={tooltipContent}
-				variant="ghost"
 				className={`
 						inline-flex items-center justify-center gap-1.5
 						h-8 px-3

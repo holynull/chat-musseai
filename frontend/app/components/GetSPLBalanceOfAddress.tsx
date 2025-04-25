@@ -46,7 +46,7 @@ export const useGetSPLBalanceOfAddress = () => useAssistantToolUI({
 						<h3 className="text-lg font-medium text-gray-800">SPL Token Balance</h3>
 						<div className="flex items-center">
 							<span className="text-sm text-gray-700 mr-2">Solana SPL</span>
-							<img
+							<Image
 								src={defaultTokenLogo}
 								alt={`${data.symbol} Logo`}
 								width={24}

@@ -17,7 +17,8 @@ import { v4 as uuidv4 } from "uuid";
 import { useThreads } from "../hooks/useThreads";
 import { ModelOptions } from "../types";
 import { useRuns } from "../hooks/useRuns";
-import { useUser } from "../hooks/useUser";
+// import { useUser } from "../hooks/useUser";
+import { useUser } from "./UserContext"
 import { addDocumentLinks, createClient, nodeToStep } from "./utils";
 import { Thread } from "@langchain/langgraph-sdk";
 import { useQueryState } from "nuqs";
@@ -55,7 +56,7 @@ export interface GraphInput {
 }
 
 export function GraphProvider({ children }: { children: ReactNode }) {
-	const { userId } = useUser();
+	const { user } = useUser();
 	const {
 		isUserThreadsLoading,
 		userThreads,
@@ -64,7 +65,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 		getUserThreads,
 		createThread,
 		deleteThread,
-	} = useThreads(userId);
+	} = useThreads(user?.user_id);
 	const { toast } = useToast();
 	const { shareRun } = useRuns();
 	const [messages, setMessages] = useState<BaseMessage[]>([]);
@@ -161,7 +162,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 		currentThreadId: string,
 		params: GraphInput,
 	): Promise<void> => {
-		if (!userId) {
+		if (!user?.user_id) {
 			toast({
 				title: "Error",
 				description: "User ID not found",
@@ -325,7 +326,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			if (chunk.data.event === "on_tool_end") {
 				if (["search_news", "search_webpage", "access_links_content"].includes(chunk?.data?.name)) {
 					const output = chunk.data.data.output.content;
-					let sources = []
+					let sources: any[] = []
 					if (output) {
 						try {
 							const result = JSON.parse(output);
@@ -695,6 +696,69 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 								tool_calls: [
 									{
 										name: "getTokenMetadata",
+										args: { data: result },
+									},
+								],
+							});
+							return [...prevMessages, toolMsg];
+						});
+					} catch (e) {
+						console.error(e)
+					}
+				}
+
+				if (chunk.data.name === 'getLatestContent') {
+					let content = chunk.data.data.output.content;
+					try {
+						let result = JSON.parse(content);
+						setMessages((prevMessages) => {
+							const toolMsg = new AIMessage({
+								content: "",
+								tool_calls: [
+									{
+										name: "getLatestContent",
+										args: { data: result },
+									},
+								],
+							});
+							return [...prevMessages, toolMsg];
+						});
+					} catch (e) {
+						console.error(e)
+					}
+				}
+
+				if (chunk.data.name === 'getCommunityTrendingToken') {
+					let content = chunk.data.data.output.content;
+					try {
+						let result = JSON.parse(content);
+						setMessages((prevMessages) => {
+							const toolMsg = new AIMessage({
+								content: "",
+								tool_calls: [
+									{
+										name: "getCommunityTrendingToken",
+										args: { data: result },
+									},
+								],
+							});
+							return [...prevMessages, toolMsg];
+						});
+					} catch (e) {
+						console.error(e)
+					}
+				}
+
+				if (chunk.data.name === 'gen_images') {
+					let content = chunk.data.data.output.content;
+					try {
+						let result = JSON.parse(content);
+						setMessages((prevMessages) => {
+							const toolMsg = new AIMessage({
+								content: "",
+								tool_calls: [
+									{
+										name: "gen_images",
 										args: { data: result },
 									},
 								],
@@ -1301,6 +1365,72 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				}
 			}
 
+			if (msg.type === "tool" && msg.name === 'getLatestContent') {
+				const output = msg.content;
+				if (output) {
+					try {
+						let result = JSON.parse(output);
+						return [new AIMessage({
+							...msg,
+							content: "",
+							tool_calls: [
+								{
+									name: "getLatestContent",
+									args: { data: result },
+								},
+							],
+						})];
+					}
+					catch (e) {
+						return []
+					}
+				}
+			}
+
+			if (msg.type === "tool" && msg.name === 'getCommunityTrendingToken') {
+				const output = msg.content;
+				if (output) {
+					try {
+						let result = JSON.parse(output);
+						return [new AIMessage({
+							...msg,
+							content: "",
+							tool_calls: [
+								{
+									name: "getCommunityTrendingToken",
+									args: { data: result },
+								},
+							],
+						})];
+					}
+					catch (e) {
+						return []
+					}
+				}
+			}
+
+			if (msg.type === "tool" && msg.name === 'gen_images') {
+				const output = msg.content;
+				if (output) {
+					try {
+						let result = JSON.parse(output);
+						return [new AIMessage({
+							...msg,
+							content: "",
+							tool_calls: [
+								{
+									name: "gen_images",
+									args: { data: result },
+								},
+							],
+						})];
+					}
+					catch (e) {
+						return []
+					}
+				}
+			}
+
 			return []; // Return an empty array for any other message types
 		});
 
@@ -1309,7 +1439,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 
 	const contextValue: GraphContentType = {
 		userData: {
-			userId,
+			...useUser()
 		},
 		threadsData: {
 			isUserThreadsLoading,

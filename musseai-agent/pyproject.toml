@@ -31,6 +31,12 @@ dependencies = [
     "langgraph-cli[inmem] (>=0.2.5,<0.3.0)",
     "langchain (>=0.3.23,<0.4.0)",
     "langgraph (>=0.3.31,<0.4.0)",
+    "python-jose[cryptography] (>=3.4.0,<4.0.0)",
+    "python-multipart (>=0.0.20,<0.0.21)",
+    "email-validator (>=2.2.0,<3.0.0)",
+    "pycryptodome (>=3.22.0,<4.0.0)",
+    "passlib[bcrypt] (>=1.7.4,<2.0.0)",
+    "bcrypt (==4.0.1)",
 ]
 
 

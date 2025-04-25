@@ -23,7 +23,6 @@ export function Thread(props: ThreadProps) {
       <Button
         className="px-2 hover:bg-[#393939] hover:text-white justify-start items-center flex-grow min-w-[191px] pr-0"
         size="sm"
-        variant="ghost"
         onClick={props.onClick}
       >
         <p className="truncate text-sm font-light w-full text-left">
@@ -33,7 +32,6 @@ export function Thread(props: ThreadProps) {
       {isHovering && (
         <TooltipIconButton
           tooltip="Delete thread"
-          variant="ghost"
           className="hover:bg-[#373737] flex-shrink-0 p-2"
           onClick={props.onDelete}
         >

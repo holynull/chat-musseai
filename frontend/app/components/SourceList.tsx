@@ -5,6 +5,7 @@ import { LoaderCircle, Globe, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { TooltipIconButton } from "./ui/assistant-ui/tooltip-icon-button";
+import Image from "next/image";
 import {
 	Tooltip,
 	TooltipContent,
@@ -20,7 +21,7 @@ export type Source = {
 };
 function imageTag(img_src: string) {
 	if (img_src) {
-		return <img src={img_src} className="w-full h-[120px] object-cover rounded-sm" alt="" />
+		return <Image src={img_src} className="w-full h-[120px] object-cover rounded-sm" alt="" />
 	} else {
 		return <div className="w-full h-[120px] bg-gray-700 flex items-center justify-center rounded-sm">
 			<Globe className="w-8 h-8 text-gray-400" />
@@ -85,32 +86,37 @@ export function SourceBubble(
 		</a>
 	);
 }
+const SourceListComponent = ({ sources }: { sources: Source[] }) => {
+	const { filtered, indexMap } = filterSources(sources);
+	const [highlighedSourceLinkStates, setHighlightedSourceLinkStates] = useState(
+		filtered.map(() => false),
+	);
+
+	return (
+		<div className="flex flex-col mb-4 sm:mt-6 md:mt-8">
+			<span className="flex flex-row gap-2 items-center justify-start pb-4 text-gray-300">
+				<Globe className="w-5 h-5" />
+				<p className="text-xl">Search Result</p>
+			</span>
+			<div className="mb-10">
+				<div className="flex flex-wrap items-start justify-start gap-4">
+					{filtered.map((source: Source, index) => (
+						<SourceBubble
+							key={`${source.link}-${index}`}
+							source={source}
+						/>
+					))}
+				</div>
+			</div>
+		</div>
+	);
+};
+
+// 在useAssistantToolUI中使用这个组件
 export const useSourceList = () => useAssistantToolUI({
 	toolName: "source_list",
 	render: (input) => {
-		// const expert_name = nodeToExpertName(input.args.node_name);
 		const sources: Source[] = input.args.sources;
-		const { filtered, indexMap } = filterSources(sources);
-		const [highlighedSourceLinkStates, setHighlightedSourceLinkStates] = useState(
-			filtered.map(() => false),
-		);
-		return (
-			<div className="flex flex-col mb-4 sm:mt-6 md:mt-8">
-				<span className="flex flex-row gap-2 items-center justify-start pb-4 text-gray-300">
-					<Globe className="w-5 h-5" />
-					<p className="text-xl">Search Result</p>
-				</span>
-				<div className="mb-10">
-					<div className="flex flex-wrap items-start justify-start gap-4">
-						{filtered.map((source: Source, index) => (
-							<SourceBubble
-								key={`${source.link}-${index}`}
-								source={source}
-							/>
-						))}
-					</div>
-				</div>
-			</div>
-		)
+		return <SourceListComponent sources={sources} />;
 	},
 });

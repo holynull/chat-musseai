@@ -115,4 +115,143 @@ def buy_sell_signal(symbol: str) -> str:
     }
 
 
-tools = [getLatestQuote, getTokenMetadata, buy_sell_signal]
+@tool
+def getLatestContent(
+    contentType: str = None, latestId: str = None, count: int = 10, page: int = 1
+) -> str:
+    """
+    Retrieves the latest content from CoinMarketCap including news, trending coins, and educational materials.
+
+    This function fetches the latest content using the CoinMarketCap Content API v1. Users can
+    filter by content type and set pagination parameters.
+
+    Input:
+    - contentType (str, optional): Filter content by type. Available options:
+      * 'news' - Latest news articles
+      * 'trending' - Trending cryptocurrencies
+      * 'education' - Educational content
+      * 'calendars' - Upcoming events
+      * 'statistics' - Market statistics
+      If not specified, returns all content types.
+    - latestId (str, optional): Get content newer than the specified content ID
+    - count (int, optional): Number of content items to return (default: 10, max: 100)
+    - page (int, optional): Page number for pagination (default: 1)
+
+    Output:
+    - Returns a JSON string containing latest content items with metadata including:
+      * Content ID
+      * Title
+      * Publication date
+      * URL
+      * Source
+      * Description
+      * Related cryptocurrency data
+
+    Example usage:
+    getLatestContent() - Get latest mixed content
+    getLatestContent(contentType="news") - Get latest news articles
+    getLatestContent(contentType="trending", count=5) - Get top 5 trending cryptocurrencies
+    """
+    headers = {
+        "Accepts": "application/json",
+        "X-CMC_PRO_API_KEY": os.getenv("CMC_API_KEY"),
+    }
+
+    # Build URL with query parameters
+    url = "https://pro-api.coinmarketcap.com/v1/content/latest"
+    params = {}
+
+    # Add parameters only if they are provided
+    if contentType:
+        params["content_type"] = contentType
+    if latestId:
+        params["latest_id"] = latestId
+    if count:
+        params["count"] = min(count, 100)  # Ensure count doesn't exceed API limit
+    if page:
+        params["page"] = max(1, page)  # Ensure page is at least 1
+
+    # Make the API request
+    response = requests.get(url, headers=headers, params=params)
+
+    # Return the response as a JSON string
+    return json.dumps(response.json())
+
+
+@tool
+def getCommunityTrendingToken(
+    timePeriod: str = "24h", timeStart: str = None, timeEnd: str = None
+) -> str:
+    """
+    Retrieves trending tokens based on community activity from CoinMarketCap.
+
+    This function fetches trending tokens data based on community activity metrics using
+    the CoinMarketCap API v1. Users can specify different time periods for the analysis.
+
+    Input:
+    - timePeriod (str, optional): Time period for the trending analysis. Available options:
+      * '24h' - Last 24 hours (default)
+      * '7d' - Last 7 days
+      * '30d' - Last 30 days
+      * 'custom' - Custom time period (requires timeStart and timeEnd)
+    - timeStart (str, optional): Start time for custom period (ISO 8601 format)
+      Required if timePeriod is 'custom'
+    - timeEnd (str, optional): End time for custom period (ISO 8601 format)
+      Required if timePeriod is 'custom'
+
+    Output:
+    - Returns a JSON string containing trending tokens data including:
+      * Token ranking
+      * Token name and symbol
+      * Community metrics
+      * Price and market data
+      * Trending score
+      * Trading activity
+      * Social media statistics
+
+    Example usage:
+    getCommunityTrendingToken() - Get trending tokens for last 24 hours
+    getCommunityTrendingToken("7d") - Get trending tokens for last 7 days
+    getCommunityTrendingToken("custom", "2023-01-01T00:00:00Z", "2023-01-07T00:00:00Z")
+    """
+    headers = {
+        "Accepts": "application/json",
+        "X-CMC_PRO_API_KEY": os.getenv("CMC_API_KEY"),
+    }
+
+    # Base URL for the API endpoint
+    url = "https://pro-api.coinmarketcap.com/v1/community/trending-token"
+
+    # Initialize parameters dictionary
+    params = {}
+
+    # Validate and set time period
+    valid_time_periods = ["24h", "7d", "30d", "custom"]
+    if timePeriod not in valid_time_periods:
+        raise ValueError(f"Invalid time_period. Must be one of {valid_time_periods}")
+
+    params["time_period"] = timePeriod
+
+    # Handle custom time period
+    if timePeriod == "custom":
+        if not timeStart or not timeEnd:
+            raise ValueError(
+                "timeStart and timeEnd are required for custom time period"
+            )
+        params["time_start"] = timeStart
+        params["time_end"] = timeEnd
+
+    # Make the API request
+    response = requests.get(url, headers=headers, params=params)
+
+    # Return the response as a JSON string
+    return json.dumps(response.json())
+
+
+tools = [
+    getLatestQuote,
+    getTokenMetadata,
+    buy_sell_signal,
+    getLatestContent,
+    getCommunityTrendingToken,
+]

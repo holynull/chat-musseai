@@ -74,7 +74,7 @@ def gen_images(
 
         # s3_url = f"![Generated Image {i+1}](https://musse.ai/{s3_key})"
         # s3_url = f"\n<img src='https://musse.ai/{s3_key}'>"
-        s3_url = f"\nhttps://musse.ai/{s3_key}"
+        s3_url = f"https://musse.ai/{s3_key}"
         result_urls.append(s3_url)
 
     return result_urls

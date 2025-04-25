@@ -180,7 +180,7 @@ def generate_swap_tx_data(
     slippage: float = None,
 ) -> Optional[Dict]:
     """
-    Notify the front end to generate a button to send a token swap transaction.
+    Generate swap transaction data, and notify the front end to generate a button to send a token swap transaction.
 
     Args:
         from_token_address (str): Source token contract address, `address` in the return from `get_available_tokens`

@@ -33,6 +33,9 @@ import { useGetSPLBalanceOfAddress } from "../GetSPLBalanceOfAddress";
 import { useLatestQuote } from "../LatestQuote";
 import { useBuySellSignal } from "../BuySellSignal";
 import { useGetTokenMetadata } from "../GetTokenMetadata";
+import { useGetLatestContent } from "../GetLatestContent";
+import { useGetCommunityTrendingToken } from "../GetCommunityTrendingToken";
+import { useGenerateImage } from "../GenerateImage";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
@@ -65,6 +68,9 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	useLatestQuote();
 	useBuySellSignal();
 	useGetTokenMetadata();
+	useGetLatestContent();
+	useGetCommunityTrendingToken();
+	useGenerateImage();
 
 	return (
 		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full">

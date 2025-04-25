@@ -121,6 +121,8 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 	const scriptLoaded = useRef<boolean>(false);
 
 	useEffect(() => {
+		// 在effect开始时捕获当前的ref值
+		const currentContainer = container.current;
 		// 加载TradingView Widget脚本
 		if (!scriptLoaded.current) {
 			const script = document.createElement('script');
@@ -139,8 +141,8 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 
 		function renderChart() {
 			// 清空容器以防止重复渲染
-			if (container.current) {
-				container.current.innerHTML = '';
+			if (currentContainer) {
+				currentContainer.innerHTML = '';
 
 				// 实现获取symbols数据的功能
 				fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tradingview/symbol_search?text=${symbol}`)
@@ -275,8 +277,8 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 
 		// 清理函数
 		return () => {
-			if (container.current) {
-				container.current.innerHTML = '';
+			if (currentContainer) {
+				currentContainer.innerHTML = '';
 			}
 		};
 	}, [symbol]);

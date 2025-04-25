@@ -5,6 +5,7 @@ import { CircleXIcon, FileIcon, PaperclipIcon } from "lucide-react";
 import {
   AttachmentPrimitive,
   ComposerPrimitive,
+  ImageContentPart,
   MessagePrimitive,
   useAttachment,
 } from "@assistant-ui/react";
@@ -51,7 +52,7 @@ const useAttachmentSrc = () => {
     useShallow((a): { file?: File; src?: string } => {
       if (a.type !== "image") return {};
       if (a.file) return { file: a.file };
-      const src = a.content?.filter((c) => c.type === "image")[0]?.image;
+	  const src = (a.content?.filter((c) => c.type === "image")[0] as ImageContentPart | undefined)?.image;
       if (!src) return {};
       return { src };
     }),
@@ -199,7 +200,6 @@ export const ComposerAddAttachment: FC = () => {
       <TooltipIconButton
         className="my-2.5 size-8 p-2 transition-opacity ease-in"
         tooltip="Add Attachment"
-        variant="ghost"
       >
         <PaperclipIcon />
       </TooltipIconButton>

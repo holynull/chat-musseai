@@ -4,22 +4,21 @@ import { getCookie, setCookie } from "../utils/cookies";
 import { USER_ID_COOKIE_NAME } from "../utils/constants";
 
 export function useUser() {
-  const [userId, setUserId] = useState<string>();
+	const [userId, setUserId] = useState<string>();
 
-  useEffect(() => {
-    if (userId) return;
+	// 初始化userId - 只在组件挂载时运行一次
+	useEffect(() => {
+		const userIdCookie = getCookie(USER_ID_COOKIE_NAME);
+		if (userIdCookie) {
+			setUserId(userIdCookie);
+		} else {
+			const newUserId = uuidv4();
+			setUserId(newUserId);
+			setCookie(USER_ID_COOKIE_NAME, newUserId);
+		}
+	}, []);
 
-    const userIdCookie = getCookie(USER_ID_COOKIE_NAME);
-    if (userIdCookie) {
-      setUserId(userIdCookie);
-    } else {
-      const newUserId = uuidv4();
-      setUserId(newUserId);
-      setCookie(USER_ID_COOKIE_NAME, newUserId);
-    }
-  }, []);
-
-  return {
-    userId,
-  };
+	return {
+		userId,
+	};
 }

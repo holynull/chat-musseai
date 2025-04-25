@@ -9,7 +9,7 @@ def route_to_swap_agent():
     Expert capabilities include:
         - Get the list of supported tokens for token cross chain swap functionality.
         - Get a detailed quote for token cross chain swap transaction, including expected output amount, fees, and transaction parameters.
-        - Notify the front end to generate a button to send a token swap transaction.
+		- Generate swap transaction data, and notify the front end to generate a button to send a token swap transaction.
         - Get transaction records using the Bridgers API.
         - Get detailed information about a specific transaction using the Bridgers API.
     """
@@ -64,6 +64,8 @@ def route_to_cryptocurrency_quote_agent():
         - Retrieves the latest cryptocurrency quotation data from CoinMarketCap API.
         - Retrieves detailed metadata and information about a cryptocurrency from CoinMarketCap API.
         - Analyzes trading signals for cryptocurrency pairs against USDT using TradingView technical analysis.
+		- Retrieves the latest content including news, trending coins, and educational materials.
+		- Retrieves trending tokens based on community activity.
     """
     return "Now requesting a Cryptocurrency Market Analysis Expert."
 

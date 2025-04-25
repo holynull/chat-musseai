@@ -11,7 +11,7 @@ export const useLangSmithLinkToolUI = () =>
       return (
         <TooltipIconButton
           tooltip="View run in LangSmith"
-          variant="ghost"
+          variant="primary"
           className="transition-colors w-4 h-3 ml-3 mt-2 mb-[-8px]"
           onClick={() => window.open(input.args.sharedRunURL, "_blank")}
         >

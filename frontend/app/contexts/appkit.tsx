@@ -12,7 +12,7 @@ export const ethersAdapter = new Ethers5Adapter()
 const solanaWeb3JsAdapter = new SolanaAdapter({
 	wallets: [new PhantomWalletAdapter(), new SolflareWalletAdapter()]
 })
-const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, bsc, arbitrum, solana, polygon, optimism]; //tron
+export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, bsc, arbitrum, solana, polygon, optimism]; //tron
 export const wcModal = createAppKit({
 	adapters: [ethersAdapter, solanaWeb3JsAdapter],
 	networks: networks,

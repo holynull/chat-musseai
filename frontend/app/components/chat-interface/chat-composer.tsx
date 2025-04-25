@@ -230,7 +230,7 @@ export const ChatComposer: FC<ChatComposerProps> = (
 						<ComposerPrimitive.AddAttachment asChild>
 							<TooltipIconButton
 								tooltip="Add Attachments"
-								variant="default"
+								variant="primary"
 								// className="my-1 size-8 p-2 transition-opacity ease-in hover:bg-gray-700/50 rounded-full"
 								className="my-1 size-8 p-2 transition-opacity ease-in"
 							>
@@ -242,7 +242,7 @@ export const ChatComposer: FC<ChatComposerProps> = (
 						<ComposerPrimitive.Send asChild>
 							<TooltipIconButton
 								tooltip="Send"
-								variant="default"
+								variant="primary"
 								className="my-1 size-8 p-2 transition-opacity ease-in"
 							>
 								<SendHorizontalIcon />
@@ -253,7 +253,7 @@ export const ChatComposer: FC<ChatComposerProps> = (
 						<ComposerPrimitive.Cancel asChild>
 							<TooltipIconButton
 								tooltip="Cancel"
-								variant="default"
+								variant="primary"
 								className="my-1 size-8 p-2 transition-opacity ease-in"
 							>
 								<CircleStopIcon />

@@ -23,13 +23,13 @@ import { ThreadHistory } from "./thread-history";
 import { Toaster } from "./ui/toaster";
 import { useGraphContext } from "../contexts/GraphContext";
 import { useQueryState } from "nuqs";
-import { createClient } from "../contexts/utils"
+import { createClient } from "../contexts/utils";
 import { WalletIndicator } from "./WalletIndicator";
 
 function ChatLangChainComponent(): React.ReactElement {
 	const { toast } = useToast();
 	const { threadsData, userData, graphData } = useGraphContext();
-	const { userId } = userData;
+	const { user } = userData;
 	const { getUserThreads, createThread, getThreadById } = threadsData;
 	const { messages, setMessages, streamMessage, switchSelectedThread, runingId } =
 		graphData;
@@ -60,9 +60,9 @@ function ChatLangChainComponent(): React.ReactElement {
 			console.error("Failed to fetch thread in query param", e);
 			setThreadId(null);
 		}
-	}, [threadId]);
+	}, [threadId, getThreadById, setThreadId, switchSelectedThread]);
 
-	const isSubmitDisabled = !userId;
+	const isSubmitDisabled = !user?.user_id;
 
 	async function onNew(message: AppendMessage): Promise<void> {
 		if (isSubmitDisabled) {
@@ -80,7 +80,7 @@ function ChatLangChainComponent(): React.ReactElement {
 
 		let currentThreadId = threadId;
 		if (!currentThreadId) {
-			const thread = await createThread(userId);
+			const thread = await createThread(user.user_id);
 			if (!thread) {
 				toast({
 					title: "Error",
@@ -97,13 +97,6 @@ function ChatLangChainComponent(): React.ReactElement {
 				content: message.content[0].text,
 				id: uuidv4(),
 			});
-			// const _attachments = message.attachments.filter(attachment => {
-			// 	if (attachment.contentType.indexOf('image') === 0) {
-			// 		return true;
-			// 	} else {
-			// 		return false;
-			// 	}
-			// })
 			if (message.attachments && message.attachments.length > 0) {
 				let content: any = [{ "type": "text", "text": message.content[0].text }]
 				for (let attachment of message.attachments) {
@@ -123,7 +116,7 @@ function ChatLangChainComponent(): React.ReactElement {
 		} finally {
 			setIsRunning(false);
 			// Re-fetch threads so that the current thread's title is updated.
-			await getUserThreads(userId);
+			await getUserThreads(user.user_id);
 		}
 	}
 
