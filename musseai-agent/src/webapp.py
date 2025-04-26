@@ -725,6 +725,7 @@ origins = [
     "http://192.168.3.6:3000",
     "http://192.168.3.6:3001",
     "http://musse.ai",
+    "https://musse.ai",
 ]
 
 app.add_middleware(
