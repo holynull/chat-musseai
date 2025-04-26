@@ -598,23 +598,7 @@ def initialize_test_users():
     test_user_pattern = re.compile(r"^TEST_USER_\d+$")
     test_user_vars = [var for var in os.environ.keys() if test_user_pattern.match(var)]
 
-    if not test_user_vars:
-        # 如果.env文件中没有定义测试用户，使用默认用户
-        test_users = [
-            {
-                "email": "test@example.com",
-                "username": "testuser",
-                "password": "password123",
-                "full_name": "Test User",
-            },
-            {
-                "email": "admin@example.com",
-                "username": "admin",
-                "password": "admin123",
-                "full_name": "Admin User",
-            },
-        ]
-    else:
+    if test_user_vars:
         # 从环境变量中解析用户信息
         test_users = []
         for var_name in test_user_vars:
@@ -632,6 +616,8 @@ def initialize_test_users():
             # 确保必要字段存在
             if all(k in user_dict for k in ["email", "username", "password"]):
                 test_users.append(user_dict)
+        else:
+            raise Exception("No user data")
 
     # 添加测试用户到数据库
     for user in test_users:

@@ -112,12 +112,12 @@ export default function LoginPage() {
 						<div className="mt-6 text-center text-sm">
 							<p className="text-gray-400">
 								Don&apos;t have an account?{" "}
-								<a
-									href="/register"
-									className="text-purple-400 hover:text-purple-300 transition-colors duration-200"
+								<span
+									onClick={() => router.push("/register")}
+									className="text-purple-400 hover:text-purple-300 transition-colors duration-200 cursor-pointer"
 								>
 									Register
-								</a>
+								</span>
 							</p>
 						</div>
 					</div>
