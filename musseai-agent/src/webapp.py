@@ -592,11 +592,12 @@ def initialize_test_users():
     import re
 
     # 加载.env文件
-    load_dotenv()
+    load_dotenv(".env")
 
     # 查找所有TEST_USER_开头的环境变量
     test_user_pattern = re.compile(r"^TEST_USER_\d+$")
     test_user_vars = [var for var in os.environ.keys() if test_user_pattern.match(var)]
+    logging.info(test_user_vars)
 
     if test_user_vars:
         # 从环境变量中解析用户信息
@@ -616,8 +617,8 @@ def initialize_test_users():
             # 确保必要字段存在
             if all(k in user_dict for k in ["email", "username", "password"]):
                 test_users.append(user_dict)
-        else:
-            raise Exception("No user data")
+    else:
+        raise Exception("No user data")
 
     # 添加测试用户到数据库
     for user in test_users:
