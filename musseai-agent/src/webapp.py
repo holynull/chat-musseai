@@ -641,6 +641,10 @@ initialize_test_users()
 # 添加一个认证中间件来保护指定的路径
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            # 直接放行预检请求
+            response = await call_next(request)
+            return response
         # 定义需要保护的路径列表
         protected_paths = [
             "/api/runs/share",
@@ -714,11 +718,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
-app.add_middleware(AuthenticationMiddleware)
-
 origins = [
-    "*",
+    "*",  # 注意：生产环境不建议使用通配符
     "http://localhost",
     "http://localhost:3000",
     "http://localhost:3001",
@@ -726,6 +727,8 @@ origins = [
     "http://192.168.3.6:3001",
     "http://musse.ai",
     "https://musse.ai",
+    "http://www.musse.ai",
+    "https://www.musse.ai",
 ]
 
 app.add_middleware(
@@ -736,3 +739,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
+app.add_middleware(AuthenticationMiddleware)
