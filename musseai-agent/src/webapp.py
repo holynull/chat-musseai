@@ -17,6 +17,114 @@ app = FastAPI()
 
 lsclient = Client(api_key=os.getenv("LANGCHAIN_API_KEY"))
 
+origins = [
+    "*",  # 注意：生产环境不建议使用通配符
+    "http://localhost",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://192.168.3.6:3000",
+    "http://192.168.3.6:3001",
+    "http://musse.ai",
+    "https://musse.ai",
+    "http://www.musse.ai",
+    "https://www.musse.ai",
+    "http://api.musse.ai",
+    "https://api.musse.ai",
+]
+
+
+# 添加一个认证中间件来保护指定的路径
+class AuthenticationMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            # 直接放行预检请求
+            response = await call_next(request)
+            return response
+        # 定义需要保护的路径列表
+        protected_paths = [
+            "/api/runs/share",
+            "/api/generate_swap_order",
+            "/api/tradingview/symbol_search",
+        ]
+
+        # 检查是否是需要保护的线程路径
+        if request.url.path.startswith("/threads/"):
+            is_protected = True
+        else:
+            is_protected = request.url.path in protected_paths
+
+        # 如果是受保护的路径，则验证用户登录状态
+        if is_protected:
+            authorization = request.headers.get("Authorization")
+            logging.info("$" * 100)
+            logging.info(request.url)
+            logging.info(authorization)
+
+            # 如果没有Authorization头，返回401未授权错误
+            if not authorization:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Not authenticated"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            # 提取token
+            try:
+                scheme, token = authorization.split(" ")
+                if scheme.lower() != "bearer":
+                    return JSONResponse(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        content={"detail": "Invalid authentication scheme"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                # 验证token
+                try:
+                    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                    email: str = payload.get("sub")
+                    if email is None:
+                        raise HTTPException(status_code=401, detail="Invalid token")
+
+                    # 检查用户是否存在
+                    user = get_user(email)
+                    if user is None:
+                        raise HTTPException(status_code=401, detail="User not found")
+
+                    # 检查用户是否被禁用
+                    if user.disabled:
+                        raise HTTPException(status_code=401, detail="Inactive user")
+
+                except JWTError:
+                    return JSONResponse(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        content={"detail": "Invalid authentication credentials"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+            except Exception:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Invalid authentication format"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+        # 继续处理请求
+        response = await call_next(request)
+        return response
+
+
+# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
+app.add_middleware(AuthenticationMiddleware)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
 
 @app.post("/api/runs/share")
 async def runs_share(request: Request) -> dict:
@@ -637,110 +745,3 @@ def initialize_test_users():
 
 # 初始化测试用户
 initialize_test_users()
-
-
-# 添加一个认证中间件来保护指定的路径
-class AuthenticationMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if request.method == "OPTIONS":
-            # 直接放行预检请求
-            response = await call_next(request)
-            return response
-        # 定义需要保护的路径列表
-        protected_paths = [
-            "/api/runs/share",
-            "/api/generate_swap_order",
-            "/api/tradingview/symbol_search",
-        ]
-
-        # 检查是否是需要保护的线程路径
-        if request.url.path.startswith("/threads/"):
-            is_protected = True
-        else:
-            is_protected = request.url.path in protected_paths
-
-        # 如果是受保护的路径，则验证用户登录状态
-        if is_protected:
-            authorization = request.headers.get("Authorization")
-            logging.info("$" * 100)
-            logging.info(request.url)
-            logging.info(authorization)
-
-            # 如果没有Authorization头，返回401未授权错误
-            if not authorization:
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={"detail": "Not authenticated"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-            # 提取token
-            try:
-                scheme, token = authorization.split(" ")
-                if scheme.lower() != "bearer":
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content={"detail": "Invalid authentication scheme"},
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
-
-                # 验证token
-                try:
-                    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-                    email: str = payload.get("sub")
-                    if email is None:
-                        raise HTTPException(status_code=401, detail="Invalid token")
-
-                    # 检查用户是否存在
-                    user = get_user(email)
-                    if user is None:
-                        raise HTTPException(status_code=401, detail="User not found")
-
-                    # 检查用户是否被禁用
-                    if user.disabled:
-                        raise HTTPException(status_code=401, detail="Inactive user")
-
-                except JWTError:
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content={"detail": "Invalid authentication credentials"},
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
-
-            except Exception:
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={"detail": "Invalid authentication format"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-        # 继续处理请求
-        response = await call_next(request)
-        return response
-
-
-origins = [
-    "*",  # 注意：生产环境不建议使用通配符
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://192.168.3.6:3000",
-    "http://192.168.3.6:3001",
-    "http://musse.ai",
-    "https://musse.ai",
-    "http://www.musse.ai",
-    "https://www.musse.ai",
-    "http://api.musse.ai",
-    "https://api.musse.ai",
-]
-# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
-app.add_middleware(AuthenticationMiddleware)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
