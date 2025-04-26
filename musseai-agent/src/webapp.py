@@ -265,14 +265,14 @@ async def symbol_search(text: str):
         }
 
 
-class CustomHeaderMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Custom-Header"] = "Hello from middleware!"
-        return response
+# class CustomHeaderMiddleware(BaseHTTPMiddleware):
+#     async def dispatch(self, request: Request, call_next):
+#         response = await call_next(request)
+#         response.headers["X-Custom-Header"] = "Hello from middleware!"
+#         return response
 
 
-app.add_middleware(CustomHeaderMiddleware)
+# app.add_middleware(CustomHeaderMiddleware)
 
 
 import secrets
