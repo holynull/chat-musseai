@@ -67,3 +67,19 @@ help:
 
 dev:
 	langgraph dev --port 8080  --host 192.168.3.6
+
+PID_FILE := langgraph.pid
+
+start:
+	@echo "Starting Langgraph..."
+	@nohup langgraph dev --port 8080 > langgraph.log 2>&1 & echo $$! > $(PID_FILE)
+	@echo "Langgraph started with PID: $$(cat $(PID_FILE))"
+
+stop:
+	@echo "Stopping Langgraph..."
+	@if [ -f $(PID_FILE) ]; then \
+	    kill $$(cat $(PID_FILE)) && rm $(PID_FILE); \
+	    echo "Langgraph stopped."; \
+	else \
+	    echo "No PID file found. Is Langgraph running?"; \
+	fi
