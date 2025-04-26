@@ -729,6 +729,8 @@ origins = [
     "https://musse.ai",
     "http://www.musse.ai",
     "https://www.musse.ai",
+    "http://api.musse.ai",
+    "https://api.musse.ai",
 ]
 
 app.add_middleware(
