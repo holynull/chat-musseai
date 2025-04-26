@@ -733,6 +733,8 @@ origins = [
     "http://api.musse.ai",
     "https://api.musse.ai",
 ]
+# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
+app.add_middleware(AuthenticationMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -742,6 +744,3 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-
-# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
-app.add_middleware(AuthenticationMiddleware)
