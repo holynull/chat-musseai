@@ -34,23 +34,36 @@ export default function HomePage(): React.ReactElement {
 				{/* 头部区域 */}
 				<div className="relative z-10 max-w-5xl mx-auto">
 					{/* Logo */}
-					<div className="mb-6">
-						<Image
-							src="/images/logo.png"
-							alt="Musse AI Logo"
-							width={64}
-							height={64}
-							className="mx-auto rounded-full"
-						/>
+					<div className="logo-container relative mb-8 inline-block">
+						{/* 添加发光效果 */}
+						<div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/30 to-purple-500/30 blur-xl animate-pulse-slow"></div>
+
+						{/* 添加旋转的外环 */}
+						<div className="absolute inset-0 rounded-full border-2 border-blue-400/30 animate-spin-slow"></div>
+
+						{/* Logo图片 */}
+						<div className="relative">
+							<Image
+								src="/images/logo.png"
+								alt="Musse AI Logo"
+								width={96}  // 增大尺寸
+								height={96} // 增大尺寸
+								className="mx-auto rounded-full animate-float-slow shadow-lg shadow-blue-500/20 border-2 border-blue-500/20 z-10"
+							/>
+
+							{/* 内部光晕 */}
+							<div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-full blur-md"></div>
+						</div>
 					</div>
 
 					{/* 标题和描述 */}
-					<h1 className="text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+					<h1 className="text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500 title-enhanced">
 						Welcome to Musse AI
 					</h1>
 
-					<p className="text-xl mb-8 max-w-2xl mx-auto text-gray-300 leading-relaxed">
+					<p className="text-xl mb-8 max-w-2xl mx-auto text-gray-300/90 leading-relaxed">
 						Your intelligent AI assistant for cryptocurrency and blockchain information,
+						<br />
 						providing real-time insights and seamless interactions.
 					</p>
 

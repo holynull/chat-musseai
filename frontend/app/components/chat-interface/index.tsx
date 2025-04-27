@@ -2,13 +2,11 @@
 
 import { ThreadPrimitive } from "@assistant-ui/react";
 import { type FC } from "react";
+import Image from 'next/image';
 
 import { ArrowDownIcon, Wallet } from "lucide-react";
 import { useAnswerHeaderToolUI } from "../AnswerHeaderToolUI";
-import { useGeneratingQuestionsUI } from "../GeneratingQuestionsToolUI";
 import { useProgressToolUI } from "../ProgressToolUI";
-import { useRouterLogicUI } from "../RouterLogicToolUI";
-import { useSelectedDocumentsUI } from "../SelectedDocumentsToolUI";
 import { SelectModel } from "../SelectModel";
 import { SuggestedQuestions } from "../SuggestedQuestions";
 import { TooltipIconButton } from "../ui/assistant-ui/tooltip-icon-button";
@@ -46,11 +44,8 @@ export interface ThreadChatProps extends ChatComposerProps {
 export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	const isEmpty = props.messages.length === 0;
 
-	useGeneratingQuestionsUI();
 	useAnswerHeaderToolUI();
 	useProgressToolUI();
-	useSelectedDocumentsUI();
-	useRouterLogicUI();
 	useSourceList();
 	useLangSmithLinkToolUI();
 	useSendEVMTransaction();
@@ -96,16 +91,24 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 			{isEmpty ? (
 				<div className="flex items-center justify-center flex-grow my-auto">
 					<div className="flex flex-col items-center mx-4 md:mt-0 mt-24">
-						<div className="flex flex-row gap-1 items-center justify-center">
-							<p className="text-xl sm:text-2xl">Musse AI 🍺</p>
-							{/* <NextImage
-								src="/images/lc_logo.jpg"
-								className="rounded-3xl"
-								alt="LangChain Logo"
-								width={32}
-								height={32}
-								style={{ width: "auto", height: "auto" }}
-							/> */}
+						<div className="logo-container relative mb-8">
+							{/* 发光效果 */}
+							<div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/30 to-purple-500/30 blur-xl animate-pulse-slow"></div>
+
+							{/* 旋转的外环 */}
+							<div className="absolute inset-0 rounded-full border-2 border-blue-400/30 animate-spin-slow"></div>
+
+							{/* Logo图片容器 */}
+							<div className="relative z-10 w-28 h-28 rounded-full overflow-hidden">
+								<Image
+									src="/images/logo.png"
+									alt="Musse AI Logo"
+									fill
+									priority
+									className="object-fill rounded-full"
+									style={{ transform: 'scale(1.4)' }}
+								/>
+							</div>
 						</div>
 						<div className="mb-4 sm:mb-[24px] mt-1 sm:mt-2 flex items-center gap-2 justify-center">
 							<SelectModel />

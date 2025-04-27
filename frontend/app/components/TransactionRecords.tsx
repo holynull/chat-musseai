@@ -82,57 +82,56 @@ export const useTransactionRecords = () => useAssistantToolUI({
 		const data: TransactionRecord[] = input.args.data;
 
 		return data && data.length > 0 && (
-			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm sm:mt-6 md:mt-8">
-				<div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white sm:mt-6 md:mt-8">
+				<div className="bg-gray-900 rounded-lg p-4">
 					<div className="flex items-center justify-between">
-						<h3 className="text-lg font-medium text-gray-800">Transaction Records</h3>
-						<span className="text-sm text-gray-600">{data.length} transactions</span>
+						<h3 className="text-xl font-semibold">Transaction Records</h3>
+						<span className="text-sm text-gray-400">{data.length} transactions</span>
 					</div>
 				</div>
 
-				<div className="overflow-x-auto">
-					<table className="min-w-full divide-y divide-gray-200">
-						<thead className="bg-gray-50">
+				<div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+					<table className="min-w-full divide-y divide-gray-700">
+						<thead className="bg-gray-900">
 							<tr>
-								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
 									Transaction
 								</th>
-								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
 									From → To
 								</th>
-								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
 									Amount
 								</th>
-								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
 									Status
 								</th>
-								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
 									Time
 								</th>
 							</tr>
 						</thead>
-						<tbody className="bg-white divide-y divide-gray-200">
+						<tbody className="bg-gray-900 divide-y divide-gray-700">
 							{data.map((record, index) => {
-								// 直接使用已格式化的金额
 								const fromAmount = parseFloat(record.fromTokenAmount);
 								const toAmount = parseFloat(record.toTokenAmount);
 								const statusInfo = getStatusInfo(record.status);
 
 								return (
-									<tr key={index} className="hover:bg-gray-50 transition-colors duration-150">
+									<tr key={index} className="hover:bg-gray-800 transition-colors duration-150">
 										<td className="px-4 py-3 whitespace-nowrap">
 											<div className="flex items-center">
-												<div className="text-sm font-medium text-gray-900">
+												<div className="text-sm font-medium text-white">
 													{truncateAddress(record.orderId)}
 												</div>
 											</div>
-											<div className="text-xs text-gray-500">
+											<div className="text-xs text-gray-400">
 												{record.hash && (
 													<a
 														href={record.depositHashExplore || `https://solscan.io/tx/${record.hash}`}
 														target="_blank"
 														rel="noopener noreferrer"
-														className="text-blue-600 hover:text-blue-800 hover:underline"
+														className="text-blue-400 hover:text-blue-300 hover:underline"
 													>
 														View on Explorer
 													</a>
@@ -140,30 +139,30 @@ export const useTransactionRecords = () => useAssistantToolUI({
 											</div>
 										</td>
 										<td className="px-4 py-3 whitespace-nowrap">
-											<div className="text-sm text-gray-900">
+											<div className="text-sm text-white">
 												{record.fromChain || 'BSC'} → {record.toChain || 'Solana'}
 											</div>
-											<div className="text-xs text-gray-500">
+											<div className="text-xs text-gray-400">
 												{truncateAddress(record.fromAddress)}
 											</div>
 										</td>
 										<td className="px-4 py-3 whitespace-nowrap">
-											<div className="text-sm text-gray-900">
+											<div className="text-sm text-white">
 												{formatNumber(fromAmount.toString())} {record.fromCoinCode || 'USDT'}
 											</div>
-											<div className="text-xs text-gray-500">
+											<div className="text-xs text-gray-400">
 												≈ {formatNumber(toAmount.toString())} {record.toCoinCode || 'SOL'}
 											</div>
 										</td>
 										<td className="px-4 py-3 whitespace-nowrap">
-											<span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusInfo.color}`}>
+											<span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColorDark(record.status)}`}>
 												{statusInfo.label}
 											</span>
 										</td>
-										<td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+										<td className="px-4 py-3 whitespace-nowrap text-sm text-gray-400">
 											<div>{formatDate(record.createTime)}</div>
 											{record.finishTime && record.status === 'receive_complete' && (
-												<div className="text-xs text-gray-400">
+												<div className="text-xs text-gray-500">
 													Completed: {formatDate(record.finishTime)}
 												</div>
 											)}
@@ -178,3 +177,15 @@ export const useTransactionRecords = () => useAssistantToolUI({
 		);
 	},
 });
+
+// 需要修改状态颜色函数，适应深色主题
+const getStatusColorDark = (status: string) => {
+	const statusMap: Record<string, string> = {
+		'receive_complete': 'bg-green-900 text-green-300',
+		'pending': 'bg-yellow-900 text-yellow-300',
+		'failed': 'bg-red-900 text-red-300',
+		'processing': 'bg-blue-900 text-blue-300'
+	};
+
+	return statusMap[status] || 'bg-gray-700 text-gray-300';
+};

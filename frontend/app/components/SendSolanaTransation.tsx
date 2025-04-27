@@ -310,23 +310,23 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 	};
 
 	return txData && (
-		<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm sm:mt-6 md:mt-8">
+		<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
 			{/* Header */}
-			<div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+			<div className="p-4 border-b border-gray-700 bg-gray-900">
 				<div className="flex items-center justify-between">
-					<h3 className="text-lg font-semibold text-gray-900">
-						{name || "Send Solana Transaction"}
+					<h3 className="text-xl font-semibold text-white">
+						{name || "Send Transaction"}
 					</h3>
-					<div className="text-sm font-medium text-blue-600 px-2 py-1 bg-blue-50 rounded-full">
+					<div className="text-sm font-medium text-blue-400 px-2 py-1 bg-gray-700 rounded-full">
 						{transactionInfo.networkIcon} {transactionInfo.networkName}
 					</div>
 				</div>
 			</div>
 
 			{/* Transaction explanation */}
-			<div className="p-4 bg-blue-50 border-b border-blue-200">
-				<p className="text-sm text-blue-900">
-					<span className="font-semibold text-blue-950">About this transaction:</span> You are about to swap
+			<div className="p-4 bg-gray-700 border-b border-gray-600">
+				<p className="text-sm text-blue-200">
+					<span className="font-semibold text-white">About this transaction:</span> You are about to swap
 					{transactionInfo.fromToken ? ` ${formatNumber(transactionInfo.fromAmount)} ${transactionInfo.fromToken} ` : " tokens "}
 					for
 					{transactionInfo.toToken ? ` ${formatNumber(transactionInfo.toAmount)} ${transactionInfo.toToken}` : " tokens"}.
@@ -337,22 +337,22 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 			<div className="p-4">
 				<div className="grid gap-4">
 					{/* Transaction visualization */}
-					<div className="bg-white p-5 rounded-lg border border-gray-200 mb-4">
+					<div className="bg-gray-900 p-5 rounded-lg border border-gray-700 mb-4">
 						<div className="flex items-center justify-between">
 							<div className="text-center">
-								<div className="text-sm text-gray-500 mb-1">From</div>
-								<div className="bg-gray-100 rounded-lg p-3 flex flex-col items-center">
-									<div className="font-semibold text-lg text-gray-900">
+								<div className="text-sm text-gray-400 mb-1">From</div>
+								<div className="bg-gray-800 rounded-lg p-3 flex flex-col items-center">
+									<div className="font-semibold text-lg text-white">
 										{formatNumber(transactionInfo.fromAmount)}
 									</div>
-									<div className="text-blue-700 font-medium">{transactionInfo.fromToken}</div>
+									<div className="text-blue-400 font-medium">{transactionInfo.fromToken}</div>
 								</div>
 							</div>
 
 							<div className="flex-1 px-4 flex justify-center items-center">
-								<div className="h-0.5 w-full bg-gray-200 relative">
-									<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-2 border border-gray-200 rounded-full">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<div className="h-0.5 w-full bg-gray-700 relative">
+									<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 p-2 border border-gray-600 rounded-full">
+										<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
 										</svg>
 									</div>
@@ -360,21 +360,20 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 							</div>
 
 							<div className="text-center">
-								<div className="text-sm text-gray-500 mb-1">To</div>
-								<div className="bg-gray-100 rounded-lg p-3 flex flex-col items-center">
-									<div className="font-semibold text-lg text-gray-900">
-										{formatNumber(
-											transactionInfo.toAmount)}
+								<div className="text-sm text-gray-400 mb-1">To</div>
+								<div className="bg-gray-800 rounded-lg p-3 flex flex-col items-center">
+									<div className="font-semibold text-lg text-white">
+										{formatNumber(transactionInfo.toAmount)}
 									</div>
-									<div className="text-green-700 font-medium">{transactionInfo.toToken}</div>
+									<div className="text-green-400 font-medium">{transactionInfo.toToken}</div>
 								</div>
 							</div>
 						</div>
 
 						{/* Exchange rate info */}
 						<div className="mt-4 text-center">
-							<div className="text-xs text-gray-500">Exchange Rate</div>
-							<div className="font-medium text-gray-700">
+							<div className="text-xs text-gray-400">Exchange Rate</div>
+							<div className="font-medium text-gray-300">
 								1 {transactionInfo.fromToken} ≈ {formatNumber(transactionInfo.exchangeRate, 6)} {transactionInfo.toToken}
 							</div>
 						</div>
@@ -382,47 +381,47 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 
 					{/* Transaction details section */}
 					<div className="mt-2">
-						<h4 className="text-sm font-semibold text-gray-900 mb-3">Transaction Details</h4>
+						<h4 className="text-sm font-semibold text-white mb-3">Transaction Details</h4>
 
-						<div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+						<div className="bg-gray-900 p-4 rounded-md border border-gray-700">
 							<div className="space-y-3">
 								{/* From Token */}
-								<div className="flex justify-between items-center border-b border-gray-200 pb-2">
-									<span className="text-gray-700 font-medium">You Send</span>
+								<div className="flex justify-between items-center border-b border-gray-700 pb-2">
+									<span className="text-gray-300 font-medium">You Send</span>
 									<div className="flex flex-col items-end">
-										<span className="font-semibold text-gray-900">
+										<span className="font-semibold text-white">
 											{formatNumber(transactionInfo.fromAmount)} {transactionInfo.fromToken}
 										</span>
 									</div>
 								</div>
 
 								{/* To Token */}
-								<div className="flex justify-between items-center border-b border-gray-200 pb-2">
-									<span className="text-gray-700 font-medium">You Receive</span>
+								<div className="flex justify-between items-center border-b border-gray-700 pb-2">
+									<span className="text-gray-300 font-medium">You Receive</span>
 									<div className="flex flex-col items-end">
-										<span className="font-semibold text-gray-900">
+										<span className="font-semibold text-white">
 											{formatNumber(transactionInfo.toAmount)} {transactionInfo.toToken}
 										</span>
-										<span className="text-xs text-gray-500">
+										<span className="text-xs text-gray-400">
 											Min. received after slippage ({transactionInfo.slippage}%)
 										</span>
 									</div>
 								</div>
 
 								{/* Recipient Address */}
-								<div className="flex justify-between items-center border-b border-gray-200 pb-2">
-									<span className="text-gray-700 font-medium">Recipient</span>
+								<div className="flex justify-between items-center border-b border-gray-700 pb-2">
+									<span className="text-gray-300 font-medium">Recipient</span>
 									<div className="flex items-center space-x-2">
-										<span className="text-sm text-gray-800 font-mono bg-gray-100 px-2 py-1 rounded">
+										<span className="text-sm text-gray-300 font-mono bg-gray-800 px-2 py-1 rounded">
 											{shortenAddress(transactionInfo.toAddress)}
 										</span>
 										<button
 											onClick={() => copyToClipboard(transactionInfo.toAddress)}
-											className="text-gray-500 hover:text-blue-600 transition-colors"
+											className="text-gray-400 hover:text-blue-400 transition-colors"
 											title="Copy full address"
 										>
 											{copySuccess ?
-												<CheckIcon className="h-4 w-4 text-green-500" /> :
+												<CheckIcon className="h-4 w-4 text-green-400" /> :
 												<CopyIcon className="h-4 w-4" />
 											}
 										</button>
@@ -431,9 +430,9 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 
 								{/* Network */}
 								<div className="flex justify-between items-center">
-									<span className="text-gray-700 font-medium">Network</span>
-									<span className="text-gray-800 font-medium flex items-center space-x-1">
-										<span className="text-gray-900">{transactionInfo.networkIcon}</span>
+									<span className="text-gray-300 font-medium">Network</span>
+									<span className="text-gray-300 font-medium flex items-center space-x-1">
+										<span className="text-white">{transactionInfo.networkIcon}</span>
 										<span>{transactionInfo.networkName}</span>
 									</span>
 								</div>
@@ -442,7 +441,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 					</div>
 
 					{/* Security reminders */}
-					<div className="bg-amber-50 p-4 rounded-md text-sm text-amber-900 mt-4 border border-amber-200">
+					<div className="bg-gray-900 p-4 rounded-md text-sm text-amber-200 mt-4 border border-amber-900">
 						<div className="flex items-start space-x-3">
 							<div className="flex-shrink-0">
 								<svg className="h-5 w-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -450,7 +449,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 								</svg>
 							</div>
 							<div>
-								<h4 className="font-semibold text-amber-800">Security Reminders:</h4>
+								<h4 className="font-semibold text-amber-300">Security Reminders:</h4>
 								<ul className="mt-2 space-y-2 list-disc pl-5">
 									<li>Verify the receiving amount is correct</li>
 									<li>Double-check the recipient address</li>
@@ -465,7 +464,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 					<div className="mt-2">
 						<button
 							onClick={() => setShowRawData(!showRawData)}
-							className="text-sm text-gray-600 hover:text-gray-900 flex items-center"
+							className="text-sm text-gray-400 hover:text-gray-200 flex items-center"
 						>
 							<span>{showRawData ? 'Hide' : 'Show'} Advanced Details</span>
 							<svg
@@ -479,8 +478,8 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 						</button>
 
 						{showRawData && (
-							<div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200 overflow-x-auto">
-								<pre className="text-xs text-gray-700">
+							<div className="mt-2 p-3 bg-gray-900 rounded-md border border-gray-700 overflow-x-auto">
+								<pre className="text-xs text-gray-400">
 									{JSON.stringify(transactionInfo.rawData, null, 2)}
 								</pre>
 							</div>
@@ -507,12 +506,12 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 							) : (
 								<>
 									<span>Confirm {name}</span>
-									<ExternalLinkIcon className="h-5 w-4" />
+									<ExternalLinkIcon className="h-5 w-5" />
 								</>
 							)}
 						</Button>
 
-						<div className="text-xs text-gray-600 mt-2 text-center">
+						<div className="text-xs text-gray-400 mt-2 text-center">
 							Click the button to confirm this transaction in your wallet
 						</div>
 					</div>

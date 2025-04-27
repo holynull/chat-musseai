@@ -55,93 +55,87 @@ export const useSwapQuote = () => useAssistantToolUI({
 		const feePercent = parseFloat(data.fee) * 100;
 
 		return (
-			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm sm:mt-6 md:mt-8">
-				<div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
-					<div className="flex items-center justify-between">
-						<h3 className="text-lg font-medium text-gray-800">Swap Quote</h3>
-						{data.logoUrl && (
-							<div className="flex items-center">
-								<span className="text-sm text-gray-700 mr-2">{data.dex}</span>
-								<Image
-									src={data.logoUrl}
-									alt={data.dex || "DEX Logo"}
-									width={24}
-									height={24}
-									className="rounded-full"
-								/>
-							</div>
-						)}
+			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
+				<h2 className="text-2xl font-bold text-center">Swap Quote</h2>
+				{data.logoUrl && (
+					<div className="flex items-center justify-center mt-2">
+						<span className="text-sm text-white mr-2">{data.dex}</span>
+						<Image
+							src={data.logoUrl}
+							alt={data.dex || "DEX Logo"}
+							width={24}
+							height={24}
+							className="rounded-full"
+						/>
 					</div>
-				</div>
+				)}
 
-				<div className="p-4">
-					<div className="grid gap-4">
-						{/* Main trading information */}
-						<div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
-							<div>
-								<p className="text-sm text-gray-700">Pay</p>
-								<p className="text-xl font-semibold text-gray-800">
-									{formatNumber(
-										(parseFloat(data.fromTokenAmount) / Math.pow(10, parseInt(data.fromTokenDecimal))).toString()
-									)}
-									<span className="text-gray-600 text-base ml-1">{from_token_symbol}</span>
-								</p>
-							</div>
-							<div className="text-blue-500 transform transition-transform duration-200 hover:scale-110">
-								<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-								</svg>
-							</div>
-							<div>
-								<p className="text-sm text-gray-700">Receive</p>
-								<p className="text-xl font-semibold text-gray-800">
-									{toAmount}
-									<span className="text-gray-600 text-base ml-1">{to_token_symbol}</span>
-								</p>
-							</div>
-						</div>
-
-						{/* Transaction details */}
-						<div className="mt-4">
-							<h4 className="text-sm font-medium text-gray-800 mb-2">Transaction Details</h4>
-							<div className="grid grid-cols-2 gap-2 text-sm">
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Exchange Rate</span>
-									<span className="font-medium text-gray-800">1 {from_token_symbol} ≈ {exchangeRate.toFixed(6)} {to_token_symbol}</span>
-								</div>
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Fee</span>
-									<span className="font-medium text-gray-800">{feePercent.toFixed(2)}%</span>
-								</div>
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Min Deposit</span>
-									<span className="font-medium text-gray-800">{formatNumber(data.depositMin)} {from_token_symbol}</span>
-								</div>
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Max Deposit</span>
-									<span className="font-medium text-gray-800">{formatNumber(data.depositMax)} {from_token_symbol}</span>
-								</div>
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Chain Fee</span>
-									<span className="font-medium text-gray-800">{data.chainFee} {to_token_symbol}</span>
-								</div>
-								{data.estimatedTime && (
-									<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-										<span className="text-gray-700">Estimated Time</span>
-										<span className="font-medium text-gray-800">{data.estimatedTime} sec</span>
-									</div>
+				<div className="grid gap-4">
+					{/* Main trading information */}
+					<div className="flex justify-between items-center p-3 bg-gray-900 rounded-lg">
+						<div>
+							<p className="text-sm text-gray-400">Pay</p>
+							<p className="text-xl font-semibold text-white">
+								{formatNumber(
+									(parseFloat(data.fromTokenAmount) / Math.pow(10, parseInt(data.fromTokenDecimal))).toString()
 								)}
-							</div>
+								<span className="text-gray-400 text-base ml-1">{from_token_symbol}</span>
+							</p>
 						</div>
+						<div className="text-blue-500 transform transition-transform duration-200 hover:scale-110">
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+							</svg>
+						</div>
+						<div>
+							<p className="text-sm text-gray-400">Receive</p>
+							<p className="text-xl font-semibold text-white">
+								{toAmount}
+								<span className="text-gray-400 text-base ml-1">{to_token_symbol}</span>
+							</p>
+						</div>
+					</div>
 
-						{/* Contract information */}
-						<div className="mt-2">
-							<h4 className="text-sm font-medium text-gray-800 mb-2">Contract Info</h4>
-							<div className="text-xs bg-gray-50 p-2 rounded overflow-hidden text-gray-700 border border-gray-200 hover:bg-blue-50 transition-all duration-200">
-								<div className="truncate" title={data.contractAddress}>
-									<span className="font-medium text-gray-800">Contract Address: </span>
-									{data.contractAddress}
+					{/* Transaction details */}
+					<div className="mt-4">
+						<h4 className="text-sm font-medium text-white mb-2">Transaction Details</h4>
+						<div className="grid grid-cols-2 gap-2 text-sm">
+							<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
+								<span className="text-gray-400">Exchange Rate</span>
+								<span className="font-medium text-white">1 {from_token_symbol} ≈ {exchangeRate.toFixed(6)} {to_token_symbol}</span>
+							</div>
+							<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
+								<span className="text-gray-400">Fee</span>
+								<span className="font-medium text-white">{feePercent.toFixed(2)}%</span>
+							</div>
+							<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
+								<span className="text-gray-400">Min Deposit</span>
+								<span className="font-medium text-white">{formatNumber(data.depositMin)} {from_token_symbol}</span>
+							</div>
+							<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
+								<span className="text-gray-400">Max Deposit</span>
+								<span className="font-medium text-white">{formatNumber(data.depositMax)} {from_token_symbol}</span>
+							</div>
+							<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
+								<span className="text-gray-400">Chain Fee</span>
+								<span className="font-medium text-white">{data.chainFee} {to_token_symbol}</span>
+							</div>
+							{data.estimatedTime && (
+								<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
+									<span className="text-gray-400">Estimated Time</span>
+									<span className="font-medium text-white">{data.estimatedTime} sec</span>
 								</div>
+							)}
+						</div>
+					</div>
+
+					{/* Contract information */}
+					<div className="mt-2">
+						<h4 className="text-sm font-medium text-white mb-2">Contract Info</h4>
+						<div className="text-xs bg-gray-900 p-2 rounded overflow-hidden text-gray-400 border border-gray-700 hover:bg-gray-700 transition-all duration-200">
+							<div className="truncate" title={data.contractAddress}>
+								<span className="font-medium text-white">Contract Address: </span>
+								{data.contractAddress}
 							</div>
 						</div>
 					</div>

@@ -19,15 +19,30 @@ export type Source = {
 	imageUrl: string;
 	snippet: string;
 };
+
+// 修改 imageTag 函数，添加必要的 width 和 height 属性
 function imageTag(img_src: string) {
 	if (img_src) {
-		return <Image src={img_src} className="w-full h-[120px] object-cover rounded-sm" alt="" />
+		return (
+			<div className="relative w-full h-[120px]">
+				<Image
+					src={img_src}
+					fill={true}
+					sizes="(max-width: 768px) 100vw, 250px"
+					className="object-cover rounded-sm"
+					alt={`Image for source`}
+				/>
+			</div>
+		);
 	} else {
-		return <div className="w-full h-[120px] bg-gray-700 flex items-center justify-center rounded-sm">
-			<Globe className="w-8 h-8 text-gray-400" />
-		</div>
+		return (
+			<div className="w-full h-[120px] bg-gray-700 flex items-center justify-center rounded-sm">
+				<Globe className="w-8 h-8 text-gray-400" />
+			</div>
+		);
 	}
 }
+
 const filterSources = (sources: Source[]) => {
 	const filtered: Source[] = [];
 	const urlMap = new Map<string, number>();
@@ -86,6 +101,7 @@ export function SourceBubble(
 		</a>
 	);
 }
+
 const SourceListComponent = ({ sources }: { sources: Source[] }) => {
 	const { filtered, indexMap } = filterSources(sources);
 	const [highlighedSourceLinkStates, setHighlightedSourceLinkStates] = useState(

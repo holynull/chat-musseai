@@ -40,66 +40,66 @@ export const useGetSPLBalanceOfAddress = () => useAssistantToolUI({
 			: "";
 
 		return (
-			<div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm sm:mt-6 md:mt-8">
-				<div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
-					<div className="flex items-center justify-between">
-						<h3 className="text-lg font-medium text-gray-800">SPL Token Balance</h3>
+			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
+				<h2 className="text-2xl font-bold text-center">SPL Token Balance</h2>
+
+				{/* 主要余额信息 */}
+				<div className="bg-gray-900 rounded-lg p-4">
+					<h3 className="text-xl font-semibold mb-3">Balance Information</h3>
+					<div className="flex items-center justify-between mb-4">
+						<div>
+							<p className="text-sm text-gray-400">Current Balance</p>
+							<p className="text-3xl font-bold text-white">
+								{formatNumber(data.balance)}
+								<span className="text-gray-300 text-lg ml-1">{data.symbol}</span>
+							</p>
+						</div>
 						<div className="flex items-center">
-							<span className="text-sm text-gray-700 mr-2">Solana SPL</span>
 							<Image
 								src={defaultTokenLogo}
 								alt={`${data.symbol} Logo`}
-								width={24}
-								height={24}
+								width={36}
+								height={36}
 								className="rounded-full"
 							/>
 						</div>
 					</div>
 				</div>
 
-				<div className="p-4">
-					<div className="grid gap-4">
-						{/* 主要余额信息 */}
-						<div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
-							<div>
-								<p className="text-sm text-gray-700">Current Balance</p>
-								<p className="text-xl font-semibold text-gray-800">
-									{formatNumber(data.balance)}
-									<span className="text-gray-600 text-base ml-1">{data.symbol}</span>
-								</p>
+				{/* 代币信息 */}
+				<div className="bg-gray-900 rounded-lg p-4">
+					<h3 className="text-xl font-semibold mb-3">Token Information</h3>
+					<div className="mt-2">
+						<div className="bg-gray-800 p-3 rounded-lg border border-gray-700 hover:bg-gray-700 transition-all duration-200">
+							<div className="truncate text-sm" title={data.token_mint_address}>
+								<span className="font-medium text-gray-300">Token Address: </span>
+								<span className="text-white">{data.token_mint_address}</span>
 							</div>
 						</div>
+					</div>
+				</div>
 
-						{/* 代币信息 */}
-						<div className="mt-2">
-							<h4 className="text-sm font-medium text-gray-800 mb-2">Token Info</h4>
-							<div className="text-xs bg-gray-50 p-2 rounded overflow-hidden text-gray-700 border border-gray-200 hover:bg-blue-50 transition-all duration-200">
-								<div className="truncate" title={data.token_mint_address}>
-									<span className="font-medium text-gray-800">Token Address: </span>
-									{data.token_mint_address}
-								</div>
+				{/* 市场信息 */}
+				<div className="bg-gray-900 rounded-lg p-4">
+					<h3 className="text-xl font-semibold mb-3">Network Information</h3>
+					<div className="grid grid-cols-2 gap-3">
+						<div className="bg-gray-800 p-2 rounded">
+							<div className="text-sm text-gray-400">Network</div>
+							<div className="text-lg font-semibold">Solana Mainnet</div>
+						</div>
+						<div className="bg-gray-800 p-2 rounded">
+							<div className="text-sm text-gray-400">Last Updated</div>
+							<div className="text-lg font-semibold">{new Date().toLocaleTimeString()}</div>
+						</div>
+						<div className="bg-gray-800 p-2 rounded">
+							<div className="text-sm text-gray-400">Status</div>
+							<div className={`text-lg font-semibold ${data.success ? 'text-green-500' : 'text-red-500'}`}>
+								{data.success ? 'Success' : 'Failed'}
 							</div>
 						</div>
-
-						{/* 市场信息 */}
-						<div className="mt-2">
-							<h4 className="text-sm font-medium text-gray-800 mb-2">Market Info</h4>
-							<div className="grid grid-cols-2 gap-2 text-sm">
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Network</span>
-									<span className="font-medium text-gray-800">Solana Mainnet</span>
-								</div>
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Last Updated</span>
-									<span className="font-medium text-gray-800">{new Date().toLocaleTimeString()}</span>
-								</div>
-								<div className="flex justify-between p-2 border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150">
-									<span className="text-gray-700">Status</span>
-									<span className={`font-medium ${data.success ? 'text-green-600' : 'text-red-600'}`}>
-										{data.success ? 'Success' : 'Failed'}
-									</span>
-								</div>
-							</div>
+						<div className="bg-gray-800 p-2 rounded">
+							<div className="text-sm text-gray-400">Token Symbol</div>
+							<div className="text-lg font-semibold">{data.symbol}</div>
 						</div>
 					</div>
 				</div>

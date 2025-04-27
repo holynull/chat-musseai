@@ -45,11 +45,8 @@ const getFileDataURL = (file: File) =>
 		reader.readAsDataURL(file);
 	});
 export const ImagePanel: ComponentType<any> = (data) => {
-	// const composerRuntime = useComposerRuntime();
-	// let attachments = composerRuntime.getState().attachments
 	const state = useAttachment();
 	const attachmentsRuntime = useAttachmentRuntime();
-
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -60,39 +57,70 @@ export const ImagePanel: ComponentType<any> = (data) => {
 		}
 	}, [state.file]);
 
-
-
 	return (
-		<div className="relative group flex flex-col items-center p-2 hover:bg-gray-700/30 rounded-md transition-colors">
-			<div className="w-32 h-32 relative rounded-md overflow-hidden border border-gray-600">
-				{imageUrl && (
-					<Image
-						src={imageUrl}
-						alt={state.file?.name || 'Image attachment'}
-						fill
-						className="object-cover"
-					/>
+		<div className="relative group flex flex-col p-2 hover:bg-gray-700/30 rounded-lg transition-colors">
+			{/* 图片预览区域优化 */}
+			<div className="w-48 h-36 relative rounded-lg overflow-hidden border border-gray-600 bg-gray-800/50">
+				{imageUrl ? (
+					<div className="relative w-full h-full">
+						<Image
+							src={imageUrl}
+							alt={state.file?.name || 'Image attachment'}
+							fill
+							className="object-contain"
+							sizes="(max-width: 768px) 100vw, 192px"
+						/>
+						{/* 添加图片类型标识 */}
+						<div className="absolute bottom-0 left-0 bg-gray-800/70 text-xs text-gray-200 px-2 py-0.5 rounded-tr-md">
+							{state.file?.type?.split('/')[1]?.toUpperCase() || 'IMAGE'}
+						</div>
+					</div>
+				) : (
+					<div className="flex items-center justify-center w-full h-full">
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+							<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+							<circle cx="8.5" cy="8.5" r="1.5"></circle>
+							<polyline points="21 15 16 10 5 21"></polyline>
+						</svg>
+					</div>
 				)}
 			</div>
-			<div className="flex flex-col w-full mt-2">
-				<div className="text-xs text-gray-300 truncate max-w-[128px]">
-					{state.file?.name || 'Image attachment'}
+
+			{/* 文件信息区域优化 */}
+			<div className="flex items-center justify-between w-full mt-2 px-1">
+				<div className="flex flex-col">
+					<div className="text-sm text-gray-200 truncate max-w-[170px] font-medium">
+						{state.file?.name || 'Image attachment'}
+					</div>
+					{state.file && (
+						<div className="text-xs text-gray-400">
+							{formatFileSize(state.file.size)}
+						</div>
+					)}
 				</div>
-				<div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-					<button
-						onClick={() => attachmentsRuntime.remove()}
-						className="p-1 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300"
-						aria-label="Remove attachment"
-					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<line x1="18" y1="6" x2="6" y2="18"></line>
-							<line x1="6" y1="6" x2="18" y2="18"></line>
-						</svg>
-					</button>
-				</div>
+
+				{/* 删除按钮优化 */}
+				<button
+					onClick={() => attachmentsRuntime.remove()}
+					className="p-1.5 rounded-full bg-gray-700 hover:bg-gray-600 hover:text-red-400 text-gray-300 transition-colors"
+					aria-label="Remove attachment"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<line x1="18" y1="6" x2="6" y2="18"></line>
+						<line x1="6" y1="6" x2="18" y2="18"></line>
+					</svg>
+				</button>
 			</div>
 		</div>
 	);
+};
+
+// 辅助函数：格式化文件大小
+const formatFileSize = (bytes: number): string => {
+	if (bytes < 1024) return bytes + ' B';
+	if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+	if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+	return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 };
 
 export const DocumentPanel: ComponentType<any> = ({ }) => {
@@ -263,7 +291,7 @@ export const ChatComposer: FC<ChatComposerProps> = (
 				</div>
 
 			</ComposerPrimitive.Root>
-			<div className="flex flex-wrap gap-2 p-2 max-h-[200px] overflow-y-auto w-full">
+			<div className="flex flex-wrap gap-3 p-3 max-h-[300px] overflow-y-auto w-full">
 				<ComposerPrimitive.Attachments
 					components={{
 						Image: ImagePanel,

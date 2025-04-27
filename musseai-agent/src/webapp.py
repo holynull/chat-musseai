@@ -56,9 +56,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         # 如果是受保护的路径，则验证用户登录状态
         if is_protected:
             authorization = request.headers.get("Authorization")
-            logging.info("$" * 100)
-            logging.info(request.url)
-            logging.info(authorization)
 
             # 如果没有Authorization头，返回401未授权错误
             if not authorization:

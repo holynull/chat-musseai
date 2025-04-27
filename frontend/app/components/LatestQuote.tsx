@@ -244,10 +244,10 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 								symbol: tvSymbol,
 								interval: 'D',
 								timezone: 'Etc/UTC',
-								theme: 'light',
+								theme: 'dark', // 修改为深色主题以匹配BuySellSignal
 								style: '1',
 								locale: 'en',
-								toolbar_bg: '#f1f3f6',
+								toolbar_bg: '#2D3748', // 修改为深色工具栏背景
 								enable_publishing: false,
 								allow_symbol_change: true,
 								container_id: container.current?.id || '',
@@ -262,10 +262,10 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 								symbol: `BINANCE:${symbol}USD`,
 								interval: 'D',
 								timezone: 'Etc/UTC',
-								theme: 'light',
+								theme: 'dark', // 修改为深色主题
 								style: '1',
 								locale: 'en',
-								toolbar_bg: '#f1f3f6',
+								toolbar_bg: '#2D3748', // 修改为深色工具栏背景
 								enable_publishing: false,
 								allow_symbol_change: true,
 								container_id: container.current?.id || '',
@@ -332,17 +332,12 @@ export const useLatestQuote = () => useAssistantToolUI({
 		};
 
 		return cryptoData && (
-			<div className="rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden w-full max-w-4xl sm:mt-6 md:mt-8">
-				<div className="flex flex-col">
-					{/* Header */}
-					<div className="bg-primary/10 px-4 py-3 border-b">
-						<h3 className="text-lg font-semibold flex items-center">
-							{cryptoData.name} ({cryptoData.symbol}) Market Data
-						</h3>
-					</div>
+			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
+				<h2 className="text-2xl font-bold text-center">{cryptoData.name} ({cryptoData.symbol}) Market Data</h2>
 
-					{/* Price Information */}
-					<div className="p-4 flex justify-between items-start">
+				{/* Price Information */}
+				<div className="bg-gray-900 rounded-lg p-4">
+					<div className="flex justify-between items-start">
 						<div>
 							<div className="text-3xl font-bold">${formatNumber(cryptoData.quote.USD.price, 6)}</div>
 							<div className={`text-sm font-medium flex items-center gap-1 ${getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}`}>
@@ -355,41 +350,35 @@ export const useLatestQuote = () => useAssistantToolUI({
 							<div>24h Volume: ${formatLargeNumber(cryptoData.quote.USD.volume_24h)}</div>
 						</div>
 					</div>
+				</div>
 
-					{/* TradingView Chart */}
-					<div className="p-4 pt-0">
-						<TradingViewChart symbol={cryptoData.symbol} />
-					</div>
+				{/* TradingView Chart */}
+				<div className="bg-gray-900 rounded-lg p-4">
+					<TradingViewChart symbol={cryptoData.symbol} />
+				</div>
 
-					{/* Price Changes */}
-					<div className="p-4 pt-0 grid grid-cols-3 gap-3 text-sm">
-						<div>
-							<div className="text-muted-foreground">1h Change</div>
-							<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_1h)}>
-								{cryptoData.quote.USD.percent_change_1h > 0 ? '+' : ''}
-								{formatNumber(cryptoData.quote.USD.percent_change_1h)}%
-							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">24h Change</div>
-							<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}>
-								{cryptoData.quote.USD.percent_change_24h > 0 ? '+' : ''}
-								{formatNumber(cryptoData.quote.USD.percent_change_24h)}%
-							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">7d Change</div>
-							<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_7d)}>
-								{cryptoData.quote.USD.percent_change_7d > 0 ? '+' : ''}
-								{formatNumber(cryptoData.quote.USD.percent_change_7d)}%
-							</div>
+				{/* Price Changes */}
+				<div className="bg-gray-900 rounded-lg p-4 grid grid-cols-3 gap-3 text-sm">
+					<div>
+						<div className="text-gray-400">1h Change</div>
+						<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_1h)}>
+							{cryptoData.quote.USD.percent_change_1h > 0 ? '+' : ''}
+							{formatNumber(cryptoData.quote.USD.percent_change_1h)}%
 						</div>
 					</div>
-
-					{/* Last Updated */}
-					<div className="p-3 bg-muted/20 text-xs text-right border-t">
-						Last Updated: {formatDate(cryptoData.last_updated)}
+					<div>
+						<div className="text-gray-400">24h Change</div>
+						<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}>
+							{cryptoData.quote.USD.percent_change_24h > 0 ? '+' : ''}
+							{formatNumber(cryptoData.quote.USD.percent_change_24h)}%
+						</div>
 					</div>
+					<div>
+						<div className="text-gray-400">7d Change</div>
+						<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_7d)}> {cryptoData.quote.USD.percent_change_7d > 0 ? '+' : ''} {formatNumber(cryptoData.quote.USD.percent_change_7d)}% </div> </div> </div>
+				{/* Last Updated */}
+				<div className="bg-gray-900 rounded-lg p-3 text-xs text-gray-400 text-right">
+					Last Updated: {formatDate(cryptoData.last_updated)}
 				</div>
 			</div>
 		);

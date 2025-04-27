@@ -287,16 +287,16 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 						setMessages((prevMessages) => {
 							if (!runing_id) {
 								runing_id = chunk.data.metadata.run_id;
-								const answerHeaderToolMsg = new AIMessage({
-									content: "",
-									tool_calls: [
-										{
-											name: "answer_header",
-											args: { node_name: chunk.data.metadata.langgraph_node },
-										},
-									],
-								});
-								prevMessages = [...prevMessages, answerHeaderToolMsg];
+								// const answerHeaderToolMsg = new AIMessage({
+								// 	content: "",
+								// 	tool_calls: [
+								// 		{
+								// 			name: "answer_header",
+								// 			args: { node_name: chunk.data.metadata.langgraph_node },
+								// 		},
+								// 	],
+								// });
+								// prevMessages = [...prevMessages, answerHeaderToolMsg];
 							}
 							const existingMessageIndex = prevMessages.findIndex(
 								(msg) => msg.id === message.id,
@@ -937,23 +937,23 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 					}
 				}
 
-				const answerHeaderToolMsg = new AIMessage({
-					content: "",
-					tool_calls: [{
-						name: "answer_header",
-						args: { node_name: "" },
-					}],
-				});
+				// const answerHeaderToolMsg = new AIMessage({
+				// 	content: "",
+				// 	tool_calls: [{
+				// 		name: "answer_header",
+				// 		args: { node_name: "" },
+				// 	}],
+				// });
 
-				if (processedContent && array[index - 1]?.type === 'human') {
-					return [
-						answerHeaderToolMsg,
-						new AIMessage({
-							...msg,
-							content: processedContent,
-						})
-					];
-				}
+				// if (processedContent && array[index - 1]?.type === 'human') {
+				// 	return [
+				// 		answerHeaderToolMsg,
+				// 		new AIMessage({
+				// 			...msg,
+				// 			content: processedContent,
+				// 		})
+				// 	];
+				// }
 
 				return [new AIMessage({
 					...msg,

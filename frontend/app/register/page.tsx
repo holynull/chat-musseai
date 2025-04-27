@@ -8,6 +8,7 @@ import { Card } from "../components/ui/card";
 import { useToast } from "../hooks/use-toast";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function RegisterPage() {
 	const [email, setEmail] = useState("");
@@ -74,8 +75,14 @@ export default function RegisterPage() {
 								animate={{ scale: 1 }}
 								transition={{ duration: 0.5 }}
 							>
-								<div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center">
-									<span className="text-2xl font-bold text-white">M</span>
+								<div className="w-20 h-20 mx-auto mb-4 rounded-full bg-white flex items-center justify-center overflow-hidden">
+									<Image
+										src="/images/logo.png"
+										alt="Musse AI Logo"
+										width={80}
+										height={80}
+										className="object-contain"
+									/>
 								</div>
 							</motion.div>
 							<h1 className="text-3xl font-bold text-white mb-2">Register for Musse AI</h1>
