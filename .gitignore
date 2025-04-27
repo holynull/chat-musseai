@@ -164,3 +164,4 @@ notebooks
 *.patched
 patches/
 *.content.json
+chromedriver**

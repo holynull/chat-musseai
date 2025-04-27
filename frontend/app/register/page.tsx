@@ -25,26 +25,26 @@ export default function RegisterPage() {
 		clearError();
 
 		if (password !== confirmPassword) {
-			setError("密码不匹配，请确保两次输入的密码一致");
+			setError("Passwords do not match, please ensure both entries are identical");
 			return;
 		}
 
 		setIsLoading(true);
 
 		try {
-			// 这里应该是实际的注册API调用
-			// 例如: const response = await fetch('/api/register', {...})
+			// This should be the actual registration API call
+			// Example: const response = await fetch('/api/register', {...})
 
-			// 模拟注册成功
+			// Simulate successful registration
 			setTimeout(() => {
 				toast({
-					title: "注册成功",
-					description: "您的账号已创建，请登录",
+					title: "Registration Successful",
+					description: "Your account has been created, please login",
 				});
 				router.push("/login");
 			}, 1000);
 		} catch (error) {
-			setError("注册失败，请稍后再试");
+			setError("Registration failed, please try again later");
 		} finally {
 			setIsLoading(false);
 		}
