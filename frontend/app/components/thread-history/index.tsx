@@ -8,6 +8,8 @@ import { groupThreads } from "./utils";
 import { ThreadsList } from "./thread-list";
 import { useQueryState } from "nuqs";
 import { LogOut } from "lucide-react"; // 添加登出图标
+import { SelectModel } from "../SelectModel";
+import { WalletIndicator } from "../WalletIndicator";
 
 const LoadingThread = () => <Skeleton className="w-full h-8 bg-[#373737]" />;
 
@@ -46,13 +48,19 @@ function ThreadHistoryComponent() {
 					<div className="flex flex-row items-center justify-between border-b-[1px] border-[#393939] pt-3 px-2 mx-4 -mt-4 text-gray-200">
 						<p className="text-lg font-medium">Chat History</p>
 						{user?.user_id ? (
-							<TooltipIconButton
-								tooltip="New chat"
-								className="w-fit p-2"
-								onClick={createNewSession}
-							>
-								<SquarePen className="w-5 h-5" />
-							</TooltipIconButton>
+							<>
+								<TooltipIconButton
+									tooltip="New chat"
+									className="w-fit p-2"
+									onClick={createNewSession}
+								>
+									<SquarePen className="w-5 h-5" />
+								</TooltipIconButton>
+								<div className="fixed top-2 sm:top-4 right-2 sm:right-4 z-[100] flex flex-row gap-2 items-center">
+									<SelectModel />
+									<WalletIndicator />
+								</div>
+							</>
 						) : null}
 					</div>
 					<div className="overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
@@ -67,7 +75,7 @@ function ThreadHistoryComponent() {
 						)}
 					</div>
 					{user && (
-						<div className="border-t-[1px] border-[#393939] p-3">
+						<div className="fixed bottom-0 left-0 w-[260px] border-t-[1px] border-[#393939] p-3 ">
 							<TooltipIconButton
 								tooltip="Logout"
 								className="w-full flex items-center justify-center gap-2 p-2 hover:bg-gray-700 rounded"
@@ -81,7 +89,7 @@ function ThreadHistoryComponent() {
 				</div>
 			</div>
 			{/* Mobile */}
-			<span className="md:hidden flex flex-row gap-2 mt-2 ml-2">
+			<span className="md:hidden fixed top-2 left-2 z-[100] flex flex-row gap-2">
 				<Sheet>
 					<SheetTrigger asChild>
 						<TooltipIconButton
@@ -101,16 +109,34 @@ function ThreadHistoryComponent() {
 						) : (
 							<ThreadsList groupedThreads={groupedThreads} />
 						)}
+						{user && (
+							<div className="fixed bottom-0 left-0 w-[260px] border-t-[1px] border-[#393939] p-3 flex justify-center">
+								<TooltipIconButton
+									tooltip="Logout"
+									className="flex items-center justify-center gap-2 p-2 hover:bg-gray-700 rounded"
+									onClick={logout}
+								>
+									<LogOut className="w-5 h-5" />
+									<span>Logout</span>
+								</TooltipIconButton>
+							</div>
+						)}
 					</SheetContent>
 				</Sheet>
 				{user?.user_id ? (
-					<TooltipIconButton
-						tooltip="New chat"
-						className="w-fit h-fit p-2"
-						onClick={createNewSession}
-					>
-						<SquarePen className="w-6 h-6" />
-					</TooltipIconButton>
+					<div className="bg-[#313338] rounded-md">
+						<TooltipIconButton
+							tooltip="New chat"
+							className="w-fit h-fit p-2"
+							onClick={createNewSession}
+						>
+							<SquarePen className="w-6 h-6" />
+						</TooltipIconButton>
+						<div className="fixed top-2 sm:top-4 right-2 sm:right-4 z-[100] flex flex-row gap-2 items-center bg-[#313338] rounded-md">
+							<SelectModel />
+							<WalletIndicator />
+						</div>
+					</div>
 				) : null}
 			</span>
 		</span>

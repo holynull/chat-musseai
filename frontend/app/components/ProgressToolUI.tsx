@@ -2,7 +2,6 @@ import { useAssistantToolUI } from "@assistant-ui/react";
 import { Progress } from "./ui/progress";
 import { cn } from "../utils/cn";
 import { useCallback } from "react";
-import { text } from "stream/consumers";
 
 export const stepToProgressFields = (step: { text: string, progress: number }) => {
 	if (step.progress >= 100) {
@@ -27,15 +26,15 @@ export const useProgressToolUI = () =>
 			const { text, progress } = stepToProgressFields(input.args.step);
 
 			return (
-				<div className="flex flex-row md:max-w-[550px] w-full items-center justify-start gap-3 pb-4 ml-[-5px] mt-[16px]">
+				<div className="flex flex-col sm:flex-row w-full max-w-full items-start sm:items-center justify-start gap-2 sm:gap-3 pb-3 sm:pb-4 px-1 mt-3 sm:mt-[16px]">
 					<Progress
 						value={progress}
 						indicatorClassName="bg-gray-700"
-						className="w-[375px]"
+						className="w-full max-w-[375px]"
 					/>
 					<p
 						className={cn(
-							"text-gray-500 text-sm font-light",
+							"text-gray-500 text-sm font-light break-words",
 							progress !== 100 ? "animate-pulse" : "",
 						)}
 					>

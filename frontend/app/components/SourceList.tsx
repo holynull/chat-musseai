@@ -20,27 +20,28 @@ export type Source = {
 	snippet: string;
 };
 
-// 修改 imageTag 函数，添加必要的 width 和 height 属性
+// 修改 imageTag 函数，使图片高度响应式
 function imageTag(img_src: string) {
-	if (img_src) {
-		return (
-			<div className="relative w-full h-[120px]">
-				<Image
-					src={img_src}
-					fill={true}
-					sizes="(max-width: 768px) 100vw, 250px"
-					className="object-cover rounded-sm"
-					alt={`Image for source`}
-				/>
-			</div>
-		);
-	} else {
-		return (
-			<div className="w-full h-[120px] bg-gray-700 flex items-center justify-center rounded-sm">
-				<Globe className="w-8 h-8 text-gray-400" />
-			</div>
-		);
-	}
+    if (img_src) {
+        return (
+            <div className="relative w-full h-[200px] mt-2 overflow-hidden rounded">
+                <Image
+                    src={img_src}
+                    fill={true}
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="object-cover"
+                    alt="Source image"
+                    loading="lazy"
+                />
+            </div>
+        );
+    } else {
+        return (
+            <div className="w-full h-[200px] bg-gray-700 flex items-center justify-center rounded mt-2">
+                <Globe className="w-6 h-6 text-gray-400" />
+            </div>
+        );
+    }
 }
 
 const filterSources = (sources: Source[]) => {
@@ -64,38 +65,35 @@ const filterSources = (sources: Source[]) => {
 	return { filtered, indexMap };
 };
 
-export function SourceBubble(
-	{ source: source }: { source: Source },
-) {
+export function SourceBubble({ source }: { source: Source }) {
 	return (
 		<a
 			href={source.link}
 			target="_blank"
 			rel="noopener noreferrer"
-			className="no-underline"
+			// 修改宽度控制，确保在移动端不会过宽
+			className="no-underline block w-full"
 		>
-			<Card className="md:w-[250px] sm:w-[250px] w-full md:max-w-full bg-inherit border-gray-500 flex flex-col gap-2 hover:border-blue-400 transition-colors">
-				<CardHeader className="flex-shrink-0 px-3 pt-2 pb-0">
+			<Card className="w-full border-gray-500 hover:border-blue-400 transition-colors">
+				<CardHeader className="px-3 pt-2 pb-0">
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<CardTitle className="text-sm font-light text-gray-300 line-clamp-2 overflow-hidden">
+								<CardTitle className="text-sm font-medium text-gray-300 line-clamp-2">
 									{source.title}
 								</CardTitle>
 							</TooltipTrigger>
-							<TooltipContent className="max-w-[600px] whitespace-pre-wrap">
+							<TooltipContent side="top" className="max-w-[280px]">
 								<p>{source.title}</p>
 							</TooltipContent>
 						</Tooltip>
 					</TooltipProvider>
 				</CardHeader>
-				<CardContent className="flex flex-col flex-grow px-3 pb-2 justify-between mt-auto">
-					<div className="flex flex-col gap-1 mt-auto">
-						{imageTag(source.imageUrl)}
-						<p className="text-sm font-light text-gray-300 line-clamp-3 overflow-hidden mt-2">
-							{source.snippet}
-						</p>
-					</div>
+				<CardContent className="px-3 pb-2 pt-1">
+					{imageTag(source.imageUrl)}
+					<p className="text-xs sm:text-sm text-gray-300 line-clamp-3 mt-2">
+						{source.snippet}
+					</p>
 				</CardContent>
 			</Card>
 		</a>
@@ -103,19 +101,17 @@ export function SourceBubble(
 }
 
 const SourceListComponent = ({ sources }: { sources: Source[] }) => {
-	const { filtered, indexMap } = filterSources(sources);
-	const [highlighedSourceLinkStates, setHighlightedSourceLinkStates] = useState(
-		filtered.map(() => false),
-	);
+	const { filtered } = filterSources(sources);
 
 	return (
-		<div className="flex flex-col mb-4 sm:mt-6 md:mt-8">
-			<span className="flex flex-row gap-2 items-center justify-start pb-4 text-gray-300">
-				<Globe className="w-5 h-5" />
-				<p className="text-xl">Search Result</p>
+		<div className="flex flex-col mb-4 mt-4 w-full max-w-full">
+			<span className="flex flex-row gap-2 items-center mb-3 px-3">
+				<Globe className="w-4 h-4" />
+				<p className="text-md text-gray-300">Search Result</p>
 			</span>
-			<div className="mb-10">
-				<div className="flex flex-wrap items-start justify-start gap-4">
+			{/* 添加最大宽度限制和内边距控制 */}
+			<div className="w-full px-3">
+				<div className="flex flex-col gap-3">
 					{filtered.map((source: Source, index) => (
 						<SourceBubble
 							key={`${source.link}-${index}`}

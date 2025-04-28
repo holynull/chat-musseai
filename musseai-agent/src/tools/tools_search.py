@@ -205,4 +205,4 @@ def access_links_content(links: list[dict]):
     return {"search_result": [{"link": link} for link in links]}
 
 
-tools = [search_webpage, search_news, search_image, search_place, access_links_content]
+tools = [search_webpage, search_news, search_image, search_place]

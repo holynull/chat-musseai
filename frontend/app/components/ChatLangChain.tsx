@@ -72,9 +72,9 @@ function ChatLangChainComponent(): React.ReactElement {
 			});
 			return;
 		}
-		if (message.content[0]?.type !== "text") {
-			throw new Error("Only text messages are supported");
-		}
+		// if (message.content[0]?.type !== "text") {
+		// 	throw new Error("Only text messages are supported");
+		// }
 
 		setIsRunning(true);
 
@@ -94,11 +94,15 @@ function ChatLangChainComponent(): React.ReactElement {
 
 		try {
 			const humanMessage = new HumanMessage({
-				content: message.content[0].text,
-				id: uuidv4(),
+				// content: "text" in message.content[0] ? message.content[0].text : "",
+				content: "",
+				id: uuidv4()
 			});
 			if (message.attachments && message.attachments.length > 0) {
-				let content: any = [{ "type": "text", "text": message.content[0].text }]
+				let content: any = [];
+				if (message.content[0] && "text" in message.content[0]) {
+					content.push({ "type": "text", "text": message.content[0].text });
+				}
 				for (let attachment of message.attachments) {
 					let _content: any = attachment.content && attachment.contentType.indexOf("image") === 0 && attachment.content.length > 0 ? attachment.content[0] : undefined;
 					if (content) {
@@ -106,6 +110,8 @@ function ChatLangChainComponent(): React.ReactElement {
 					}
 				}
 				humanMessage.content = content;
+			} else {
+				humanMessage.content = "text" in message.content[0] ? message.content[0].text : "";
 			}
 
 			setMessages((prevMessages) => [...prevMessages, humanMessage]);
@@ -149,13 +155,13 @@ function ChatLangChainComponent(): React.ReactElement {
 
 	return (
 		<div className="overflow-hidden w-full flex md:flex-row flex-col relative">
-			{messages.length > 0 ? (
-				<div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-50 flex flex-row gap-2 items-center">
+			{/* {messages.length > 0 ? (
+				<div className="fixed top-2 sm:top-4 right-2 sm:right-4 z-[100] flex flex-row gap-2 items-center">
 					<SelectModel />
 					<WalletIndicator />
 				</div>
-			) : null}
-			<div className="shrink-0">
+			) : null} */}
+			<div className="md:sticky md:top-0 md:left-0 md:h-screen shrink-0 z-50">
 				<ThreadHistory />
 			</div>
 			<div className="w-full overflow-hidden">
