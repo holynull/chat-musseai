@@ -48,33 +48,27 @@ export const ImagePanel: ComponentType<any> = (data) => {
 	const state = useAttachment();
 	const attachmentsRuntime = useAttachmentRuntime();
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
-	const [imageError, setImageError] = useState<boolean>(false);
 
 	useEffect(() => {
 		if (state.file) {
-			// 重置错误状态
-			setImageError(false);
-
 			getFileDataURL(state.file)
 				.then(url => setImageUrl(url))
-				.catch(err => {
-					console.error('Error getting file data URL:', err);
-					setImageError(true);
-				});
+				.catch(err => console.error('Error getting file data URL:', err));
 		}
 	}, [state.file]);
 
 	return (
 		<div className="relative group flex flex-col p-2 hover:bg-gray-700/30 rounded-lg transition-colors">
-			<div className="w-full max-w-[160px] sm:w-48 h-28 sm:h-36 relative rounded-lg overflow-hidden border border-gray-600 bg-gray-800/50">
-				{imageUrl && !imageError ? (
+			{/* 图片预览区域优化 */}
+			<div className="w-48 h-36 relative rounded-lg overflow-hidden border border-gray-600 bg-gray-800/50">
+				{imageUrl ? (
 					<div className="relative w-full h-full">
-						{/* 使用普通img标签替代Next.js的Image组件 */}
-						<img
+						<Image
 							src={imageUrl}
 							alt={state.file?.name || 'Image attachment'}
-							className="w-full h-full object-contain"
-							onError={() => setImageError(true)}
+							fill
+							className="object-contain"
+							sizes="(max-width: 768px) 100vw, 192px"
 						/>
 						{/* 添加图片类型标识 */}
 						<div className="absolute bottom-0 left-0 bg-gray-800/70 text-xs text-gray-200 px-2 py-0.5 rounded-tr-md">
@@ -82,23 +76,20 @@ export const ImagePanel: ComponentType<any> = (data) => {
 						</div>
 					</div>
 				) : (
-					<div className="flex flex-col items-center justify-center w-full h-full">
+					<div className="flex items-center justify-center w-full h-full">
 						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
 							<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
 							<circle cx="8.5" cy="8.5" r="1.5"></circle>
 							<polyline points="21 15 16 10 5 21"></polyline>
 						</svg>
-						{imageError && (
-							<span className="text-xs text-red-400 mt-2">Failed to load image</span>
-						)}
 					</div>
 				)}
 			</div>
 
 			{/* 文件信息区域优化 */}
 			<div className="flex items-center justify-between w-full mt-2 px-1">
-				<div className="flex flex-col flex-1 min-w-0 pr-2">
-					<div className="text-sm text-gray-200 truncate max-w-full font-medium">
+				<div className="flex flex-col">
+					<div className="text-sm text-gray-200 truncate max-w-[170px] font-medium">
 						{state.file?.name || 'Image attachment'}
 					</div>
 					{state.file && (
@@ -108,9 +99,10 @@ export const ImagePanel: ComponentType<any> = (data) => {
 					)}
 				</div>
 
+				{/* 删除按钮优化 */}
 				<button
 					onClick={() => attachmentsRuntime.remove()}
-					className="p-2 sm:p-1.5 rounded-full bg-gray-700 hover:bg-gray-600 hover:text-red-400 text-gray-300 transition-colors"
+					className="p-1.5 rounded-full bg-gray-700 hover:bg-gray-600 hover:text-red-400 text-gray-300 transition-colors"
 					aria-label="Remove attachment"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -245,71 +237,70 @@ export const ChatComposer: FC<ChatComposerProps> = (
 	};
 
 	return (
-		<div className="flex w-full">
+		<>
 			<ComposerPrimitive.Root
 				className={cn(
-					"focus-within:border-aui-ring/20 flex w-full flex-col items-center justify-between rounded-lg border px-2 py-2 shadow-sm bg-[#282828] border-gray-600 fixed bottom-0 left-0 right-0",
-					isEmpty ? "w-full" : "w-full md:w-[70%] md:max-w-[832px] md:static md:mb-4 md:mx-auto",
+					"focus-within:border-aui-ring/20 flex w-full items-center md:justify-left justify-center rounded-lg border px-2.5 py-2.5 shadow-sm transition-all duration-300 ease-in-out bg-[#282828] border-gray-600",
+					isEmpty ? "" : "md:ml-24 ml-3 mb-6",
+					isEmpty ? "w-full" : "md:w-[70%] w-[95%] md:max-w-[832px]",
 				)}
 			>
-				<div className="flex w-full items-center">
-					<ComposerPrimitive.Input
-						autoFocus
-						placeholder="How can I..."
-						rows={1}
-						className="placeholder:text-gray-400 text-gray-100 max-h-32 sm:max-h-40 flex-1 resize-none border-none bg-transparent px-2 py-1 sm:py-2 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed"
-						onPaste={handlePaste}
-					/>
 
-					<div className="flex-shrink-0">
-						<ThreadPrimitive.If running={false} >
-							<ComposerPrimitive.AddAttachment asChild>
-								<TooltipIconButton
-									tooltip="Add Attachments"
-									variant="ghost"
-									className="my-1 size-8 p-2 transition-opacity ease-in"
-								>
-									<PaperclipIcon />
-								</TooltipIconButton>
-							</ComposerPrimitive.AddAttachment>
-						</ThreadPrimitive.If>
-						<ThreadPrimitive.If running={false} disabled={props.submitDisabled}>
-							<ComposerPrimitive.Send asChild>
-								<TooltipIconButton
-									tooltip="Send"
-									variant="ghost"
-									className="my-1 size-8 p-2 transition-opacity ease-in"
-								>
-									<SendHorizontalIcon />
-								</TooltipIconButton>
-							</ComposerPrimitive.Send>
-						</ThreadPrimitive.If>
-						<ThreadPrimitive.If running>
-							<ComposerPrimitive.Cancel asChild>
-								<TooltipIconButton
-									tooltip="Cancel"
-									variant="ghost"
-									className="my-1 size-8 p-2 transition-opacity ease-in"
-								>
-									<CircleStopIcon />
-								</TooltipIconButton>
-							</ComposerPrimitive.Cancel>
-						</ThreadPrimitive.If>
-					</div>
+				<ComposerPrimitive.Input
+					autoFocus
+					placeholder="How can I..."
+					rows={1}
+					className="placeholder:text-gray-400 text-gray-100 max-h-40 flex-1 resize-none border-none bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed"
+					onPaste={handlePaste}
+				/>
+				<div className="flex-shrink-0">
+					<ThreadPrimitive.If running={false} >
+						<ComposerPrimitive.AddAttachment asChild>
+							<TooltipIconButton
+								tooltip="Add Attachments"
+								variant="ghost"
+								// className="my-1 size-8 p-2 transition-opacity ease-in hover:bg-gray-700/50 rounded-full"
+								className="my-1 size-8 p-2 transition-opacity ease-in"
+							>
+								<PaperclipIcon />
+							</TooltipIconButton>
+						</ComposerPrimitive.AddAttachment>
+					</ThreadPrimitive.If>
+					<ThreadPrimitive.If running={false} disabled={props.submitDisabled}>
+						<ComposerPrimitive.Send asChild>
+							<TooltipIconButton
+								tooltip="Send"
+								variant="ghost"
+								className="my-1 size-8 p-2 transition-opacity ease-in"
+							>
+								<SendHorizontalIcon />
+							</TooltipIconButton>
+						</ComposerPrimitive.Send>
+					</ThreadPrimitive.If>
+					<ThreadPrimitive.If running>
+						<ComposerPrimitive.Cancel asChild>
+							<TooltipIconButton
+								tooltip="Cancel"
+								variant="ghost"
+								className="my-1 size-8 p-2 transition-opacity ease-in"
+							>
+								<CircleStopIcon />
+							</TooltipIconButton>
+						</ComposerPrimitive.Cancel>
+					</ThreadPrimitive.If>
 				</div>
 
-				{/* 将Attachments组件移到ComposerPrimitive.Root内部 */}
-				<div className="mt-2">
-					<ComposerPrimitive.Attachments
-						components={{
-							Image: ImagePanel,
-							Document: DocumentPanel,
-							File: FilePanel,
-							Attachment: FilePanel,
-						}}
-					/>
-				</div>
 			</ComposerPrimitive.Root>
-		</div>
+			<div className="flex flex-wrap gap-3 p-3 max-h-[300px] overflow-y-auto w-full">
+				<ComposerPrimitive.Attachments
+					components={{
+						Image: ImagePanel,
+						Document: DocumentPanel,
+						File: FilePanel,
+						Attachment: FilePanel,
+					}}
+				/>
+			</div>
+		</>
 	);
 };
