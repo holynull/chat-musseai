@@ -106,7 +106,7 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 									fill
 									priority
 									className="object-fill rounded-full"
-									style={{ transform: 'scale(1.4)' }}
+									style={{ transform: 'scale(1.1)' }}
 								/>
 							</div>
 						</div>

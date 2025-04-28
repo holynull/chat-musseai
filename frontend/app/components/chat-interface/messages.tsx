@@ -67,7 +67,7 @@ const AssistantAvatar: FC = () => {
 				width={36}
 				height={36}
 				className="w-full h-full rounded-full object-cover"
-				style={{ transform: 'scale(1.3)' }}
+				style={{ transform: 'scale(0.9)' }}
 			/>
 		</div>
 	);

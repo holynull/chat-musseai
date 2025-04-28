@@ -16,6 +16,12 @@ export const metadata: Metadata = {
 	description: "Your intelligent AI assistant for cryptocurrency and blockchain information, providing real-time insights and seamless transactions.",
 	keywords: "AI, cryptocurrency, blockchain, trading, crypto assistant, token swap",
 	authors: [{ name: "Musse AI Team" }],
+	icons: {
+		icon: '/images/favicon.ico', // 基于public目录的路径
+		// 可选：添加更多格式和尺寸
+		// apple: '/images/apple-icon.png',
+		// shortcut: '/images/favicon.ico',
+	},
 	openGraph: {
 		type: "website",
 		locale: "en_US",
@@ -25,7 +31,7 @@ export const metadata: Metadata = {
 		description: "Your intelligent AI assistant for cryptocurrency and blockchain information.",
 		images: [
 			{
-				url: "/images/og-image.jpg",
+				url: "https://musseai.com/images/logo.png",
 				width: 1200,
 				height: 630,
 				alt: "Musse AI Preview"
@@ -47,6 +53,7 @@ export default function RootLayout({
 }) {
 	return (
 		<html lang="en" className={`${inter.variable}`}>
+			<head><link rel="icon" href="/images/favicon.ico" /></head>
 			<body className="font-sans antialiased">
 				<div
 					className="flex flex-col w-full"
