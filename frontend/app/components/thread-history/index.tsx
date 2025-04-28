@@ -7,7 +7,6 @@ import { useGraphContext } from "../../contexts/GraphContext";
 import { groupThreads } from "./utils";
 import { ThreadsList } from "./thread-list";
 import { useQueryState } from "nuqs";
-import { useUser } from "../../contexts/UserContext";
 import { LogOut } from "lucide-react"; // 添加登出图标
 
 const LoadingThread = () => <Skeleton className="w-full h-8 bg-[#373737]" />;

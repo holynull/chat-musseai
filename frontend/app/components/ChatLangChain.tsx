@@ -150,15 +150,15 @@ function ChatLangChainComponent(): React.ReactElement {
 	return (
 		<div className="overflow-hidden w-full flex md:flex-row flex-col relative">
 			{messages.length > 0 ? (
-				<div className="absolute top-4 right-4 z-10 flex flex-col sm:flex-row gap-2 items-end sm:items-center">
+				<div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-50 flex flex-row gap-2 items-center">
 					<SelectModel />
 					<WalletIndicator />
 				</div>
 			) : null}
-			<div>
+			<div className="shrink-0">
 				<ThreadHistory />
 			</div>
-			<div className="w-full h-full overflow-hidden">
+			<div className="w-full overflow-hidden">
 				<AssistantRuntimeProvider runtime={runtime}>
 					<ThreadChat submitDisabled={isSubmitDisabled} messages={messages} currentThreadId={threadId} />
 				</AssistantRuntimeProvider>

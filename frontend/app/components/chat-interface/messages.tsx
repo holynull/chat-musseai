@@ -92,7 +92,7 @@ const UserAvatar: FC = () => {
 export const UserMessage: FC = () => {
 	return (
 		<MessageContainer isUser={true}>
-			<div className="flex flex-col space-y-2 max-w-[85%] sm:max-w-[75%] md:max-w-[70%]">
+			<div className="flex flex-col space-y-2 max-w-[90%] sm:max-w-[80%] md:max-w-[70%]">
 				<MessageBubble isUser={true}>
 					<MessagePrimitive.Content />
 					<UserMessageAttachments />
@@ -114,12 +114,12 @@ export const AssistantMessage: FC = () => {
 
 	return (
 		<>
-			<MessagePrimitive.Root className="flex w-full md:max-w-4xl md:mx-0 mx-auto max-w-[95%] md:py-4 py-2">
+			<MessagePrimitive.Root className="flex w-full md:max-w-4xl md:mx-0 mx-auto max-w-[95%] md:py-4 py-6">
 				<div className="flex flex-col space-y-2 mb-6">
 					<div className="flex items-start">
 						<AssistantAvatar />
-						<div className="flex flex-col space-y-3 max-w-[80%] sm:max-w-[70%]">
-							<div className="bg-gray-800/80 backdrop-blur-sm px-5 py-4 rounded-2xl rounded-tl-none border border-gray-700 shadow-md">
+						<div className="flex flex-col space-y-3 max-w-[90%] sm:max-w-[80%] md:max-w-[70%]">
+							<div className="bg-gray-800/80 backdrop-blur-sm px-3 sm:px-5 py-3 sm:py-4 rounded-2xl rounded-tl-none border border-gray-700 shadow-md">
 								<MessagePrimitive.Content components={{ Text: MarkdownText }} />
 							</div>
 						</div>

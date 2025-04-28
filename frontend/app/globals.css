@@ -317,3 +317,39 @@ li {
 .list-disc li {
 	line-height: 1.5em;
 }
+
+@layer base {
+
+	/* 优化移动端触摸体验 */
+	@media (max-width: 768px) {
+		html {
+			-webkit-tap-highlight-color: transparent;
+		}
+
+		/* 改善移动端滚动体验 */
+		* {
+			-webkit-overflow-scrolling: touch;
+		}
+
+		/* 防止iOS缩放 */
+		input,
+		textarea {
+			font-size: 16px;
+		}
+	}
+
+	/* 优化移动端字体大小 */
+	@media (max-width: 640px) {
+		html {
+			font-size: 14px;
+		}
+	}
+}
+
+/* 添加暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: #000;
+		--foreground: #fff;
+	}
+}

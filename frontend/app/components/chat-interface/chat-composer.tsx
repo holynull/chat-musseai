@@ -59,8 +59,7 @@ export const ImagePanel: ComponentType<any> = (data) => {
 
 	return (
 		<div className="relative group flex flex-col p-2 hover:bg-gray-700/30 rounded-lg transition-colors">
-			{/* 图片预览区域优化 */}
-			<div className="w-48 h-36 relative rounded-lg overflow-hidden border border-gray-600 bg-gray-800/50">
+			<div className="w-full max-w-[160px] sm:w-48 h-28 sm:h-36 relative rounded-lg overflow-hidden border border-gray-600 bg-gray-800/50">
 				{imageUrl ? (
 					<div className="relative w-full h-full">
 						<Image
@@ -88,8 +87,8 @@ export const ImagePanel: ComponentType<any> = (data) => {
 
 			{/* 文件信息区域优化 */}
 			<div className="flex items-center justify-between w-full mt-2 px-1">
-				<div className="flex flex-col">
-					<div className="text-sm text-gray-200 truncate max-w-[170px] font-medium">
+				<div className="flex flex-col flex-1 min-w-0 pr-2">
+					<div className="text-sm text-gray-200 truncate max-w-full font-medium">
 						{state.file?.name || 'Image attachment'}
 					</div>
 					{state.file && (
@@ -99,10 +98,9 @@ export const ImagePanel: ComponentType<any> = (data) => {
 					)}
 				</div>
 
-				{/* 删除按钮优化 */}
 				<button
 					onClick={() => attachmentsRuntime.remove()}
-					className="p-1.5 rounded-full bg-gray-700 hover:bg-gray-600 hover:text-red-400 text-gray-300 transition-colors"
+					className="p-2 sm:p-1.5 rounded-full bg-gray-700 hover:bg-gray-600 hover:text-red-400 text-gray-300 transition-colors"
 					aria-label="Remove attachment"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -240,9 +238,8 @@ export const ChatComposer: FC<ChatComposerProps> = (
 		<>
 			<ComposerPrimitive.Root
 				className={cn(
-					"focus-within:border-aui-ring/20 flex w-full items-center md:justify-left justify-center rounded-lg border px-2.5 py-2.5 shadow-sm transition-all duration-300 ease-in-out bg-[#282828] border-gray-600",
-					isEmpty ? "" : "md:ml-24 ml-3 mb-6",
-					isEmpty ? "w-full" : "md:w-[70%] w-[95%] md:max-w-[832px]",
+					"focus-within:border-aui-ring/20 flex w-full items-center justify-between rounded-lg border px-2 py-2 shadow-sm bg-[#282828] border-gray-600 fixed bottom-0 left-0 right-0",
+					isEmpty ? "w-full" : "w-full md:w-[70%] md:max-w-[832px] md:static md:mb-4 md:mx-auto",
 				)}
 			>
 
@@ -250,7 +247,7 @@ export const ChatComposer: FC<ChatComposerProps> = (
 					autoFocus
 					placeholder="How can I..."
 					rows={1}
-					className="placeholder:text-gray-400 text-gray-100 max-h-40 flex-1 resize-none border-none bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed"
+					className="placeholder:text-gray-400 text-gray-100 max-h-32 sm:max-h-40 flex-1 resize-none border-none bg-transparent px-2 py-1 sm:py-2 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed"
 					onPaste={handlePaste}
 				/>
 				<div className="flex-shrink-0">

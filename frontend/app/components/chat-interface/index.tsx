@@ -68,16 +68,16 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	useGenerateImage();
 
 	return (
-		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full">
+		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full h-full">
 			{!isEmpty ? (
-				<ThreadPrimitive.Viewport
+				<ThreadPrimitive.Viewport autoScroll={true}
 					className={cn(
-						"flex-1 overflow-y-auto scroll-smooth bg-inherit transition-all duration-300 ease-in-out w-full",
-						isEmpty ? "pb-[30vh] sm:pb-[50vh]" : "pb-32 sm:pb-24",
+						"flex-1 overflow-y-auto scroll-smooth bg-inherit transition-all duration-300 ease-in-out w-full h-full",
+						isEmpty ? "pb-[30vh] sm:pb-[50vh]" : "pb-12 sm:pb-12 md:pb-10",
 						"scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent",
 					)}
 				>
-					<div className="md:pl-8 lg:pl-24 mt-2 max-w-full">
+					<div className="px-2 sm:px-4 md:pl-8 lg:pl-24 mt-2 max-w-full">
 						<ThreadPrimitive.Messages
 							components={{
 								UserMessage: UserMessage,
@@ -90,7 +90,7 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 			<ThreadChatScrollToBottom />
 			{isEmpty ? (
 				<div className="flex items-center justify-center flex-grow my-auto">
-					<div className="flex flex-col items-center mx-4 md:mt-0 mt-24">
+					<div className="flex flex-col items-center mx-4 md:mt-0 mt-12 mb-4 sm:my-auto">
 						<div className="logo-container relative mb-8">
 							{/* 发光效果 */}
 							<div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/30 to-purple-500/30 blur-xl animate-pulse-slow"></div>

@@ -46,8 +46,8 @@ export default function RootLayout({
 	children: React.ReactNode;
 }) {
 	return (
-		<html lang="en" className={`h-full ${inter.variable}`}>
-			<body className="h-full font-sans antialiased">
+		<html lang="en" className={`${inter.variable}`}>
+			<body className="font-sans antialiased">
 				<div
 					className="flex flex-col w-full"
 					style={{ background: "rgb(38, 38, 41)" }}
