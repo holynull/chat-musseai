@@ -464,7 +464,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 								<ul className="mt-2 space-y-2 list-disc pl-5">
 									<li>Verify the receiving amount is correct</li>
 									<li>Double-check the recipient address</li>
-									<li>Ensure you're on the correct network ({transactionInfo.networkName})</li>
+									<li>Ensure you&apos;re on the correct network ({transactionInfo.networkName})</li>
 									<li>Transaction cannot be reversed once confirmed</li>
 								</ul>
 							</div>

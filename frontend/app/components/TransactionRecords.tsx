@@ -115,301 +115,304 @@ const PaginationButton = ({
 	</button>
 );
 
-// 主组件
-export const useTransactionRecords = () => useAssistantToolUI({
-	toolName: "get_transaction_records",
-	render: (input) => {
-		const data: TransactionRecord[] = input.args.data;
-		const [isMobile, setIsMobile] = useState(false);
-		const [currentPage, setCurrentPage] = useState(1);
-		const itemsPerPage = isMobile ? 5 : 10; // 移动端每页显示5条，桌面端显示10条
+// Create a proper React component for transaction records display
+const TransactionRecordsDisplay: React.FC<{ input: { args: { data: TransactionRecord[] } } }> = ({ input }: { input: { args: { data: TransactionRecord[] } } }) => {
+	const data: TransactionRecord[] = input.args.data;
+	const [isMobile, setIsMobile] = useState(false);
+	const [currentPage, setCurrentPage] = useState(1);
+	const itemsPerPage = isMobile ? 5 : 10; // 移动端每页显示5条，桌面端显示10条
 
-		// 计算总页数
-		const totalPages = Math.ceil(data?.length / itemsPerPage);
+	// 计算总页数
+	const totalPages = Math.ceil(data?.length / itemsPerPage);
 
-		// 获取当前页的数据
-		const getCurrentPageData = () => {
-			const startIndex = (currentPage - 1) * itemsPerPage;
-			const endIndex = startIndex + itemsPerPage;
-			return data?.slice(startIndex, endIndex);
+	// 获取当前页的数据
+	const getCurrentPageData = () => {
+		const startIndex = (currentPage - 1) * itemsPerPage;
+		const endIndex = startIndex + itemsPerPage;
+		return data?.slice(startIndex, endIndex);
+	};
+
+	// 响应式处理
+	useEffect(() => {
+		const checkIfMobile = () => {
+			const isMobileView = window.innerWidth < 768;
+			setIsMobile(isMobileView);
+			// 如果从桌面端切换到移动端，可能需要调整当前页码
+			if (isMobileView && currentPage > Math.ceil(data?.length / 5)) {
+				setCurrentPage(1);
+			}
 		};
 
-		// 响应式处理
-		useEffect(() => {
-			const checkIfMobile = () => {
-				const isMobileView = window.innerWidth < 768;
-				setIsMobile(isMobileView);
-				// 如果从桌面端切换到移动端，可能需要调整当前页码
-				if (isMobileView && currentPage > Math.ceil(data?.length / 5)) {
-					setCurrentPage(1);
-				}
-			};
+		checkIfMobile();
+		window.addEventListener('resize', checkIfMobile);
+		return () => window.removeEventListener('resize', checkIfMobile);
+	}, [data?.length, currentPage]);
 
-			checkIfMobile();
-			window.addEventListener('resize', checkIfMobile);
-			return () => window.removeEventListener('resize', checkIfMobile);
-		}, [data?.length, currentPage]);
-
-		// 分页控制组件
-		const Pagination = () => (
-			<div className="flex items-center justify-between px-4 py-3 bg-gray-900 sm:px-6">
-				<div className="flex justify-between flex-1 sm:hidden">
+	// 分页控制组件
+	const Pagination = () => (
+		<div className="flex items-center justify-between px-4 py-3 bg-gray-900 sm:px-6">
+			<div className="flex justify-between flex-1 sm:hidden">
+				<PaginationButton
+					onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+					disabled={currentPage === 1}
+				>
+					Previous
+				</PaginationButton>
+				<PaginationButton
+					onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+					disabled={currentPage === totalPages}
+				>
+					Next
+				</PaginationButton>
+			</div>
+			<div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+				<div>
+					<p className="text-sm text-gray-400">
+						Showing{' '}
+						<span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span>
+						{' '}-{' '}
+						<span className="font-medium">
+							{Math.min(currentPage * itemsPerPage, data?.length)}
+						</span>
+						{' '}of{' '}
+						<span className="font-medium">{data?.length}</span>
+						{' '}results
+					</p>
+				</div>
+				<div className="flex space-x-2">
+					<PaginationButton
+						onClick={() => setCurrentPage(1)}
+						disabled={currentPage === 1}
+					>
+						First
+					</PaginationButton>
 					<PaginationButton
 						onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
 						disabled={currentPage === 1}
 					>
 						Previous
 					</PaginationButton>
+					<span className="px-3 py-1 text-sm text-white bg-gray-700 rounded-md">
+						Page {currentPage} of {totalPages}
+					</span>
 					<PaginationButton
 						onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
 						disabled={currentPage === totalPages}
 					>
 						Next
 					</PaginationButton>
-				</div>
-				<div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-					<div>
-						<p className="text-sm text-gray-400">
-							Showing{' '}
-							<span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span>
-							{' '}-{' '}
-							<span className="font-medium">
-								{Math.min(currentPage * itemsPerPage, data?.length)}
-							</span>
-							{' '}of{' '}
-							<span className="font-medium">{data?.length}</span>
-							{' '}results
-						</p>
-					</div>
-					<div className="flex space-x-2">
-						<PaginationButton
-							onClick={() => setCurrentPage(1)}
-							disabled={currentPage === 1}
-						>
-							First
-						</PaginationButton>
-						<PaginationButton
-							onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-							disabled={currentPage === 1}
-						>
-							Previous
-						</PaginationButton>
-						<span className="px-3 py-1 text-sm text-white bg-gray-700 rounded-md">
-							Page {currentPage} of {totalPages}
-						</span>
-						<PaginationButton
-							onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-							disabled={currentPage === totalPages}
-						>
-							Next
-						</PaginationButton>
-						<PaginationButton
-							onClick={() => setCurrentPage(totalPages)}
-							disabled={currentPage === totalPages}
-						>
-							Last
-						</PaginationButton>
-					</div>
+					<PaginationButton
+						onClick={() => setCurrentPage(totalPages)}
+						disabled={currentPage === totalPages}
+					>
+						Last
+					</PaginationButton>
 				</div>
 			</div>
-		);
+		</div>
+	);
 
-		// 渲染单个记录卡片（移动端）
-		const renderTransactionCard = (record: TransactionRecord, index: number) => {
-			const fromAmount = parseFloat(record.fromTokenAmount);
-			const toAmount = parseFloat(record.toTokenAmount);
-			const statusInfo = getStatusInfo(record.status);
+	// 渲染单个记录卡片（移动端）
+	const renderTransactionCard = (record: TransactionRecord, index: number) => {
+		const fromAmount = parseFloat(record.fromTokenAmount);
+		const toAmount = parseFloat(record.toTokenAmount);
+		const statusInfo = getStatusInfo(record.status);
 
-			return (
-				<div key={index} className="bg-gray-800 rounded-lg p-4 space-y-3">
-					{/* 头部：ID和状态 */}
-					<div className="flex items-center justify-between">
-						<div className="text-sm font-medium text-white">
-							{truncateAddress(record.orderId, true)}
-						</div>
-						<span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusInfo.color}`}>
-							{statusInfo.label}
-						</span>
+		return (
+			<div key={index} className="bg-gray-800 rounded-lg p-4 space-y-3">
+				{/* 头部：ID和状态 */}
+				<div className="flex items-center justify-between">
+					<div className="text-sm font-medium text-white">
+						{truncateAddress(record.orderId, true)}
 					</div>
+					<span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusInfo.color}`}>
+						{statusInfo.label}
+					</span>
+				</div>
 
-					{/* 链信息 */}
-					<div className="space-y-1">
-						<div className="text-xs text-gray-400">Chain</div>
-						<div className="text-sm text-white flex items-center space-x-2">
-							<span>{record.fromChain || 'BSC'}</span>
-							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-							</svg>
-							<span>{record.toChain || 'Solana'}</span>
-						</div>
-						<div className="text-xs text-gray-400">{truncateAddress(record.fromAddress, true)}</div>
+				{/* 链信息 */}
+				<div className="space-y-1">
+					<div className="text-xs text-gray-400">Chain</div>
+					<div className="text-sm text-white flex items-center space-x-2">
+						<span>{record.fromChain || 'BSC'}</span>
+						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+						</svg>
+						<span>{record.toChain || 'Solana'}</span>
 					</div>
+					<div className="text-xs text-gray-400">{truncateAddress(record.fromAddress, true)}</div>
+				</div>
 
-					{/* 金额信息 */}
-					<div className="space-y-1">
-						<div className="text-xs text-gray-400">Amount</div>
-						<div className="text-sm text-white">
-							{formatNumber(fromAmount.toString())} {record.fromCoinCode || 'USDT'}
-						</div>
+				{/* 金额信息 */}
+				<div className="space-y-1">
+					<div className="text-xs text-gray-400">Amount</div>
+					<div className="text-sm text-white">
+						{formatNumber(fromAmount.toString())} {record.fromCoinCode || 'USDT'}
+					</div>
+					<div className="text-xs text-gray-400">
+						≈ {formatNumber(toAmount.toString())} {record.toCoinCode || 'SOL'}
+					</div>
+				</div>
+
+				{/* 时间信息 */}
+				<div className="space-y-1">
+					<div className="text-xs text-gray-400">Time</div>
+					<div className="text-sm text-white">{formatDate(record.createTime, true)}</div>
+					{record.finishTime && record.status === 'receive_complete' && (
 						<div className="text-xs text-gray-400">
-							≈ {formatNumber(toAmount.toString())} {record.toCoinCode || 'SOL'}
+							Completed: {formatDate(record.finishTime, true)}
+						</div>
+					)}
+				</div>
+
+				{/* 区块浏览器链接 */}
+				{record.hash && (
+					<div className="pt-2 border-t border-gray-700">
+						<a
+							href={record.depositHashExplore || `https://solscan.io/tx/${record.hash}`}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="text-blue-400 hover:text-blue-300 text-sm flex items-center"
+						>
+							<span>View on Explorer</span>
+							<svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+							</svg>
+						</a>
+					</div>
+				)}
+			</div>
+		);
+	};
+
+	// 渲染表格行（桌面端）
+	const renderTableRow = (record: TransactionRecord, index: number) => {
+		const fromAmount = parseFloat(record.fromTokenAmount);
+		const toAmount = parseFloat(record.toTokenAmount);
+		const statusInfo = getStatusInfo(record.status);
+
+		return (
+			<tr key={index} className="hover:bg-gray-800 transition-colors duration-150">
+				<td className="px-4 py-3">
+					<div className="flex items-center">
+						<div className="text-sm font-medium text-white">
+							{truncateAddress(record.orderId)}
 						</div>
 					</div>
-
-					{/* 时间信息 */}
-					<div className="space-y-1">
-						<div className="text-xs text-gray-400">Time</div>
-						<div className="text-sm text-white">{formatDate(record.createTime, true)}</div>
-						{record.finishTime && record.status === 'receive_complete' && (
-							<div className="text-xs text-gray-400">
-								Completed: {formatDate(record.finishTime, true)}
-							</div>
-						)}
-					</div>
-
-					{/* 区块浏览器链接 */}
 					{record.hash && (
-						<div className="pt-2 border-t border-gray-700">
+						<div className="text-xs text-gray-400 mt-1">
 							<a
 								href={record.depositHashExplore || `https://solscan.io/tx/${record.hash}`}
 								target="_blank"
 								rel="noopener noreferrer"
-								className="text-blue-400 hover:text-blue-300 text-sm flex items-center"
+								className="text-blue-400 hover:text-blue-300 hover:underline inline-flex items-center"
 							>
-								<span>View on Explorer</span>
-								<svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								View on Explorer
+								<svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
 								</svg>
 							</a>
 						</div>
 					)}
-				</div>
-			);
-		};
-
-		// 渲染表格行（桌面端）
-		const renderTableRow = (record: TransactionRecord, index: number) => {
-			const fromAmount = parseFloat(record.fromTokenAmount);
-			const toAmount = parseFloat(record.toTokenAmount);
-			const statusInfo = getStatusInfo(record.status);
-
-			return (
-				<tr key={index} className="hover:bg-gray-800 transition-colors duration-150">
-					<td className="px-4 py-3">
-						<div className="flex items-center">
-							<div className="text-sm font-medium text-white">
-								{truncateAddress(record.orderId)}
-							</div>
-						</div>
-						{record.hash && (
-							<div className="text-xs text-gray-400 mt-1">
-								<a
-									href={record.depositHashExplore || `https://solscan.io/tx/${record.hash}`}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-blue-400 hover:text-blue-300 hover:underline inline-flex items-center"
-								>
-									View on Explorer
-									<svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-									</svg>
-								</a>
-							</div>
-						)}
-					</td>
-					<td className="px-4 py-3">
-						<div className="text-sm text-white flex items-center space-x-2">
-							<span>{record.fromChain || 'BSC'}</span>
-							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-							</svg>
-							<span>{record.toChain || 'Solana'}</span>
-						</div>
-						<div className="text-xs text-gray-400 mt-1">
-							{truncateAddress(record.fromAddress)}
-						</div>
-					</td>
-					<td className="px-4 py-3">
-						<div className="text-sm text-white">
-							{formatNumber(fromAmount.toString())} {record.fromCoinCode || 'USDT'}
-						</div>
-						<div className="text-xs text-gray-400 mt-1">
-							≈ {formatNumber(toAmount.toString())} {record.toCoinCode || 'SOL'}
-						</div>
-					</td>
-					<td className="px-4 py-3">
-						<span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusInfo.color}`}>
-							{statusInfo.label}
-						</span>
-					</td>
-					<td className="px-4 py-3">
-						<div className="text-sm text-white whitespace-pre-line">
-							{formatDate(record.createTime)}
-						</div>
-						{record.finishTime && record.status === 'receive_complete' && (
-							<div className="text-xs text-gray-400 mt-1">
-								Completed: {formatDate(record.finishTime)}
-							</div>
-						)}
-					</td>
-				</tr>
-			);
-		};
-
-		// 主渲染
-		return data && (
-			<div className="w-full mx-auto max-w-7xl">
-				<div className="flex flex-col rounded-lg border border-gray-700 bg-gray-800 text-white overflow-hidden">
-					{/* 头部 */}
-					<div className="bg-gray-900 p-4 sm:p-6">
-						<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-							<h3 className="text-xl font-semibold">Transaction Records</h3>
-							<span className="text-sm text-gray-400 mt-2 sm:mt-0">
-								{data?.length} transaction{data?.length !== 1 ? 's' : ''}
-							</span>
-						</div>
+				</td>
+				<td className="px-4 py-3">
+					<div className="text-sm text-white flex items-center space-x-2">
+						<span>{record.fromChain || 'BSC'}</span>
+						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+						</svg>
+						<span>{record.toChain || 'Solana'}</span>
 					</div>
-
-					{/* 内容区域 */}
-					<div className="p-4 sm:p-6">
-						{/* 桌面端表格视图 */}
-						<div className="hidden md:block overflow-x-auto">
-							<table className="min-w-full divide-y divide-gray-700">
-								<thead>
-									<tr>
-										<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-											Transaction
-										</th>
-										<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-											Chain
-										</th>
-										<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-											Amount
-										</th>
-										<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-											Status
-										</th>
-										<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-											Time
-										</th>
-									</tr>
-								</thead>
-								<tbody className="divide-y divide-gray-700">
-									{getCurrentPageData().map((record, index) => renderTableRow(record, index))}
-								</tbody>
-							</table>
-						</div>
-
-						{/* 移动端卡片视图 */}
-						<div className="md:hidden space-y-4">
-							{getCurrentPageData().map((record, index) => renderTransactionCard(record, index))}
-						</div>
+					<div className="text-xs text-gray-400 mt-1">
+						{truncateAddress(record.fromAddress)}
 					</div>
-
-					{/* 分页控件 */}
-					{totalPages > 1 && <Pagination />}
-				</div>
-			</div>
+				</td>
+				<td className="px-4 py-3">
+					<div className="text-sm text-white">
+						{formatNumber(fromAmount.toString())} {record.fromCoinCode || 'USDT'}
+					</div>
+					<div className="text-xs text-gray-400 mt-1">
+						≈ {formatNumber(toAmount.toString())} {record.toCoinCode || 'SOL'}
+					</div>
+				</td>
+				<td className="px-4 py-3">
+					<span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusInfo.color}`}>
+						{statusInfo.label}
+					</span>
+				</td>
+				<td className="px-4 py-3">
+					<div className="text-sm text-white whitespace-pre-line">
+						{formatDate(record.createTime)}
+					</div>
+					{record.finishTime && record.status === 'receive_complete' && (
+						<div className="text-xs text-gray-400 mt-1">
+							Completed: {formatDate(record.finishTime)}
+						</div>
+					)}
+				</td>
+			</tr>
 		);
-	},
+	};
+
+	// 主渲染
+	return data && (
+		<div className="w-full mx-auto max-w-7xl">
+			<div className="flex flex-col rounded-lg border border-gray-700 bg-gray-800 text-white overflow-hidden">
+				{/* 头部 */}
+				<div className="bg-gray-900 p-4 sm:p-6">
+					<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+						<h3 className="text-xl font-semibold">Transaction Records</h3>
+						<span className="text-sm text-gray-400 mt-2 sm:mt-0">
+							{data?.length} transaction{data?.length !== 1 ? 's' : ''}
+						</span>
+					</div>
+				</div>
+
+				{/* 内容区域 */}
+				<div className="p-4 sm:p-6">
+					{/* 桌面端表格视图 */}
+					<div className="hidden md:block overflow-x-auto">
+						<table className="min-w-full divide-y divide-gray-700">
+							<thead>
+								<tr>
+									<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+										Transaction
+									</th>
+									<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+										Chain
+									</th>
+									<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+										Amount
+									</th>
+									<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+										Status
+									</th>
+									<th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+										Time
+									</th>
+								</tr>
+							</thead>
+							<tbody className="divide-y divide-gray-700">
+								{getCurrentPageData().map((record, index) => renderTableRow(record, index))}
+							</tbody>
+						</table>
+					</div>
+
+					{/* 移动端卡片视图 */}
+					<div className="md:hidden space-y-4">
+						{getCurrentPageData().map((record, index) => renderTransactionCard(record, index))}
+					</div>
+				</div>
+
+				{/* 分页控件 */}
+				{totalPages > 1 && <Pagination />}
+			</div>
+		</div>
+	);
+};
+
+// Update the hook to use the new component
+export const useTransactionRecords = () => useAssistantToolUI({
+	toolName: "get_transaction_records",
+	render: (input) => <TransactionRecordsDisplay input={input} />,
 });

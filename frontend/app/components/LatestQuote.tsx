@@ -318,128 +318,132 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 	return <div id={`tradingview_${symbol}`} ref={container} style={{ height: chartHeight, width: '100%' }} />;
 };
 
-export const useLatestQuote = () => useAssistantToolUI({
-	toolName: "getLatestQuote",
-	render: (input) => {
-		const [isLoading, setIsLoading] = useState(true);
-		const responseData = input.args.data as QuoteResponse;
+// Create a proper React component for the quote display
+const QuoteDisplay: React.FC<{ input: { args: { data: QuoteResponse } } }> = ({ input }) => {
+	const [isLoading, setIsLoading] = useState(true);
+	const responseData = input.args.data as QuoteResponse;
 
-		useEffect(() => {
-			// 模拟数据加载
-			const timer = setTimeout(() => {
-				setIsLoading(false);
-			}, 500);
-			return () => clearTimeout(timer);
-		}, []);
+	useEffect(() => {
+		// 模拟数据加载
+		const timer = setTimeout(() => {
+			setIsLoading(false);
+		}, 500);
+		return () => clearTimeout(timer);
+	}, []);
 
-		// Extract the first cryptocurrency data from the response
-		// The data is in format: data.SYMBOL[0]
-		const symbol = Object.keys(responseData ? responseData.data : {})[0];
-		const cryptoData = responseData?.data[symbol ? symbol : ''][0];
+	// Extract the first cryptocurrency data from the response
+	// The data is in format: data.SYMBOL[0]
+	const symbol = Object.keys(responseData ? responseData.data : {})[0];
+	const cryptoData = responseData?.data[symbol ? symbol : ''][0];
 
-		// Number formatting function
-		const formatNumber = (num: number, decimals = 2) => {
-			return new Intl.NumberFormat('en-US', {
-				minimumFractionDigits: decimals,
-				maximumFractionDigits: decimals
-			}).format(num);
-		};
+	// Number formatting function
+	const formatNumber = (num: number, decimals = 2) => {
+		return new Intl.NumberFormat('en-US', {
+			minimumFractionDigits: decimals,
+			maximumFractionDigits: decimals
+		}).format(num);
+	};
 
-		// Format large numbers (market cap, volume, etc.)
-		const formatLargeNumber = (num: number) => {
-			if (num >= 1_000_000_000) {
-				return formatNumber(num / 1_000_000_000) + 'B';
-			} else if (num >= 1_000_000) {
-				return formatNumber(num / 1_000_000) + 'M';
-			} else if (num >= 1_000) {
-				return formatNumber(num / 1_000) + 'K';
-			}
-			return formatNumber(num);
-		};
-
-		// Format date
-		const formatDate = (dateString: string) => {
-			try {
-				const date = new Date(dateString);
-				return date.toLocaleString('en-US');
-			} catch (e) {
-				return dateString;
-			}
-		};
-
-		// Get CSS class based on price change
-		const getPercentChangeClass = (value: number) => {
-			return value >= 0 ? 'text-green-500' : 'text-red-500';
-		};
-
-		if (isLoading) {
-			return (
-				<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl 
-          animate-pulse min-h-[500px] flex justify-center items-center">
-					<div className="w-8 h-8 border-4 border-gray-600 border-t-gray-400 rounded-full animate-spin"></div>
-					<p className="text-gray-400">Loading market data...</p>
-				</div>
-			);
+	// Format large numbers (market cap, volume, etc.)
+	const formatLargeNumber = (num: number) => {
+		if (num >= 1_000_000_000) {
+			return formatNumber(num / 1_000_000_000) + 'B';
+		} else if (num >= 1_000_000) {
+			return formatNumber(num / 1_000_000) + 'M';
+		} else if (num >= 1_000) {
+			return formatNumber(num / 1_000) + 'K';
 		}
+		return formatNumber(num);
+	};
 
-		return cryptoData && (
-			<div className="flex flex-col space-y-4 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white 
-        w-full max-w-3xl sm:mt-6 md:mt-8 overflow-hidden">
-				<h2 className="text-xl sm:text-2xl font-bold text-center">{cryptoData.name} ({cryptoData.symbol}) Market Data</h2>
+	// Format date
+	const formatDate = (dateString: string) => {
+		try {
+			const date = new Date(dateString);
+			return date.toLocaleString('en-US');
+		} catch (e) {
+			return dateString;
+		}
+	};
 
-				{/* Price Information */}
-				<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
-					<div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
-						<div>
-							<div className="text-2xlsm:text-3xl font-bold">
-								{formatNumber(cryptoData.quote.USD.price, 6)}
-							</div>
-							<div className={`text-sm font-medium flex items-center gap-1 ${getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}`}>
-								{cryptoData.quote.USD.percent_change_24h > 0 ? '↑' : '↓'} {Math.abs(cryptoData.quote.USD.percent_change_24h).toFixed(2)}% (24h)
-							</div>
-						</div>
-						<div className="flex flex-row sm:flex-col justify-between sm:items-end text-xs sm:text-sm gap-2 sm:gap-0">
-							<div>Market Cap:{formatLargeNumber(cryptoData.quote.USD.market_cap)}</div>
-							<div>24hVol:{formatLargeNumber(cryptoData.quote.USD.market_cap)}</div>
-							<div>24hVol:{formatLargeNumber(cryptoData.quote.USD.volume_24h)}</div>
-						</div>
-					</div>
-				</div>
-				{/* TradingView Chart */}
-				<div className="bg-gray-900 rounded-lg p-2 sm:p-4">
-					<TradingViewChart symbol={cryptoData.symbol} />
-				</div>
+	// Get CSS class based on price change
+	const getPercentChangeClass = (value: number) => {
+		return value >= 0 ? 'text-green-500' : 'text-red-500';
+	};
 
-				{/* Price Changes */}
-				<div className="bg-gray-900 rounded-lg p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm">
-					<div>
-						<div className="text-gray-400">1h Change</div>
-						<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_1h)}>
-							{cryptoData.quote.USD.percent_change_1h > 0 ? '+' : ''}
-							{formatNumber(cryptoData.quote.USD.percent_change_1h)}%
-						</div>
-					</div>
-					<div>
-						<div className="text-gray-400">24h Change</div>
-						<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}>
-							{cryptoData.quote.USD.percent_change_24h > 0 ? '+' : ''}
-							{formatNumber(cryptoData.quote.USD.percent_change_24h)}%
-						</div>
-					</div>
-					<div className="col-span-2 sm:col-span-1">
-						<div className="text-gray-400">7d Change</div>
-						<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_7d)}>
-							{cryptoData.quote.USD.percent_change_7d > 0 ? '+' : ''}
-							{formatNumber(cryptoData.quote.USD.percent_change_7d)}%
-						</div>
-					</div>
-				</div>
-
-				{/* Last Updated */}
-				<div className="bg-gray-900 rounded-lg p-2 sm:p-3 text-[10px] sm:text-xs text-gray-400 text-right">
-					Last Updated: {formatDate(cryptoData.last_updated)}
-				</div>
+	if (isLoading) {
+		return (
+			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl 
+          animate-pulse min-h-[500px] flex justify-center items-center">
+				<div className="w-8 h-8 border-4 border-gray-600 border-t-gray-400 rounded-full animate-spin"></div>
+				<p className="text-gray-400">Loading market data...</p>
 			</div>
 		);
-	},
+	}
+
+	return cryptoData && (
+		<div className="flex flex-col space-y-4 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white 
+        w-full max-w-3xl sm:mt-6 md:mt-8 overflow-hidden">
+			<h2 className="text-xl sm:text-2xl font-bold text-center">{cryptoData.name} ({cryptoData.symbol}) Market Data</h2>
+
+			{/* Price Information */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+				<div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+					<div>
+						<div className="text-2xlsm:text-3xl font-bold">
+							{formatNumber(cryptoData.quote.USD.price, 6)}
+						</div>
+						<div className={`text-sm font-medium flex items-center gap-1 ${getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}`}>
+							{cryptoData.quote.USD.percent_change_24h > 0 ? '↑' : '↓'} {Math.abs(cryptoData.quote.USD.percent_change_24h).toFixed(2)}% (24h)
+						</div>
+					</div>
+					<div className="flex flex-row sm:flex-col justify-between sm:items-end text-xs sm:text-sm gap-2 sm:gap-0">
+						<div>Market Cap:{formatLargeNumber(cryptoData.quote.USD.market_cap)}</div>
+						<div>24hVol:{formatLargeNumber(cryptoData.quote.USD.market_cap)}</div>
+						<div>24hVol:{formatLargeNumber(cryptoData.quote.USD.volume_24h)}</div>
+					</div>
+				</div>
+			</div>
+			{/* TradingView Chart */}
+			<div className="bg-gray-900 rounded-lg p-2 sm:p-4">
+				<TradingViewChart symbol={cryptoData.symbol} />
+			</div>
+
+			{/* Price Changes */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm">
+				<div>
+					<div className="text-gray-400">1h Change</div>
+					<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_1h)}>
+						{cryptoData.quote.USD.percent_change_1h > 0 ? '+' : ''}
+						{formatNumber(cryptoData.quote.USD.percent_change_1h)}%
+					</div>
+				</div>
+				<div>
+					<div className="text-gray-400">24h Change</div>
+					<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}>
+						{cryptoData.quote.USD.percent_change_24h > 0 ? '+' : ''}
+						{formatNumber(cryptoData.quote.USD.percent_change_24h)}%
+					</div>
+				</div>
+				<div className="col-span-2 sm:col-span-1">
+					<div className="text-gray-400">7d Change</div>
+					<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_7d)}>
+						{cryptoData.quote.USD.percent_change_7d > 0 ? '+' : ''}
+						{formatNumber(cryptoData.quote.USD.percent_change_7d)}%
+					</div>
+				</div>
+			</div>
+
+			{/* Last Updated */}
+			<div className="bg-gray-900 rounded-lg p-2 sm:p-3 text-[10px] sm:text-xs text-gray-400 text-right">
+				Last Updated: {formatDate(cryptoData.last_updated)}
+			</div>
+		</div>
+	);
+};
+
+// Update the hook to use the new component
+export const useLatestQuote = () => useAssistantToolUI({
+	toolName: "getLatestQuote",
+	render: (input) => <QuoteDisplay input={input} />,
 });

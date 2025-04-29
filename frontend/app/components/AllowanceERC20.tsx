@@ -134,73 +134,74 @@ const MainAllowanceDisplay = ({ amount, symbol }: { amount: string, symbol: stri
 	);
 };
 
+// 创建一个独立的函数组件
+const AllowanceERC20Display = ({ data }: { data: Allowance }) => {
+	const [isExpanded, setIsExpanded] = useState(false);
+
+	// 处理加载和错误状态
+	if (data && !data.success) return (
+		<div className="p-4 text-center text-red-500">
+			Failed to fetch allowance data. Please try again.
+		</div>
+	);
+
+	return data && (
+		<div className="flex flex-col space-y-3 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-full sm:max-w-3xl mx-auto mt-3 sm:mt-6">
+			{/* 其余 JSX 内容不变 */}
+			<h2 className="text-xl sm:text-2xl font-bold text-center">Token Allowance</h2>
+
+			{/* 主要授权信息 */}
+			<MainAllowanceDisplay
+				amount={data.allowance}
+				symbol={data.symbol}
+			/>
+
+			{/* 授权详情 */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+				<h3 className="text-lg sm:text-xl font-semibold mb-2">Allowance Details</h3>
+				<div className="grid grid-cols-1 gap-2">
+					<AddressDisplay address={data.owner_address} label="Owner" />
+					<AddressDisplay address={data.spender_address} label="Spender" />
+					<div className="flex justify-between p-2 border-b border-gray-700">
+						<span className="text-sm sm:text-base">Chain ID</span>
+						<span className="font-medium">{data.chainId}</span>
+					</div>
+				</div>
+			</div>
+
+			{/* 代币信息 */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+				<button
+					className="w-full text-left text-lg sm:text-xl font-semibold mb-0 flex justify-between items-center"
+					onClick={() => setIsExpanded(!isExpanded)}
+				>
+					<span>Token Info</span>
+					<span>{isExpanded ? '▲' : '▼'}</span>
+				</button>
+
+				{isExpanded && (
+					<div className="mt-2 bg-gray-800 p-2 rounded overflow-hidden">
+						<AddressDisplay address={data.token_address} label="Token Address" />
+						<div className="flex justify-between p-2">
+							<span className="text-sm sm:text-base">Symbol</span>
+							<span className="font-medium">{data.symbol}</span>
+						</div>
+						<div className="flex justify-between p-2">
+							<span className="text-sm sm:text-base">Decimals</span>
+							<span className="font-medium">{data.decimals}</span>
+						</div>
+					</div>
+				)}
+			</div>
+		</div>
+	);
+};
+
+// 然后在 useAllowanceERC20 中使用这个组件
 export const useAllowanceERC20 = () => useAssistantToolUI({
 	toolName: "allowance_erc20",
 	render: (input) => {
-		const [isExpanded, setIsExpanded] = useState(false);
 		const data: Allowance = input.args.data;
-
-		// 处理加载和错误状态
-		// if (!data) return <div className="p-4 text-center">Loading allowance data...</div>;
-		if (data && !data.success) return (
-			<div className="p-4 text-center text-red-500">
-				Failed to fetch allowance data. Please try again.
-			</div>
-		);
-
-		// 计算格式化的授权金额
-		// const allowanceAmount = data.allowance
-		// 	? parseFloat(data.allowance) / Math.pow(10, data.decimals)
-		// 	: 0;
-
-		return data && (
-			<div className="flex flex-col space-y-3 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-full sm:max-w-3xl mx-auto mt-3 sm:mt-6">
-				<h2 className="text-xl sm:text-2xl font-bold text-center">Token Allowance</h2>
-
-				{/* 主要授权信息 */}
-				<MainAllowanceDisplay
-					amount={data.allowance}
-					symbol={data.symbol}
-				/>
-
-				{/* 授权详情 */}
-				<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
-					<h3 className="text-lg sm:text-xl font-semibold mb-2">Allowance Details</h3>
-					<div className="grid grid-cols-1 gap-2">
-						<AddressDisplay address={data.owner_address} label="Owner" />
-						<AddressDisplay address={data.spender_address} label="Spender" />
-						<div className="flex justify-between p-2 border-b border-gray-700">
-							<span className="text-sm sm:text-base">Chain ID</span>
-							<span className="font-medium">{data.chainId}</span>
-						</div>
-					</div>
-				</div>
-
-				{/* 代币信息 */}
-				<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
-					<button
-						className="w-full text-left text-lg sm:text-xl font-semibold mb-0 flex justify-between items-center"
-						onClick={() => setIsExpanded(!isExpanded)}
-					>
-						<span>Token Info</span>
-						<span>{isExpanded ? '▲' : '▼'}</span>
-					</button>
-
-					{isExpanded && (
-						<div className="mt-2 bg-gray-800 p-2 rounded overflow-hidden">
-							<AddressDisplay address={data.token_address} label="Token Address" />
-							<div className="flex justify-between p-2">
-								<span className="text-sm sm:text-base">Symbol</span>
-								<span className="font-medium">{data.symbol}</span>
-							</div>
-							<div className="flex justify-between p-2">
-								<span className="text-sm sm:text-base">Decimals</span>
-								<span className="font-medium">{data.decimals}</span>
-							</div>
-						</div>
-					)}
-				</div>
-			</div>
-		);
+		return <AllowanceERC20Display data={data} />;
 	},
 });

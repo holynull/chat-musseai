@@ -142,158 +142,162 @@ const InfoItem = ({ label, value }: { label: string; value: string | number }) =
 	);
 };
 
-export const useTransactionDetail = () => useAssistantToolUI({
-	toolName: "get_transaction_details",
-	render: (input) => {
-		const data: TransactionDetail = input.args.data;
-		const [isMobile, setIsMobile] = useState(false);
+// Create proper React component for transaction details
+const TransactionDetailDisplay: React.FC<{ input: { args: { data: TransactionDetail } } }> = ({ input }) => {
+	const data: TransactionDetail = input.args.data;
+	const [isMobile, setIsMobile] = useState(false);
 
-		// 响应式检测是否为移动设备
-		useEffect(() => {
-			const checkMobile = () => {
-				setIsMobile(window.innerWidth < 640);
-			};
+	// 响应式检测是否为移动设备
+	useEffect(() => {
+		const checkMobile = () => {
+			setIsMobile(window.innerWidth < 640);
+		};
 
-			checkMobile();
-			window.addEventListener('resize', checkMobile);
-			return () => window.removeEventListener('resize', checkMobile);
-		}, []);
+		checkMobile();
+		window.addEventListener('resize', checkMobile);
+		return () => window.removeEventListener('resize', checkMobile);
+	}, []);
 
-		// if (!data) return <div className="text-gray-400">No transaction details available</div>;
-		if (!data) return <></>
-		const statusInfo = getStatusInfo(data.status);
-		const fromAmount = parseFloat(data.fromTokenAmount);
-		const toAmount = parseFloat(data.toTokenAmount);
+	// if (!data) return <div className="text-gray-400">No transaction details available</div>;
+	if (!data) return <></>
+	const statusInfo = getStatusInfo(data.status);
+	const fromAmount = parseFloat(data.fromTokenAmount);
+	const toAmount = parseFloat(data.toTokenAmount);
 
-		return data && (
-			<div className="flex flex-col space-y-4 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-3xl mx-auto sm:mt-6 md:mt-8 overflow-hidden">
-				<h2 className="text-xl sm:text-2xl font-bold text-center">Transaction Details</h2>
+	return data && (
+		<div className="flex flex-col space-y-4 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-3xl mx-auto sm:mt-6 md:mt-8 overflow-hidden">
+			<h2 className="text-xl sm:text-2xl font-bold text-center">Transaction Details</h2>
 
-				{/* 头部信息 - 订单ID和状态 */}
-				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-					<AddressDisplay
-						label="Order ID"
-						address={data.orderId}
-					/>
-					<span className={`text-base sm:text-lg font-bold ${statusInfo.color} mt-1 sm:mt-0`}>
-						{statusInfo.label}
-					</span>
+			{/* 头部信息 - 订单ID和状态 */}
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+				<AddressDisplay
+					label="Order ID"
+					address={data.orderId}
+				/>
+				<span className={`text-base sm:text-lg font-bold ${statusInfo.color} mt-1 sm:mt-0`}>
+					{statusInfo.label}
+				</span>
+			</div>
+
+			{/* 主要内容区域 */}
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+				{/* 基本信息 */}
+				<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+					<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Basic Information</h3>
+					<ul className="space-y-1">
+						<InfoItem
+							label="Created"
+							value={formatDate(data.createTime)}
+						/>
+						{data.finishTime && (
+							<InfoItem
+								label="Completed"
+								value={formatDate(data.finishTime)}
+							/>
+						)}
+					</ul>
+
+					<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3 mt-4">Transaction Details</h3>
+					<ul className="space-y-1">
+						<InfoItem
+							label="From"
+							value={data.fromChain || 'BSC'}
+						/>
+						<InfoItem
+							label="To"
+							value={data.toChain || 'Solana'}
+						/>
+						<InfoItem
+							label="Amount"
+							value={`${formatNumber(fromAmount.toString())} ${data.fromCoinCode || 'USDT'}`}
+						/>
+						<InfoItem
+							label="Receive Amount"
+							value={`${formatNumber(toAmount.toString())} ${data.toCoinCode || 'SOL'}`}
+						/>
+						<InfoItem
+							label="Slippage"
+							value={`${data.slippage}%`}
+						/>
+						{data.fee && (
+							<InfoItem
+								label="Fee"
+								value={`${data.fee}%`}
+							/>
+						)}
+					</ul>
 				</div>
 
-				{/* 主要内容区域 */}
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
-					{/* 基本信息 */}
-					<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
-						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Basic Information</h3>
-						<ul className="space-y-1">
-							<InfoItem
-								label="Created"
-								value={formatDate(data.createTime)}
-							/>
-							{data.finishTime && (
-								<InfoItem
-									label="Completed"
-									value={formatDate(data.finishTime)}
-								/>
-							)}
-						</ul>
+				{/* 地址信息 */}
+				<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+					<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Address Information</h3>
+					<ul className="space-y-1">
+						<AddressDisplay
+							label="Source Address"
+							address={data.fromAddress}
+						/>
+						<AddressDisplay
+							label="Source Token"
+							address={data.fromTokenAddress}
+						/>
+						<AddressDisplay
+							label="Target Token"
+							address={data.toTokenAddress}
+						/>
+					</ul>
 
-						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3 mt-4">Transaction Details</h3>
-						<ul className="space-y-1">
-							<InfoItem
-								label="From"
-								value={data.fromChain || 'BSC'}
-							/>
-							<InfoItem
-								label="To"
-								value={data.toChain || 'Solana'}
-							/>
-							<InfoItem
-								label="Amount"
-								value={`${formatNumber(fromAmount.toString())} ${data.fromCoinCode || 'USDT'}`}
-							/>
-							<InfoItem
-								label="Receive Amount"
-								value={`${formatNumber(toAmount.toString())} ${data.toCoinCode || 'SOL'}`}
-							/>
-							<InfoItem
-								label="Slippage"
-								value={`${data.slippage}%`}
-							/>
-							{data.fee && (
-								<InfoItem
-									label="Fee"
-									value={`${data.fee}%`}
-								/>
-							)}
-						</ul>
-					</div>
-
-					{/* 地址信息 */}
-					<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
-						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Address Information</h3>
-						<ul className="space-y-1">
-							<AddressDisplay
-								label="Source Address"
-								address={data.fromAddress}
-							/>
-							<AddressDisplay
-								label="Source Token"
-								address={data.fromTokenAddress}
-							/>
-							<AddressDisplay
-								label="Target Token"
-								address={data.toTokenAddress}
-							/>
-						</ul>
-
-						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3 mt-4">Transaction Hash</h3>
-						<ul className="space-y-2">
-							{data.hash && (
-								<li className="py-1">
-									<a
-										href={data.depositHashExplore || `https://solscan.io/tx/${data.hash}`}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center flex-wrap gap-1"
-									>
-										<span>View Transaction</span>
-										<span className="text-gray-400">({truncateAddress(data.hash)})</span>
-										<svg className="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-										</svg>
-									</a>
-								</li>
-							)}
-							{data.refundHash && (
-								<li className="py-1">
-									<a
-										href={data.refundHashExplore || `https://solscan.io/tx/${data.refundHash}`}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center flex-wrap gap-1"
-									>
-										<span>View Refund Transaction</span>
-										<span className="text-gray-400">({truncateAddress(data.refundHash)})</span>
-										<svg className="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-										</svg>
-									</a>
-								</li>
-							)}
-						</ul>
-
-						{data.refundReason && (
-							<div className="mt-4">
-								<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Refund Information</h3>
-								<div className="p-2 sm:p-3 bg-red-900 border border-red-700 rounded-md">
-									<p className="text-sm text-red-300">{data.refundReason}</p>
-								</div>
-							</div>
+					<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3 mt-4">Transaction Hash</h3>
+					<ul className="space-y-2">
+						{data.hash && (
+							<li className="py-1">
+								<a
+									href={data.depositHashExplore || `https://solscan.io/tx/${data.hash}`}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center flex-wrap gap-1"
+								>
+									<span>View Transaction</span>
+									<span className="text-gray-400">({truncateAddress(data.hash)})</span>
+									<svg className="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+									</svg>
+								</a>
+							</li>
 						)}
-					</div>
+						{data.refundHash && (
+							<li className="py-1">
+								<a
+									href={data.refundHashExplore || `https://solscan.io/tx/${data.refundHash}`}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center flex-wrap gap-1"
+								>
+									<span>View Refund Transaction</span>
+									<span className="text-gray-400">({truncateAddress(data.refundHash)})</span>
+									<svg className="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+									</svg>
+								</a>
+							</li>
+						)}
+					</ul>
+
+					{data.refundReason && (
+						<div className="mt-4">
+							<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Refund Information</h3>
+							<div className="p-2 sm:p-3 bg-red-900 border border-red-700 rounded-md">
+								<p className="text-sm text-red-300">{data.refundReason}</p>
+							</div>
+						</div>
+					)}
 				</div>
 			</div>
-		);
-	},
+		</div>
+	);
+};
+
+// Update the hook to use the new component
+export const useTransactionDetail = () => useAssistantToolUI({
+	toolName: "get_transaction_details",
+	render: (input) => <TransactionDetailDisplay input={input} />,
 });
