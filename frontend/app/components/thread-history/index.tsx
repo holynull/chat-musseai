@@ -1,5 +1,5 @@
 import { TooltipIconButton } from "../ui/assistant-ui/tooltip-icon-button";
-import { SquarePen, History } from "lucide-react";
+import { SquarePen, History ,Menu} from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet";
 import { Skeleton } from "../ui/skeleton";
 import React from "react";
@@ -96,7 +96,7 @@ function ThreadHistoryComponent() {
 							tooltip="New chat"
 							className="w-fit h-fit p-2"
 						>
-							<History className="w-6 h-6" />
+							<Menu className="w-6 h-6" />
 						</TooltipIconButton>
 					</SheetTrigger>
 					<SheetContent side="left" className="bg-[#282828] border-none">

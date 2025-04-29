@@ -118,7 +118,8 @@ export const AssistantMessage: FC = () => {
 				<div className="flex flex-col space-y-2 mb-6">
 					<div className="flex items-start">
 						<AssistantAvatar />
-						<div className="flex flex-col space-y-3 max-w-[90%] sm:max-w-[80%] md:max-w-[70%]">
+						{/* <div className="flex flex-col space-y-3 max-w-[90%] sm:max-w-[80%] md:max-w-[70%]"> */}
+						<div className="flex flex-col space-y-3 max-w-[90%] sm:max-w-[80%] md:max-w-[85%] lg:max-w-[90%]">
 							<div className="bg-gray-800/80 backdrop-blur-sm px-3 sm:px-5 py-3 sm:py-4 rounded-2xl rounded-tl-none border border-gray-700 shadow-md">
 								<MessagePrimitive.Content components={{ Text: MarkdownText }} />
 							</div>

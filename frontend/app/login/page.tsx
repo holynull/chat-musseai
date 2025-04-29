@@ -52,14 +52,24 @@ export default function LoginPage() {
 								animate={{ scale: 1 }}
 								transition={{ duration: 0.5 }}
 							>
-								<div className="w-20 h-20 mx-auto mb-4 rounded-full bg-white flex items-center justify-center overflow-hidden">
-									<Image
-										src="/images/logo.png"
-										alt="Musse AI Logo"
-										width={80}
-										height={80}
-										className="object-contain"
-									/>
+								<div className="logo-container relative mb-8">
+									{/* 发光效果 */}
+									<div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/30 to-purple-500/30 blur-xl animate-pulse-slow"></div>
+
+									{/* 旋转的外环 */}
+									<div className="absolute inset-0 rounded-full border-2 border-blue-400/30 animate-spin-slow"></div>
+
+									{/* Logo图片容器 */}
+									<div className="relative z-10 w-28 h-28 rounded-full overflow-hidden">
+										<Image
+											src="/images/logo.png"
+											alt="Musse AI Logo"
+											fill
+											priority
+											className="object-fill rounded-full"
+											style={{ transform: 'scale(1.1)' }}
+										/>
+									</div>
 								</div>
 							</motion.div>
 							<h1 className="text-3xl font-bold text-white mb-2">Login to Musse AI</h1>
