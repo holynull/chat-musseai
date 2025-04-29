@@ -81,7 +81,10 @@ const getStatusInfo = (status: string) => {
 // Truncate address for display
 const truncateAddress = (address: string, length = 6) => {
 	if (!address) return '';
-	return `${address.substring(0, length)}...${address.substring(address.length - 4)}`;
+
+	// 在移动设备上使用更短的地址显示
+	const displayLength = window.innerWidth < 640 ? 4 : length;
+	return `${address.substring(0, displayLength)}...${address.substring(address.length - 4)}`;
 };
 
 // Copy to clipboard function
@@ -95,10 +98,66 @@ const copyToClipboard = async (text: string) => {
 	}
 };
 
+// 新增: 显示地址的组件，包含复制功能
+type AddressDisplayProps = {
+	label: string;
+	address: string;
+	showCopy?: boolean;
+};
+
+const AddressDisplay = ({ label, address, showCopy = true }: AddressDisplayProps) => {
+	if (!address) return null;
+
+	return (
+		<li className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:items-center py-1">
+			<span className="text-sm text-gray-400">{label}:</span>
+			<div className="flex items-center space-x-1 break-all">
+				<span className="text-sm text-white font-mono">{truncateAddress(address)}</span>
+				{showCopy && (
+					<button
+						onClick={() => copyToClipboard(address)}
+						className="p-1.5 hover:bg-gray-700 rounded-full transition-colors duration-200 flex-shrink-0"
+						title={`Copy ${label}`}
+						aria-label={`Copy ${label}`}
+					>
+						<svg className="w-4 h-4 text-gray-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+						</svg>
+					</button>
+				)}
+			</div>
+		</li>
+	);
+};
+
+// 新增: 交易信息项组件
+const InfoItem = ({ label, value }: { label: string; value: string | number }) => {
+	if (!value && value !== 0) return null;
+
+	return (
+		<li className="flex flex-col sm:flex-row sm:justify-between gap-1 py-1">
+			<span className="text-sm text-gray-400">{label}:</span>
+			<span className="text-sm text-white break-words">{value}</span>
+		</li>
+	);
+};
+
 export const useTransactionDetail = () => useAssistantToolUI({
 	toolName: "get_transaction_details",
 	render: (input) => {
 		const data: TransactionDetail = input.args.data;
+		const [isMobile, setIsMobile] = useState(false);
+
+		// 响应式检测是否为移动设备
+		useEffect(() => {
+			const checkMobile = () => {
+				setIsMobile(window.innerWidth < 640);
+			};
+
+			checkMobile();
+			window.addEventListener('resize', checkMobile);
+			return () => window.removeEventListener('resize', checkMobile);
+		}, []);
 
 		// if (!data) return <div className="text-gray-400">No transaction details available</div>;
 		if (!data) return <></>
@@ -107,123 +166,118 @@ export const useTransactionDetail = () => useAssistantToolUI({
 		const toAmount = parseFloat(data.toTokenAmount);
 
 		return data && (
-			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
-				<h2 className="text-2xl font-bold text-center">Transaction Details</h2>
+			<div className="flex flex-col space-y-4 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-3xl mx-auto sm:mt-6 md:mt-8 overflow-hidden">
+				<h2 className="text-xl sm:text-2xl font-bold text-center">Transaction Details</h2>
 
-				<div className="flex items-center justify-between">
-					<div className="flex items-center space-x-2">
-						<span className="text-sm text-gray-400">Order ID:</span>
-						<div className="flex items-center space-x-1">
-							<span className="text-sm text-white">{truncateAddress(data.orderId)}</span>
-							<button
-								onClick={() => copyToClipboard(data.orderId)}
-								className="p-1 hover:bg-gray-700 rounded-full transition-colors duration-200"
-								title="Copy Order ID"
-							>
-								<svg className="w-4 h-4 text-gray-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-								</svg>
-							</button>
-						</div>
-					</div>
-					<span className={`text-lg font-bold ${statusInfo.color}`}>
+				{/* 头部信息 - 订单ID和状态 */}
+				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+					<AddressDisplay
+						label="Order ID"
+						address={data.orderId}
+					/>
+					<span className={`text-base sm:text-lg font-bold ${statusInfo.color} mt-1 sm:mt-0`}>
 						{statusInfo.label}
 					</span>
 				</div>
 
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-					<div className="bg-gray-900 rounded-lg p-4">
-						<h3 className="text-xl font-semibold mb-3">Basic Information</h3>
-						<ul className="space-y-2">
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">Created:</span>
-								<span className="text-sm text-white">{formatDate(data.createTime)}</span>
-							</li>
+				{/* 主要内容区域 */}
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+					{/* 基本信息 */}
+					<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Basic Information</h3>
+						<ul className="space-y-1">
+							<InfoItem
+								label="Created"
+								value={formatDate(data.createTime)}
+							/>
 							{data.finishTime && (
-								<li className="flex justify-between">
-									<span className="text-sm text-gray-400">Completed:</span>
-									<span className="text-sm text-white">{formatDate(data.finishTime)}</span>
-								</li>
+								<InfoItem
+									label="Completed"
+									value={formatDate(data.finishTime)}
+								/>
 							)}
 						</ul>
 
-						<h3 className="text-xl font-semibold mb-3 mt-4">Transaction Details</h3>
-						<ul className="space-y-2">
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">From:</span>
-								<span className="text-sm text-white">{data.fromChain || 'BSC'}</span>
-							</li>
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">To:</span>
-								<span className="text-sm text-white">{data.toChain || 'Solana'}</span>
-							</li>
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">Amount:</span>
-								<span className="text-sm text-white">
-									{formatNumber(fromAmount.toString())} {data.fromCoinCode || 'USDT'}
-								</span>
-							</li>
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">Receive Amount:</span>
-								<span className="text-sm text-white">
-									{formatNumber(toAmount.toString())} {data.toCoinCode || 'SOL'}
-								</span>
-							</li>
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">Slippage:</span>
-								<span className="text-sm text-white">{data.slippage}%</span>
-							</li>
+						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3 mt-4">Transaction Details</h3>
+						<ul className="space-y-1">
+							<InfoItem
+								label="From"
+								value={data.fromChain || 'BSC'}
+							/>
+							<InfoItem
+								label="To"
+								value={data.toChain || 'Solana'}
+							/>
+							<InfoItem
+								label="Amount"
+								value={`${formatNumber(fromAmount.toString())} ${data.fromCoinCode || 'USDT'}`}
+							/>
+							<InfoItem
+								label="Receive Amount"
+								value={`${formatNumber(toAmount.toString())} ${data.toCoinCode || 'SOL'}`}
+							/>
+							<InfoItem
+								label="Slippage"
+								value={`${data.slippage}%`}
+							/>
 							{data.fee && (
-								<li className="flex justify-between">
-									<span className="text-sm text-gray-400">Fee:</span>
-									<span className="text-sm text-white">{data.fee}%</span>
-								</li>
+								<InfoItem
+									label="Fee"
+									value={`${data.fee}%`}
+								/>
 							)}
 						</ul>
 					</div>
 
-					<div className="bg-gray-900 rounded-lg p-4">
-						<h3 className="text-xl font-semibold mb-3">Address Information</h3>
-						<ul className="space-y-2">
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">Source Address:</span>
-								<span className="text-sm text-white font-mono">{truncateAddress(data.fromAddress)}</span>
-							</li>
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">Source Token:</span>
-								<span className="text-sm text-white font-mono">{truncateAddress(data.fromTokenAddress)}</span>
-							</li>
-							<li className="flex justify-between">
-								<span className="text-sm text-gray-400">Target Token:</span>
-								<span className="text-sm text-white font-mono">{truncateAddress(data.toTokenAddress)}</span>
-							</li>
+					{/* 地址信息 */}
+					<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Address Information</h3>
+						<ul className="space-y-1">
+							<AddressDisplay
+								label="Source Address"
+								address={data.fromAddress}
+							/>
+							<AddressDisplay
+								label="Source Token"
+								address={data.fromTokenAddress}
+							/>
+							<AddressDisplay
+								label="Target Token"
+								address={data.toTokenAddress}
+							/>
 						</ul>
 
-						<h3 className="text-xl font-semibold mb-3 mt-4">Transaction Hash</h3>
+						<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3 mt-4">Transaction Hash</h3>
 						<ul className="space-y-2">
 							{data.hash && (
-								<li>
+								<li className="py-1">
 									<a
 										href={data.depositHashExplore || `https://solscan.io/tx/${data.hash}`}
 										target="_blank"
 										rel="noopener noreferrer"
-										className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center space-x-1"
+										className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center flex-wrap gap-1"
 									>
 										<span>View Transaction</span>
 										<span className="text-gray-400">({truncateAddress(data.hash)})</span>
+										<svg className="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+										</svg>
 									</a>
 								</li>
 							)}
 							{data.refundHash && (
-								<li>
+								<li className="py-1">
 									<a
 										href={data.refundHashExplore || `https://solscan.io/tx/${data.refundHash}`}
 										target="_blank"
 										rel="noopener noreferrer"
-										className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center space-x-1"
+										className="text-blue-400 hover:text-blue-300 hover:underline text-sm inline-flex items-center flex-wrap gap-1"
 									>
 										<span>View Refund Transaction</span>
 										<span className="text-gray-400">({truncateAddress(data.refundHash)})</span>
+										<svg className="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+										</svg>
 									</a>
 								</li>
 							)}
@@ -231,8 +285,8 @@ export const useTransactionDetail = () => useAssistantToolUI({
 
 						{data.refundReason && (
 							<div className="mt-4">
-								<h3 className="text-xl font-semibold mb-3">Refund Information</h3>
-								<div className="p-3 bg-red-900 border border-red-700 rounded-md">
+								<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Refund Information</h3>
+								<div className="p-2 sm:p-3 bg-red-900 border border-red-700 rounded-md">
 									<p className="text-sm text-red-300">{data.refundReason}</p>
 								</div>
 							</div>

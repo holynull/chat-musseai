@@ -54,6 +54,8 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 	const { txData, name, orderInfo, tx_detail } = input.args;
 	const [copySuccess, setCopySuccess] = useState(false);
 	const [showRawData, setShowRawData] = useState(false);
+	// 新增状态用于移动端的详情展开/折叠
+	const [showDetails, setShowDetails] = useState(true);
 
 	// Extract transaction info from tx_detail
 	const extractTransactionInfo = () => {
@@ -295,23 +297,28 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 		}
 	};
 
+	// 用于移动端的详情切换函数
+	const toggleDetails = () => {
+		setShowDetails(!showDetails);
+	};
+
 	return txData && (
-		<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
+		<div className="flex flex-col space-y-3 p-2 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-full sm:max-w-3xl mx-auto">
 			{/* Header */}
-			<div className="p-4 border-b border-gray-700 bg-gray-900">
-				<div className="flex items-center justify-between">
-					<h3 className="text-xl font-semibold text-white">
+			<div className="p-3 sm:p-4 border-b border-gray-700 bg-gray-900 rounded-t-lg">
+				<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+					<h3 className="text-lg sm:text-xl font-semibold text-white">
 						{name || "Send Transaction"}
 					</h3>
-					<div className="text-sm font-medium text-blue-400 px-2 py-1 bg-gray-700 rounded-full">
+					<div className="text-xs sm:text-sm font-medium text-blue-400 px-2 py-1 bg-gray-700 rounded-full self-start sm:self-auto">
 						{transactionInfo.networkIcon} {transactionInfo.networkName}
 					</div>
 				</div>
 			</div>
 
 			{/* Transaction explanation */}
-			<div className="p-4 bg-gray-700 border-b border-gray-600">
-				<p className="text-sm text-blue-200">
+			<div className="p-3 sm:p-4 bg-gray-700 border-b border-gray-600 text-xs sm:text-sm">
+				<p className="text-blue-200">
 					<span className="font-semibold text-white">About this transaction:</span> You are about to swap
 					{transactionInfo.fromToken ? ` ${formatNumber(transactionInfo.fromAmount)} ${transactionInfo.fromToken} ` : " tokens "}
 					for
@@ -320,38 +327,45 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 				</p>
 			</div>
 
-			<div className="p-4">
-				<div className="grid gap-4">
+			<div className="p-3 sm:p-4">
+				<div className="grid gap-3 sm:gap-4">
 					{/* Transaction visualization */}
-					<div className="bg-gray-900 p-5 rounded-lg border border-gray-700 mb-4">
-						<div className="flex items-center justify-between">
-							<div className="text-center">
-								<div className="text-sm text-gray-400 mb-1">From</div>
-								<div className="bg-gray-800 rounded-lg p-3 flex flex-col items-center">
-									<div className="font-semibold text-lg text-white">
+					<div className="bg-gray-900 p-3 sm:p-5 rounded-lg border border-gray-700">
+						<div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+							{/* From Token Display */}
+							<div className="text-center w-full sm:w-auto">
+								<div className="text-xs text-gray-400 mb-1">From</div>
+								<div className="bg-gray-800 rounded-lg p-2 flex flex-col items-center">
+									<div className="font-semibold text-sm sm:text-lg text-white">
 										{formatNumber(transactionInfo.fromAmount)}
 									</div>
-									<div className="text-blue-400 font-medium">{transactionInfo.fromToken}</div>
+									<div className="text-xs text-blue-400 font-medium">{transactionInfo.fromToken}</div>
 								</div>
 							</div>
-
-							<div className="flex-1 px-4 flex justify-center items-center">
-								<div className="h-0.5 w-full bg-gray-700 relative">
+							{/* Arrow/Direction Indicator */}
+							<div className="flex-none sm:flex-1 w-full sm:w-auto flex justify-center items-center py-1 sm:py-2 sm:px-4">
+								<div className="hidden sm:block h-0.5 w-full bg-gray-700 relative">
 									<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 p-2 border border-gray-600 rounded-full">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-6 sm:w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
 										</svg>
 									</div>
 								</div>
+								<div className="sm:hidden">
+									<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+									</svg>
+								</div>
 							</div>
 
-							<div className="text-center">
-								<div className="text-sm text-gray-400 mb-1">To</div>
-								<div className="bg-gray-800 rounded-lg p-3 flex flex-col items-center">
-									<div className="font-semibold text-lg text-white">
+							{/* To Token Display */}
+							<div className="text-center w-full sm:w-auto">
+								<div className="text-xs sm:text-sm text-gray-400 mb-1">To</div>
+								<div className="bg-gray-800 rounded-lg p-2 sm:p-3 flex flex-col items-center">
+									<div className="font-semibold text-base sm:text-lg text-white">
 										{formatNumber(transactionInfo.toAmount)}
 									</div>
-									<div className="text-green-400 font-medium">{transactionInfo.toToken}</div>
+									<div className="text-xs sm:text-sm text-green-400 font-medium">{transactionInfo.toToken}</div>
 								</div>
 							</div>
 						</div>
@@ -359,33 +373,47 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 						{/* Exchange rate info */}
 						<div className="mt-4 text-center">
 							<div className="text-xs text-gray-400">Exchange Rate</div>
-							<div className="font-medium text-gray-300">
-								1 {transactionInfo.fromToken} ≈ {formatNumber(transactionInfo.exchangeRate, 6)} {transactionInfo.toToken}
+							<div className="text-xs sm:text-base font-medium text-gray-300">
+								1 {transactionInfo.fromToken} ≈ {formatNumber(transactionInfo.exchangeRate, 4)} {transactionInfo.toToken}
 							</div>
 						</div>
 					</div>
 
-					{/* Transaction details section */}
-					<div className="mt-2">
-						<h4 className="text-sm font-semibold text-white mb-3">Transaction Details</h4>
+					{/* Mobile Toggle Button for Details */}
+					<button
+						className="sm:hidden w-full py-2 px-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium text-white flex items-center justify-between"
+						onClick={toggleDetails}
+					>
+						<span>Transaction Details</span>
+						<svg
+							className={`h-4 w-4 transform transition-transform ${showDetails ? 'rotate-180' : ''}`}
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
 
-						<div className="bg-gray-900 p-4 rounded-md border border-gray-700">
-							<div className="space-y-3">
+					{/* Transaction details section */}
+					<div className={`${!showDetails ? 'hidden sm:block' : ''} mt-2`}>
+						<div className="bg-gray-900 p-2 sm:p-4 rounded-md border border-gray-700">
+							<div className="space-y-2 sm:space-y-3">
 								{/* From Token */}
-								<div className="flex justify-between items-center border-b border-gray-700 pb-2">
-									<span className="text-gray-300 font-medium">You Send</span>
-									<div className="flex flex-col items-end">
-										<span className="font-semibold text-white">
+								<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 border-b border-gray-700 pb-2">
+									<span className="text-xs sm:text-sm text-gray-300 font-medium">You Send</span>
+									<div className="flex flex-col sm:items-end">
+										<span className="text-sm font-semibold text-white">
 											{formatNumber(transactionInfo.fromAmount)} {transactionInfo.fromToken}
 										</span>
 									</div>
 								</div>
 
 								{/* To Token */}
-								<div className="flex justify-between items-center border-b border-gray-700 pb-2">
-									<span className="text-gray-300 font-medium">You Receive</span>
-									<div className="flex flex-col items-end">
-										<span className="font-semibold text-white">
+								<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-700 pb-2">
+									<span className="text-sm text-gray-300 font-medium">You Receive</span>
+									<div className="flex flex-col sm:items-end">
+										<span className="text-sm sm:text-base font-semibold text-white">
 											{formatNumber(transactionInfo.toAmount)} {transactionInfo.toToken}
 										</span>
 										<span className="text-xs text-gray-400">
@@ -395,29 +423,26 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 								</div>
 
 								{/* Recipient Address */}
-								<div className="flex justify-between items-center border-b border-gray-700 pb-2">
-									<span className="text-gray-300 font-medium">Recipient</span>
-									<div className="flex items-center space-x-2">
-										<span className="text-sm text-gray-300 font-mono bg-gray-800 px-2 py-1 rounded">
+								<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-700 pb-2">
+									<span className="text-sm text-gray-300 font-medium">Recipient</span>
+									<div className="flex items-center space-x-2 overflow-x-auto">
+										<span className="text-xs sm:text-sm text-gray-300 font-mono bg-gray-800 px-2 py-1 rounded whitespace-nowrap">
 											{shortenAddress(transactionInfo.toAddress)}
 										</span>
 										<button
 											onClick={() => copyToClipboard(transactionInfo.toAddress)}
-											className="text-gray-400 hover:text-blue-400 transition-colors"
+											className="flex-shrink-0 text-gray-400 hover:text-blue-400 transition-colors p-1"
 											title="Copy full address"
 										>
-											{copySuccess ?
-												<CheckIcon className="h-4 w-4 text-green-400" /> :
-												<CopyIcon className="h-4 w-4" />
-											}
+											{copySuccess ? <CheckIcon className="h-4 w-4 text-green-400" /> : <CopyIcon className="h-4 w-4" />}
 										</button>
 									</div>
 								</div>
 
 								{/* Network */}
 								<div className="flex justify-between items-center">
-									<span className="text-gray-300 font-medium">Network</span>
-									<span className="text-gray-300 font-medium flex items-center space-x-1">
+									<span className="text-sm text-gray-300 font-medium">Network</span>
+									<span className="text-sm text-gray-300 font-medium flex items-center space-x-1">
 										<span className="text-white">{transactionInfo.networkIcon}</span>
 										<span>{transactionInfo.networkName}</span>
 									</span>
@@ -427,7 +452,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 					</div>
 
 					{/* Security reminders */}
-					<div className="bg-gray-900 p-4 rounded-md text-sm text-amber-200 mt-4 border border-amber-900">
+					<div className="bg-gray-900 p-3 sm:p-4 rounded-md text-xs sm:text-sm text-amber-200 mt-4 border border-amber-900">
 						<div className="flex items-start space-x-3">
 							<div className="flex-shrink-0">
 								<svg className="h-5 w-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -439,7 +464,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 								<ul className="mt-2 space-y-2 list-disc pl-5">
 									<li>Verify the receiving amount is correct</li>
 									<li>Double-check the recipient address</li>
-									<li>Ensure you&apos;re on the correct network ({transactionInfo.networkName})</li>
+									<li>Ensure you're on the correct network ({transactionInfo.networkName})</li>
 									<li>Transaction cannot be reversed once confirmed</li>
 								</ul>
 							</div>
@@ -450,7 +475,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 					<div className="mt-2">
 						<button
 							onClick={() => setShowRawData(!showRawData)}
-							className="text-sm text-gray-400 hover:text-gray-200 flex items-center"
+							className="text-xs sm:text-sm text-gray-400 hover:text-gray-200 flex items-center"
 						>
 							<span>{showRawData ? 'Hide' : 'Show'} Advanced Details</span>
 							<svg
@@ -479,7 +504,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 							isDisabled={isLoading}
 							colorScheme="blue"
 							size="lg"
-							className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors duration-200 shadow-sm flex items-center justify-center space-x-2"
+							className="w-full min-h-[48px] sm:min-h-[56px] px-4 sm:px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors duration-200 shadow-sm flex items-center justify-center space-x-2"
 						>
 							{isLoading ? (
 								<>
@@ -491,7 +516,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 								</>
 							) : (
 								<>
-									<span>Confirm {name}</span>
+									<span>{name}</span>
 									<ExternalLinkIcon className="h-5 w-5" />
 								</>
 							)}

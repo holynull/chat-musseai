@@ -51,7 +51,10 @@ const MessageBubble: FC<MessageBubbleProps> = ({ children, isUser = false }) => 
 	const cornerStyles = isUser ? "rounded-tr-none" : "rounded-tl-none";
 
 	return (
-		<div className={`px-4 py-3 rounded-2xl ${cornerStyles} border shadow-md ${bubbleStyles}`} style={{ lineHeight: "1.5em" }}>
+		<div
+			className={`px-4 py-3 rounded-2xl ${cornerStyles} border shadow-md ${bubbleStyles} break-words overflow-hidden`}
+			style={{ lineHeight: "1.5em" }}
+		>
 			{children}
 		</div>
 	);
@@ -114,19 +117,16 @@ export const AssistantMessage: FC = () => {
 
 	return (
 		<>
-			<MessagePrimitive.Root className="flex w-full md:max-w-4xl md:mx-0 mx-auto max-w-[95%] md:py-4 py-6">
-				<div className="flex flex-col space-y-2 mb-6">
-					<div className="flex items-start">
-						<AssistantAvatar />
-						{/* <div className="flex flex-col space-y-3 max-w-[90%] sm:max-w-[80%] md:max-w-[70%]"> */}
-						<div className="flex flex-col space-y-3 max-w-[90%] sm:max-w-[80%] md:max-w-[85%] lg:max-w-[90%]">
-							<div className="bg-gray-800/80 backdrop-blur-sm px-3 sm:px-5 py-3 sm:py-4 rounded-2xl rounded-tl-none border border-gray-700 shadow-md">
-								<MessagePrimitive.Content components={{ Text: MarkdownText }} />
-							</div>
+			<MessageContainer isUser={false}>
+				<AssistantAvatar />
+				<div className="flex flex-col space-y-3 max-w-[90%] sm:max-w-[80%] md:max-w-[70%]">
+					<MessageBubble isUser={false}>
+						<div className="break-words overflow-hidden">
+							<MessagePrimitive.Content components={{ Text: MarkdownText }} />
 						</div>
-					</div>
+					</MessageBubble>
 				</div>
-			</MessagePrimitive.Root>
+			</MessageContainer>
 			{shouldRenderMessageBreak && (
 				<div className="w-full flex justify-center my-4">
 					<hr className="w-[90%] max-w-[720px] border-gray-700" />

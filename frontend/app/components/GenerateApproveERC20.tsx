@@ -245,55 +245,55 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 			});
 	};
 	return txData && (
-		<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
+		<div className="flex flex-col space-y-4 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-3xl mx-auto mt-4 sm:mt-6 md:mt-8">
 			{/* Header */}
-			<h2 className="text-2xl font-bold text-center">
+			<h2 className="text-xl sm:text-2xl font-bold text-center">
 				{approvalInfo.tokenSymbol ? `${approvalInfo.tokenSymbol} Token Approval` : "Token Approval"}
 			</h2>
 
 			{/* Approval explanation */}
-			<div className="p-4 bg-gray-900 rounded-lg">
-				<p className="text-sm text-gray-300">
+			<div className="p-3 sm:p-4 bg-gray-900 rounded-lg">
+				<p className="text-xs sm:text-sm text-gray-300">
 					<span className="font-semibold text-white">About this approval:</span> You are authorizing a smart contract to access your
 					{approvalInfo.tokenSymbol ? ` ${approvalInfo.tokenSymbol} ` : " "}
 					tokens. This is a required step for subsequent operations like swapping or staking.
 				</p>
 			</div>
 
-			<div className="p-4 bg-gray-900 rounded-lg">
-				<div className="grid gap-4">
+			<div className="p-3 sm:p-4 bg-gray-900 rounded-lg">
+				<div className="grid gap-3 sm:gap-4">
 					{/* Transaction details section */}
-					<div className="mt-2">
-						<h4 className="text-sm font-semibold text-white mb-3">Approval Details</h4>
+					<div className="mt-1 sm:mt-2">
+						<h4 className="text-sm font-semibold text-white mb-2 sm:mb-3">Approval Details</h4>
 
-						<div className="space-y-3">
-							<div className="flex justify-between border-b border-gray-700 pb-2">
-								<span className="text-gray-400 font-medium">Token</span>
+						<div className="space-y-2 sm:space-y-3">
+							<div className="flex flex-col sm:flex-row sm:justify-between border-b border-gray-700 pb-2">
+								<span className="text-gray-400 font-medium mb-1 sm:mb-0">Token</span>
 								<span className="font-semibold text-white">{approvalInfo.tokenName}</span>
 							</div>
 
-							<div className="flex justify-between border-b border-gray-700 pb-2">
-								<span className="text-gray-400 font-medium">Spender</span>
-								<div className="flex flex-col items-end">
+							<div className="flex flex-col sm:flex-row sm:justify-between border-b border-gray-700 pb-2">
+								<span className="text-gray-400 font-medium mb-1 sm:mb-0">Spender</span>
+								<div className="flex flex-col sm:items-end">
 									<span className="block text-sm text-white">{approvalInfo.spenderName}</span>
 									<div className="flex items-center">
 										<span className="text-xs text-gray-400 mr-2">{shortenAddress(approvalInfo.spender)}</span>
 										<button
 											onClick={() => copyToClipboard(approvalInfo.spender)}
-											className="text-gray-400 hover:text-blue-400 transition-colors"
+											className="text-gray-400 hover:text-blue-400 transition-colors p-1"
 											title="Copy full address"
 										>
 											{copySuccess ?
-												<CheckIcon className="h-4 w-4 text-green-500" /> :
-												<CopyIcon className="h-4 w-4" />
+												<CheckIcon className="h-5 w-5 text-green-500" /> :
+												<CopyIcon className="h-5 w-5" />
 											}
 										</button>
 									</div>
 								</div>
 							</div>
 
-							<div className="flex justify-between border-b border-gray-700 pb-2">
-								<span className="text-gray-400 font-medium">Amount</span>
+							<div className="flex flex-col sm:flex-row sm:justify-between border-b border-gray-700 pb-2">
+								<span className="text-gray-400 font-medium mb-1 sm:mb-0">Amount</span>
 								<span className="font-medium">
 									{String(approvalInfo.formattedAmount) === "1.157920892373162e+59" ? (
 										<span className="text-red-400 font-semibold">Unlimited</span>
@@ -303,17 +303,17 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 								</span>
 							</div>
 
-							<div className="flex justify-between">
-								<span className="text-gray-400 font-medium">Network</span>
+							<div className="flex flex-col sm:flex-row sm:justify-between">
+								<span className="text-gray-400 font-medium mb-1 sm:mb-0">Network</span>
 								<span className="font-semibold text-white">{approvalInfo.networkName}</span>
 							</div>
 						</div>
 					</div>
 
 					{/* Security reminders */}
-					<div className="bg-gray-900 p-4 rounded-lg text-sm text-yellow-500 mt-4 border border-yellow-700">
+					<div className="bg-gray-900 p-3 sm:p-4 rounded-lg text-xs sm:text-sm text-yellow-500 mt-3 sm:mt-4 border border-yellow-700">
 						<p className="font-semibold mb-2">Security Reminders:</p>
-						<ul className="list-disc pl-5 space-y-2">
+						<ul className="list-disc pl-4 sm:pl-5 space-y-1 sm:space-y-2">
 							<li className="text-yellow-400">Verify that you trust the contract requesting approval</li>
 							<li className="text-yellow-400 font-medium">
 								Be cautious with &quot;<span className="text-red-400">Unlimited</span>&quot; approvals - consider approving only the needed amount
@@ -323,13 +323,13 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 					</div>
 
 					{/* Action button */}
-					<div className="mt-6">
+					<div className="mt-4 sm:mt-6">
 						<Button
 							onClick={signAndSendTransaction}
 							isDisabled={isLoading}
 							colorScheme="blue"
 							size="md"
-							className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md transition-colors duration-200 shadow-sm"
+							className="w-full px-4 sm:px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md transition-colors duration-200 shadow-sm text-sm sm:text-base"
 						>
 							{isLoading ? "Processing..." : `Approve ${approvalInfo.tokenSymbol}`}
 						</Button>

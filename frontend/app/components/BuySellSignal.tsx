@@ -47,8 +47,8 @@ export const useBuySellSignal = () => useAssistantToolUI({
 		const responseData: TechnicalAnalysisData = input.args.data;
 
 		return responseData && (
-			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
-				<h2 className="text-2xl font-bold text-center">Technical Analysis Signals</h2>
+			<div className="flex flex-col space-y-4 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-3xl mx-auto">
+				<h2 className="text-xl sm:text-2xl font-bold text-center">Technical Analysis Signals</h2>
 
 				{/* Summary Recommendation */}
 				<RecommendationCard
@@ -59,7 +59,7 @@ export const useBuySellSignal = () => useAssistantToolUI({
 					neutralCount={responseData.summary.NEUTRAL}
 				/>
 
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
 					{/* Oscillators */}
 					<AnalysisCard
 						title="Oscillators"
@@ -118,18 +118,18 @@ const RecommendationCard = ({
 	const neutralPercent = Math.round((neutralCount / total) * 100);
 
 	return (
-		<div className="bg-gray-900 rounded-lg p-4">
-			<h3 className="text-xl font-semibold mb-3">{title}</h3>
-			<div className="flex items-center justify-center mb-4">
-				<span className={`text-3xl font-bold ${getRecommendationColor(recommendation)}`}>
+		<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+			<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">{title}</h3>
+			<div className="flex items-center justify-center mb-3 sm:mb-4">
+				<span className={`text-2xl sm:text-3xl font-bold ${getRecommendationColor(recommendation)}`}>
 					{recommendation}
 				</span>
 			</div>
 
-			<div className="flex justify-between text-sm mb-2">
-				<span>Buy Signals: {buyCount}</span>
-				<span>Sell Signals: {sellCount}</span>
-				<span>Neutral: {neutralCount}</span>
+			<div className="flex flex-wrap justify-between text-xs sm:text-sm mb-2">
+				<span className="mb-1 sm:mb-0">Buy: {buyCount}</span>
+				<span className="mb-1 sm:mb-0">Sell: {sellCount}</span>
+				<span className="mb-1 sm:mb-0">Neutral: {neutralCount}</span>
 			</div>
 
 			{/* Signal Distribution Bar */}
@@ -185,31 +185,44 @@ const AnalysisCard = ({
 		}
 	};
 
+	// State to toggle detailed indicators visibility on mobile
+	const [showDetails, setShowDetails] = useState(true);
+
 	return (
-		<div className="bg-gray-900 rounded-lg p-4">
-			<h3 className="text-xl font-semibold mb-2">{title}</h3>
-			<div className="flex items-center mb-3">
-				<span className="mr-2">Recommendation:</span>
+		<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+			<h3 className="text-lg sm:text-xl font-semibold mb-2">{title}</h3>
+			<div className="flex items-center mb-2 sm:mb-3">
+				<span className="text-sm mr-2">Recommendation:</span>
 				<span className={`font-bold ${getSignalColor(recommendation)}`}>
 					{recommendation}
 				</span>
 			</div>
 
-			<div className="flex justify-between text-sm mb-3">
-				<div className="text-green-500">Buy: {buyCount}</div>
-				<div className="text-red-500">Sell: {sellCount}</div>
+			<div className="flex flex-wrap justify-between text-xs sm:text-sm mb-2 sm:mb-3">
+				<div className="text-green-500 mr-2">Buy: {buyCount}</div>
+				<div className="text-red-500 mr-2">Sell: {sellCount}</div>
 				<div className="text-yellow-500">Neutral: {neutralCount}</div>
 			</div>
 
-			<div className="mt-3">
-				<h4 className="text-sm font-semibold mb-2">Detailed Indicators:</h4>
-				<div className="grid grid-cols-2 gap-2">
-					{Object.entries(computeData).map(([indicator, signal]) => (
-						<div key={indicator} className="flex justify-between text-xs border-b border-gray-700 py-1">
-							<span>{indicator}:</span>
-							<span className={getSignalColor(signal)}>{signal}</span>
-						</div>
-					))}
+			<div className="mt-2 sm:mt-3">
+				<button
+					onClick={() => setShowDetails(!showDetails)}
+					className="text-xs sm:text-sm font-semibold mb-2 flex items-center text-blue-400 md:hidden"
+				>
+					{showDetails ? 'Hide Details' : 'Show Details'}
+					<span className="ml-1">{showDetails ? '▲' : '▼'}</span>
+				</button>
+
+				<div className={`${showDetails ? 'block' : 'hidden md:block'}`}>
+					<h4 className="text-xs sm:text-sm font-semibold mb-1 sm:mb-2">Detailed Indicators:</h4>
+					<div className="grid grid-cols-1 xs:grid-cols-2 gap-1 sm:gap-2 text-xs">
+						{Object.entries(computeData).map(([indicator, signal]) => (
+							<div key={indicator} className="flex justify-between border-b border-gray-700 py-1">
+								<span className="truncate mr-1">{indicator}:</span>
+								<span className={getSignalColor(signal)}>{signal}</span>
+							</div>
+						))}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -230,10 +243,10 @@ const PriceIndicators = ({ indicators }: { indicators: Indicators }) => {
 	];
 
 	return (
-		<div className="bg-gray-900 rounded-lg p-4">
-			<h3 className="text-xl font-semibold mb-3">Key Price Indicators</h3>
+		<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+			<h3 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">Key Price Indicators</h3>
 
-			<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+			<div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3">
 				{keyIndicators.map((indicator) => {
 					if (indicators[indicator.key] === undefined) return null;
 
@@ -243,8 +256,8 @@ const PriceIndicators = ({ indicators }: { indicators: Indicators }) => {
 
 					return (
 						<div key={indicator.key} className="bg-gray-800 p-2 rounded">
-							<div className="text-sm text-gray-400">{indicator.name}</div>
-							<div className="text-lg font-semibold">
+							<div className="text-xs sm:text-sm text-gray-400">{indicator.name}</div>
+							<div className="text-base sm:text-lg font-semibold truncate">
 								{value}
 							</div>
 						</div>

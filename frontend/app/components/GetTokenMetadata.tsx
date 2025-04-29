@@ -1,6 +1,6 @@
 "use client";
 import { useAssistantToolUI } from "@assistant-ui/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 
 // 定义TokenMetadata接口
@@ -86,10 +86,33 @@ export const useGetTokenMetadata = () => useAssistantToolUI({
 	toolName: "getTokenMetadata",
 	render: (input) => <TokenMetadataDisplay input={input} />,
 });
+const useWindowSize = () => {
+	const [windowSize, setWindowSize] = useState({
+		width: typeof window !== 'undefined' ? window.innerWidth : 0,
+		height: typeof window !== 'undefined' ? window.innerHeight : 0,
+	});
 
+	useEffect(() => {
+		if (typeof window === 'undefined') return;
+
+		const handleResize = () => {
+			setWindowSize({
+				width: window.innerWidth,
+				height: window.innerHeight,
+			});
+		};
+
+		window.addEventListener('resize', handleResize);
+		return () => window.removeEventListener('resize', handleResize);
+	}, []);
+
+	return windowSize;
+};
 const TokenMetadataDisplay = ({ input }: { input: any }) => {
 	const [activeTab, setActiveTab] = useState("overview");
 	const responseData: TokenMetadata = input.args.data;
+	const { width } = useWindowSize();
+	const getMaxLength = () => width < 640 ? 200 : 400;
 
 	// 获取第一个代币符号（键）
 	const tokenSymbol = Object.keys(responseData ? responseData.data : {})[0];
@@ -137,7 +160,7 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 	const Tab = ({ id, label, active }: { id: string; label: string; active: boolean }) => (
 		<button
 			onClick={() => setActiveTab(id)}
-			className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${active
+			className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${active
 				? 'border-blue-500 text-blue-300'
 				: 'border-transparent text-gray-400 hover:text-gray-300'
 				}`}
@@ -147,11 +170,12 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 	);
 
 	return responseData && tokenSymbol && (
-		<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
+		// <div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
+		<div className="flex flex-col space-y-4 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-3xl mx-auto sm:mt-6 md:mt-8 overflow-hidden">
 			{/* Token Header Section */}
 			<div className="flex items-center p-5 border-b border-gray-700 bg-gray-900">
 				{token.logo && (
-					<div className="mr-4 relative h-16 w-16 flex-shrink-0">
+					<div className="mr-3 sm:mr-4 relative h-12 w-12 sm:h-16 sm:w-16 flex-shrink-0">
 						<Image
 							src={token.logo}
 							alt={`${token.name} logo`}
@@ -161,17 +185,17 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 						/>
 					</div>
 				)}
-				<div className="flex-1">
-					<div className="flex items-center">
-						<h2 className="text-2xl font-bold text-white">
+				<div className="flex-1 min-w-0"> {/* 防止子元素溢出 */}
+					<div className="flex flex-wrap items-center gap-2">
+						<h2 className="text-xl sm:text-2xl font-bold text-white truncate max-w-[200px] sm:max-w-none">
 							{token.name}
 						</h2>
-						<span className="ml-2 px-2.5 py-0.5 rounded-full text-sm font-medium bg-gray-700 text-gray-300">
+						<span className="px-2 py-0.5 rounded-full text-xs sm:text-sm font-medium bg-gray-700 text-gray-300">
 							{token.symbol}
 						</span>
 						{tokensInCategory > 1 && (
-							<span className="ml-2 text-xs text-gray-400">
-								+{tokensInCategory - 1} more with similar symbol
+							<span className="text-xs text-gray-400">
+								+{tokensInCategory - 1} more
 							</span>
 						)}
 					</div>
@@ -187,8 +211,8 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 			</div>
 
 			{/* Navigation Tabs */}
-			<div className="border-b border-gray-700">
-				<nav className="flex">
+			<div className="border-b border-gray-700 overflow-x-auto">
+				<nav className="flex min-w-max">
 					<Tab id="overview" label="Overview" active={activeTab === "overview"} />
 					<Tab id="details" label="Details" active={activeTab === "details"} />
 					<Tab id="links" label="Links" active={activeTab === "links"} />
@@ -203,13 +227,14 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 						{/* Description */}
 						<div>
 							<h3 className="text-sm font-medium text-gray-400 mb-2">Description</h3>
-							<p className="text-sm text-gray-300 leading-relaxed">
-								{truncateText(token.description, 400)}
+							<p className="text-xs sm:text-sm text-gray-300 leading-relaxed break-words">
+								{truncateText(token.description, getMaxLength())}
 							</p>
 						</div>
 
 						{/* Quick Stats */}
-						<div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+						{/* <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4"> */}
+						<div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
 							<div className="bg-gray-900 p-3 rounded-lg">
 								<div className="text-xs text-gray-400">Launch Date</div>
 								<div className="text-sm font-medium text-gray-200 mt-1">
@@ -277,10 +302,10 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 								<div className="space-y-2 bg-gray-900 rounded-lg p-3">
 									{token.contract_address.map((contract, index) => (
 										<div key={index} className="flex flex-col md:flex-row md:items-center py-2 border-b border-gray-800 last:border-0">
-											<span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded mr-2 mb-1 md:mb-0 inline-block">
+											<span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded mr-2 mb-1 md:mb-0 inline-block flex-shrink-0">
 												{contract.platform.name}
 											</span>
-											<span className="text-xs text-gray-400 font-mono break-all">
+											<span className="text-xs text-gray-400 font-mono break-all overflow-hidden text-ellipsis">
 												{contract.contract_address}
 											</span>
 										</div>
@@ -339,7 +364,8 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 						{/* Official Links */}
 						<div>
 							<h3 className="text-sm font-medium text-gray-400 mb-2">Official Links</h3>
-							<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+							{/* <div className="grid grid-cols-2 md:grid-cols-3 gap-3"> */}
+							<div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
 								{token.urls.website && token.urls.website.length > 0 && (
 									<LinkItem href={token.urls.website[0]} label="Website" className="w-full justify-center" />
 								)}
@@ -355,7 +381,8 @@ const TokenMetadataDisplay = ({ input }: { input: any }) => {
 						{/* Social Links */}
 						<div>
 							<h3 className="text-sm font-medium text-gray-400 mb-2">Social Media</h3>
-							<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+							{/* <div className="grid grid-cols-2 md:grid-cols-3 gap-3"> */}
+							<div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
 								{token.urls.twitter && token.urls.twitter.length > 0 && (
 									<LinkItem href={token.urls.twitter[0]} label="Twitter" className="w-full justify-center" />
 								)}

@@ -54,55 +54,64 @@ export const useSwapQuote = () => useAssistantToolUI({
 		// Calculate fee percentage
 		const feePercent = parseFloat(data.fee) * 100;
 
+		// Function to truncate long text
+		const truncateAddress = (address: string, length = 8) => {
+			if (!address) return '';
+			if (address.length <= length * 2) return address;
+			return `${address.substring(0, length)}...${address.substring(address.length - length)}`;
+		};
+
 		return (
-			<div className="flex flex-col space-y-6 p-4 rounded-lg border border-gray-700 bg-gray-800 text-white max-w-3xl sm:mt-6 md:mt-8">
-				<h2 className="text-2xl font-bold text-center">Swap Quote</h2>
+			<div className="flex flex-col space-y-4 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-full sm:max-w-3xl mx-auto">
+				<h2 className="text-xl sm:text-2xl font-bold text-center">Swap Quote</h2>
 				{data.logoUrl && (
-					<div className="flex items-center justify-center mt-2">
-						<span className="text-sm text-white mr-2">{data.dex}</span>
+					<div className="flex items-center justify-center mt-1 sm:mt-2">
+						<span className="text-xs sm:text-sm text-white mr-2">{data.dex}</span>
 						<Image
 							src={data.logoUrl}
 							alt={data.dex || "DEX Logo"}
-							width={24}
-							height={24}
-							className="rounded-full"
+							width={20}
+							height={20}
+							className="rounded-full w-5 h-5 sm:w-6 sm:h-6"
 						/>
 					</div>
 				)}
 
-				<div className="grid gap-4">
+				<div className="grid gap-3 sm:gap-4">
 					{/* Main trading information */}
-					<div className="flex justify-between items-center p-3 bg-gray-900 rounded-lg">
-						<div>
-							<p className="text-sm text-gray-400">Pay</p>
-							<p className="text-xl font-semibold text-white">
+					<div className="flex flex-col sm:flex-row justify-between items-center p-3 bg-gray-900 rounded-lg gap-3">
+						<div className="w-full sm:w-auto text-center sm:text-left">
+							<p className="text-xs sm:text-sm text-gray-400">Pay</p>
+							<p className="text-lg sm:text-xl font-semibold text-white">
 								{formatNumber(
 									(parseFloat(data.fromTokenAmount) / Math.pow(10, parseInt(data.fromTokenDecimal))).toString()
 								)}
-								<span className="text-gray-400 text-base ml-1">{from_token_symbol}</span>
+								<span className="text-gray-400 text-sm sm:text-base ml-1">{from_token_symbol}</span>
 							</p>
 						</div>
-						<div className="text-blue-500 transform transition-transform duration-200 hover:scale-110">
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<div className="text-blue-500 transform rotate-90 sm:rotate-0 transition-transform duration-200 hover:scale-110">
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
 							</svg>
 						</div>
-						<div>
-							<p className="text-sm text-gray-400">Receive</p>
-							<p className="text-xl font-semibold text-white">
+						<div className="w-full sm:w-auto text-center sm:text-left">
+							<p className="text-xs sm:text-sm text-gray-400">Receive</p>
+							<p className="text-lg sm:text-xl font-semibold text-white">
 								{toAmount}
-								<span className="text-gray-400 text-base ml-1">{to_token_symbol}</span>
+								<span className="text-gray-400 text-sm sm:text-base ml-1">{to_token_symbol}</span>
 							</p>
 						</div>
 					</div>
 
 					{/* Transaction details */}
-					<div className="mt-4">
-						<h4 className="text-sm font-medium text-white mb-2">Transaction Details</h4>
-						<div className="grid grid-cols-2 gap-2 text-sm">
+					<div className="mt-2 sm:mt-4">
+						<h4 className="text-xs sm:text-sm font-medium text-white mb-2">Transaction Details</h4>
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
 							<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
 								<span className="text-gray-400">Exchange Rate</span>
-								<span className="font-medium text-white">1 {from_token_symbol} ≈ {exchangeRate.toFixed(6)} {to_token_symbol}</span>
+								<span className="font-medium text-white truncate max-w-[150px] sm:max-w-none">
+									1 {from_token_symbol} ≈ {exchangeRate.toFixed(6)} {to_token_symbol}
+								</span>
 							</div>
 							<div className="flex justify-between p-2 border-b border-gray-700 hover:bg-gray-700 transition-colors duration-150">
 								<span className="text-gray-400">Fee</span>
@@ -130,12 +139,13 @@ export const useSwapQuote = () => useAssistantToolUI({
 					</div>
 
 					{/* Contract information */}
-					<div className="mt-2">
-						<h4 className="text-sm font-medium text-white mb-2">Contract Info</h4>
-						<div className="text-xs bg-gray-900 p-2 rounded overflow-hidden text-gray-400 border border-gray-700 hover:bg-gray-700 transition-all duration-200">
+					<div className="mt-1 sm:mt-2">
+						<h4 className="text-xs sm:text-sm font-medium text-white mb-2">Contract Info</h4>
+						<div className="text-xxs sm:text-xs bg-gray-900 p-2 rounded overflow-hidden text-gray-400 border border-gray-700 hover:bg-gray-700 transition-all duration-200">
 							<div className="truncate" title={data.contractAddress}>
 								<span className="font-medium text-white">Contract Address: </span>
-								{data.contractAddress}
+								<span className="hidden sm:inline">{data.contractAddress}</span>
+								<span className="inline sm:hidden">{truncateAddress(data.contractAddress)}</span>
 							</div>
 						</div>
 					</div>
