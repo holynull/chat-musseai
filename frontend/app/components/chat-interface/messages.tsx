@@ -11,6 +11,7 @@ import Image from 'next/image';
 import { MarkdownText } from "../ui/assistant-ui/markdown-text";
 import { UserMessageAttachments } from "../ui/assistant-ui/attachment";
 import { ToolFallback } from "../ui/assistant-ui/tool-fallback";
+import React from "react";
 
 // 消息容器组件
 type MessageContainerProps = {
@@ -52,7 +53,7 @@ const MessageBubble: FC<MessageBubbleProps> = ({ children, isUser = false }) => 
 
 	return (
 		<div
-			className={`px-4 py-3 rounded-2xl ${cornerStyles} border shadow-md ${bubbleStyles} break-words overflow-hidden`}
+			className={`px-4 py-3 rounded-2xl ${cornerStyles} border shadow-md ${bubbleStyles} break-words overflow-hidden transition-all duration-200 ease-in-out`}
 			style={{ lineHeight: "1.5em" }}
 		>
 			{children}
@@ -92,7 +93,7 @@ const UserAvatar: FC = () => {
 };
 
 // 用户消息组件
-export const UserMessage: FC = () => {
+export const UserMessage: FC = React.memo(() => {
 	return (
 		<MessageContainer isUser={true}>
 			<div className="flex flex-col space-y-2 max-w-[90%] sm:max-w-[80%] md:max-w-[70%]">
@@ -104,10 +105,11 @@ export const UserMessage: FC = () => {
 			<UserAvatar />
 		</MessageContainer>
 	);
-};
+});
+UserMessage.displayName = 'UserMessage';
 
 // 助手消息组件
-export const AssistantMessage: FC = () => {
+export const AssistantMessage: FC = React.memo(() => {
 	const threadRuntime = useThreadRuntime();
 	const threadState = threadRuntime.getState();
 	const isLast = useMessage((m) => m.isLast);
@@ -134,4 +136,5 @@ export const AssistantMessage: FC = () => {
 			)}
 		</>
 	);
-};
+});
+AssistantMessage.displayName = 'AssistantMessage';

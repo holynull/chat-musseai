@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FC, useEffect, useRef, useState } from "react";
+import React, { FC, useCallback, useEffect, useRef, useState } from "react";
 import {
 	AppendMessage,
 	AssistantRuntimeProvider,
@@ -64,7 +64,7 @@ function ChatLangChainComponent(): React.ReactElement {
 
 	const isSubmitDisabled = !user?.user_id;
 
-	async function onNew(message: AppendMessage): Promise<void> {
+	const onNew = useCallback(async (message: AppendMessage): Promise<void> => {
 		if (isSubmitDisabled) {
 			toast({
 				title: "Failed to send message",
@@ -124,7 +124,8 @@ function ChatLangChainComponent(): React.ReactElement {
 			// Re-fetch threads so that the current thread's title is updated.
 			await getUserThreads(user.user_id);
 		}
-	}
+
+	}, [isSubmitDisabled, threadId, user, createThread, setThreadId, streamMessage, toast, getUserThreads, setMessages]);
 
 	const threadMessages = useExternalMessageConverter<BaseMessage>({
 		callback: convertLangchainMessages,

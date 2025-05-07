@@ -34,11 +34,25 @@ import { useGetTokenMetadata } from "../GetTokenMetadata";
 import { useGetLatestContent } from "../GetLatestContent";
 import { useGetCommunityTrendingToken } from "../GetCommunityTrendingToken";
 import { useGenerateImage } from "../GenerateImage";
+import React from "react";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
 }
 
+const MessageList = React.memo(() => {
+	return (
+		<div className="px-2 sm:px-4 md:pl-8 lg:pl-24 mt-2 max-w-full">
+			<ThreadPrimitive.Messages
+				components={{
+					UserMessage: UserMessage,
+					AssistantMessage: AssistantMessage,
+				}}
+			/>
+		</div>
+	);
+});
+MessageList.displayName = "MessageList"
 
 
 export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
@@ -70,68 +84,64 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	return (
 		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full h-full">
 			{!isEmpty ? (
-				<ThreadPrimitive.Viewport autoScroll={true}
+				<ThreadPrimitive.Viewport
 					className={cn(
 						"flex-1 overflow-y-auto scroll-smooth bg-inherit transition-all duration-300 ease-in-out w-full h-full",
 						isEmpty ? "pb-[30vh] sm:pb-[50vh]" : "pb-12 pt-12 sm:pb-12 md:pb-10",
 						"scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent",
 					)}
 				>
-					<div className="px-2 sm:px-4 md:pl-8 lg:pl-24 mt-2 max-w-full">
-						<ThreadPrimitive.Messages
-							components={{
-								UserMessage: UserMessage,
-								AssistantMessage: AssistantMessage,
-							}}
-						/>
-					</div>
+					<MessageList></MessageList>
 				</ThreadPrimitive.Viewport>
-			) : null}
+			) : null
+			}
 			<ThreadChatScrollToBottom />
-			{isEmpty ? (
-				<div className="flex items-center justify-center flex-grow my-auto">
-					<div className="flex flex-col items-center mx-4 md:mt-0 mt-12 mb-4 sm:my-auto">
-						<div className="logo-container relative mb-8">
-							{/* 发光效果 */}
-							<div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/30 to-purple-500/30 blur-xl animate-pulse-slow"></div>
+			{
+				isEmpty ? (
+					<div className="flex items-center justify-center flex-grow my-auto">
+						<div className="flex flex-col items-center mx-4 md:mt-0 mt-12 mb-4 sm:my-auto">
+							<div className="logo-container relative mb-8">
+								{/* 发光效果 */}
+								<div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/30 to-purple-500/30 blur-xl animate-pulse-slow"></div>
 
-							{/* 旋转的外环 */}
-							<div className="absolute inset-0 rounded-full border-2 border-blue-400/30 animate-spin-slow"></div>
+								{/* 旋转的外环 */}
+								<div className="absolute inset-0 rounded-full border-2 border-blue-400/30 animate-spin-slow"></div>
 
-							{/* Logo图片容器 */}
-							<div className="relative z-10 w-28 h-28 rounded-full overflow-hidden">
-								<Image
-									src="/images/logo.png"
-									alt="Musse AI Logo"
-									fill
-									priority
-									className="object-fill rounded-full"
-									style={{ transform: 'scale(1.1)' }}
-								/>
+								{/* Logo图片容器 */}
+								<div className="relative z-10 w-28 h-28 rounded-full overflow-hidden">
+									<Image
+										src="/images/logo.png"
+										alt="Musse AI Logo"
+										fill
+										priority
+										className="object-fill rounded-full"
+										style={{ transform: 'scale(1.1)' }}
+									/>
+								</div>
 							</div>
+							<div className="mb-4 sm:mb-[24px] mt-1 sm:mt-2 flex items-center gap-2 justify-center">
+								<SelectModel />
+								<WalletIndicator />
+							</div>
+							<div className="md:mb-8 mb-4">
+								<SuggestedQuestions />
+							</div>
+							<ChatComposer
+								submitDisabled={props.submitDisabled}
+								messages={props.messages}
+								currentThreadId={props.currentThreadId}
+							/>
 						</div>
-						<div className="mb-4 sm:mb-[24px] mt-1 sm:mt-2 flex items-center gap-2 justify-center">
-							<SelectModel />
-							<WalletIndicator />
-						</div>
-						<div className="md:mb-8 mb-4">
-							<SuggestedQuestions />
-						</div>
-						<ChatComposer
-							submitDisabled={props.submitDisabled}
-							messages={props.messages}
-							currentThreadId={props.currentThreadId}
-						/>
 					</div>
-				</div>
-			) : (
-				<ChatComposer
-					submitDisabled={props.submitDisabled}
-					messages={props.messages}
-					currentThreadId={props.currentThreadId}
-				/>
-			)}
-		</ThreadPrimitive.Root>
+				) : (
+					<ChatComposer
+						submitDisabled={props.submitDisabled}
+						messages={props.messages}
+						currentThreadId={props.currentThreadId}
+					/>
+				)
+			}
+		</ThreadPrimitive.Root >
 	);
 };
 
