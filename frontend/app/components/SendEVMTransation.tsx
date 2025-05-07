@@ -1,14 +1,11 @@
 "use client";
-import { useAppKitProvider, useAppKitAccount, useAppKitNetwork, useAppKit } from "@reown/appkit/react"
 import { useAssistantToolUI } from "@assistant-ui/react";
 import { ethers } from 'ethers'
 import UniversalProvider from '@walletconnect/universal-provider'
 import { useState } from "react";
 import { Button, useToast } from '@chakra-ui/react'
 import { CopyIcon, CheckIcon, ExternalLinkIcon } from "@chakra-ui/icons"
-import { mainnet, bsc, tron, arbitrum, sepolia, solana, solanaTestnet, solanaDevnet } from '@reown/appkit/networks'
-import type { AppKitNetwork } from '@reown/appkit-common';
-import { wcModal, networks } from "../contexts/appkit";
+import { wcModal, networks, useWalletConnect } from "../contexts/appkit";
 
 // Helper function to shorten addresses for display
 const shortenAddress = (address: string) => {
@@ -46,16 +43,13 @@ export const useSendEVMTransaction = () => useAssistantToolUI({
 // 创建一个单独的React组件
 const EVMTransactionComponent = ({ input }: { input: any }) => {
 	const [isLoading, setLoading] = useState<boolean>(false);
-	const { address, isConnected } = useAppKitAccount()
-	const { walletProvider } = useAppKitProvider('eip155')
-	const { caipNetwork, chainId, switchNetwork } = useAppKitNetwork();
-	const { open } = useAppKit();
 	const toast = useToast();
 	const { txData, name, orderInfo, tx_detail } = input.args;
 	const [copySuccess, setCopySuccess] = useState(false);
 	const [showRawData, setShowRawData] = useState(false);
 	// 新增状态用于移动端的详情展开/折叠
 	const [showDetails, setShowDetails] = useState(true);
+	const wcCtx = useWalletConnect();
 
 	// Extract transaction info from tx_detail
 	const extractTransactionInfo = () => {
@@ -76,11 +70,11 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 			const formattedToAmount = parseFloat(toAmount) / Math.pow(10, parseInt(toDecimals));
 
 			// Get addresses
-			const fromAddress = txDetailObj?.from_address || address || "";
+			const fromAddress = txDetailObj?.from_address || wcCtx.account.address || "";
 			const toAddress = txDetailObj?.to_address || txData?.to || "";
 
 			// Get network information
-			const networkName = networks.find(n => n.id === chainId)?.name || "Unknown Network";
+			const networkName = networks.find(n => n.id === wcCtx.network.chainId)?.name || "Unknown Network";
 			const networkIcon = getNetworkIcon(networkName);
 
 			// Get other transaction details
@@ -111,9 +105,9 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 				toToken: "Unknown",
 				fromAmount: 0,
 				toAmount: 0,
-				fromAddress: address || "",
+				fromAddress: wcCtx.account.address || "",
 				toAddress: txData?.to || "",
-				networkName: networks.find(n => n.id === chainId)?.name || "Unknown Network",
+				networkName: networks.find(n => n.id === wcCtx.network.chainId)?.name || "Unknown Network",
 				networkIcon: null,
 				slippage: "0.5",
 				sourceType: "Unknown",
@@ -161,7 +155,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 
 		setLoading(true);
 
-		if (!caipNetwork || !chainId) {
+		if (!wcCtx.network.caipNetwork || !wcCtx.network.chainId) {
 			showToast(
 				toast,
 				'Network Error',
@@ -173,23 +167,23 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 		}
 
 		// Check wallet connection
-		if (!isConnected) {
+		if (!wcCtx.account.isConnected) {
 			showToast(
 				toast,
 				'Wallet Connection',
 				'Please connect your wallet and try again.',
 				'warning'
 			);
-			await open({ view: "Connect" });
+			await wcCtx.open({ view: "Connect" });
 			setLoading(false);
 			return;
 		}
 
 		try {
 			// Switch to correct network
-			if (chainId) {
+			if (wcCtx.network.chainId) {
 				// 直接判断当前网络是否匹配
-				const currentNetwork = networks.find(network => network.id === chainId);
+				const currentNetwork = networks.find(network => network.id === wcCtx.network.chainId);
 				if (!currentNetwork) {
 					showToast(toast, "Network Error", "The required network is not supported.", "error");
 					setLoading(false);
@@ -203,20 +197,20 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 			}
 
 			// Setup provider and signer
-			const provider = new ethers.providers.Web3Provider(walletProvider as UniversalProvider)
-			const signer = provider.getSigner(address)
+			const provider = new ethers.providers.Web3Provider(wcCtx.walletProvider as UniversalProvider)
+			const signer = provider.getSigner(wcCtx.account.address)
 
 			// Prepare transaction data
 			let _v = txData.value.indexOf('0x') === 0 ? txData.value : '0x' + txData.value
 			let _d = txData.data.indexOf('0x') === 0 ? txData.data : '0x' + txData.data
 			const transaction = {
-				from: address,
+				from: wcCtx.account.address,
 				to: txData.to,
 				data: _d,
 				value: _v,
 				gasLimit: txData.gasLimit,
 				gasPrice: txData.gasPrice,
-				chainId: chainId as number,
+				chainId: wcCtx.network.chainId as number,
 			};
 
 			showToast(
@@ -230,7 +224,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 				const _network = await provider.getNetwork()
 			} catch (e: any) {
 				await wcModal.disconnect()
-				await open({ view: "Connect" });
+				await wcCtx.open({ view: "Connect" });
 				console.error(e)
 				showToast(
 					toast,

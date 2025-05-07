@@ -1,13 +1,10 @@
 "use client";
 import { useAssistantToolUI } from "@assistant-ui/react";
-import { useAppKitProvider, useAppKitAccount, useAppKitNetwork, useAppKit } from "@reown/appkit/react";
 import { ethers } from 'ethers';
 import UniversalProvider from '@walletconnect/universal-provider';
 import { useState } from "react";
 import { Button, useToast } from '@chakra-ui/react';
-import { mainnet, bsc, tron, arbitrum, sepolia, solana } from '@reown/appkit/networks';
-import type { AppKitNetwork } from '@reown/appkit-common';
-import { wcModal, networks } from "../contexts/appkit";
+import { wcModal, networks, useWalletConnect } from "../contexts/appkit";
 import { CopyIcon, CheckIcon } from "@chakra-ui/icons"; // 或使用其他图标库
 
 // Transaction interface type
@@ -51,13 +48,7 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 
 	const [isLoading, setLoading] = useState<boolean>(false);
 	const toast = useToast();
-
-	const { address, isConnected } = useAppKitAccount();
-	const { walletProvider } = useAppKitProvider('eip155');
-	const { caipNetwork, chainId, switchNetwork } = useAppKitNetwork();
-	const { open } = useAppKit();
-
-	const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, bsc, tron, arbitrum, sepolia, solana];
+	const wcCtx = useWalletConnect();
 
 	// Extract key information from transaction data
 	const extractApprovalInfo = () => {
@@ -75,7 +66,7 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 		const formattedAmount = parseFloat(amount) / Math.pow(10, parseInt(decimals));
 
 		// Extract network information
-		const networkName = networks.find(n => n.id === chainId)?.name || "Unknown Network";
+		const networkName = networks.find(n => n.id === wcCtx.network.chainId)?.name || "Unknown Network";
 
 		return {
 			tokenName,
@@ -94,7 +85,7 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 
 		setLoading(true);
 
-		if (!caipNetwork || !chainId) {
+		if (!wcCtx.network.caipNetwork || !wcCtx.network.chainId) {
 			showToast(
 				toast,
 				'Network Error',
@@ -106,23 +97,23 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 		}
 
 		// Check wallet connection
-		if (!isConnected) {
+		if (!wcCtx.account.isConnected) {
 			showToast(
 				toast,
 				'Wallet Connection',
 				'Please connect your wallet and try again.',
 				'warning'
 			);
-			await open({ view: "Connect" });
+			await wcCtx.open({ view: "Connect" });
 			setLoading(false);
 			return;
 		}
 
 		try {
 			// Switch to correct network
-			if (chainId) {
+			if (wcCtx.network.chainId) {
 				// 直接判断当前网络是否匹配
-				const currentNetwork = networks.find(network => network.id === chainId);
+				const currentNetwork = networks.find(network => network.id === wcCtx.network.chainId);
 				if (!currentNetwork) {
 					showToast(toast, "Network Error", "The required network is not supported.", "error");
 					setLoading(false);
@@ -136,21 +127,21 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 			}
 
 			// Setup provider and signer
-			const provider = new ethers.providers.Web3Provider(walletProvider as UniversalProvider);
-			const signer = provider.getSigner(address);
+			const provider = new ethers.providers.Web3Provider(wcCtx.walletProvider as UniversalProvider);
+			const signer = provider.getSigner(wcCtx.account.address);
 
 			// Prepare transaction data
 			let _v = txData.value.indexOf('0x') === 0 ? txData.value : '0x' + txData.value;
 			let _d = txData.data.indexOf('0x') === 0 ? txData.data : '0x' + txData.data;
 
 			const transaction = {
-				from: address,
+				from: wcCtx.account.address,
 				to: txData.to,
 				data: _d,
 				value: _v,
 				gasLimit: txData.gasLimit,
 				gasPrice: txData.gasPrice,
-				chainId: chainId as number,
+				chainId: wcCtx.network.chainId as number,
 			};
 
 			showToast(
@@ -164,7 +155,7 @@ const ApproveERC20Component = ({ input }: { input: any }) => {
 				const _network = await provider.getNetwork()
 			} catch (e: any) {
 				await wcModal.disconnect()
-				await open({ view: "Connect" });
+				await wcCtx.open({ view: "Connect" });
 				console.error(e)
 				showToast(
 					toast,

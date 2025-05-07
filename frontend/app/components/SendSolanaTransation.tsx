@@ -1,13 +1,9 @@
 "use client";
-import { useAppKitProvider, useAppKitAccount, useAppKitNetwork, useAppKit } from "@reown/appkit/react"
 import { useAssistantToolUI } from "@assistant-ui/react";
-import type { Provider } from '@reown/appkit-adapter-solana'
 import { useState } from "react";
 import { Button, useToast } from '@chakra-ui/react'
 import { CopyIcon, CheckIcon, ExternalLinkIcon } from "@chakra-ui/icons"
-import { mainnet, bsc, tron, arbitrum, sepolia, solana, solanaTestnet, solanaDevnet } from '@reown/appkit/networks'
-import type { AppKitNetwork } from '@reown/appkit-common';
-import { wcModal } from "../contexts/appkit";
+import { networks, useWalletConnect, wcModal } from "../contexts/appkit";
 import {
 	SystemProgram,
 	PublicKey,
@@ -16,7 +12,6 @@ import {
 	TransactionInstruction,
 	LAMPORTS_PER_SOL
 } from '@solana/web3.js'
-import { useAppKitConnection } from "@reown/appkit-adapter-solana/react";
 
 // Helper function to shorten addresses for display
 const shortenAddress = (address: string) => {
@@ -55,11 +50,6 @@ export const useSendSolanaTransaction = () => useAssistantToolUI({
 // 创建独立的React组件
 const SolanaTransactionComponent = ({ input }: { input: any }) => {
 	// 将hooks移到组件顶层
-	const { walletProvider } = useAppKitProvider<Provider>('solana')
-	const { connection } = useAppKitConnection()
-	const { open } = useAppKit();
-	const { address, isConnected } = useAppKitAccount()
-	const { caipNetwork } = useAppKitNetwork();
 	const [isLoading, setLoading] = useState<boolean>(false);
 	const toast = useToast();
 	const { txData, name, orderInfo, tx_detail } = input.args;
@@ -67,8 +57,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 	const [showRawData, setShowRawData] = useState(false);
 	// 新增状态用于移动端的详情展开/折叠
 	const [showDetails, setShowDetails] = useState(true);
-	const networks: AppKitNetwork[] = [solana, solanaDevnet, solanaTestnet];
-
+	const wcCtx = useWalletConnect();
 	// Extract transaction info from tx_detail
 	const extractTransactionInfo = () => {
 		try {
@@ -88,7 +77,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 			const formattedToAmount = parseFloat(toAmount) / Math.pow(10, parseInt(toDecimals.toString()));
 
 			// Get addresses
-			const fromAddress = txDetailObj?.from_address || address || "";
+			const fromAddress = txDetailObj?.from_address || wcCtx.account.address || "";
 			const toAddress = txDetailObj?.to_address || (txData?.tx && txData.tx[0]?.keys?.[0]?.pubkey) || "";
 
 			// Get network information
@@ -123,7 +112,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 				toToken: "Unknown",
 				fromAmount: 0,
 				toAmount: 0,
-				fromAddress: address || "",
+				fromAddress: wcCtx.account.address || "",
 				toAddress: (txData?.tx && txData.tx[0]?.keys?.[0]?.pubkey) || "",
 				networkName: "Solana",
 				networkIcon: getNetworkIcon("Solana"),
@@ -178,7 +167,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 
 		setLoading(true);
 
-		if (!connection) {
+		if (!wcCtx.solConnetction) {
 			showToast(
 				toast,
 				'Connection Error',
@@ -190,14 +179,14 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 		}
 
 		// Check wallet connection
-		if (!isConnected) {
+		if (!wcCtx.account.isConnected) {
 			showToast(
 				toast,
 				'Wallet Connection',
 				'Please connect your wallet and try again.',
 				'warning'
 			);
-			await open({ view: "Connect" });
+			await wcCtx.open({ view: "Connect" });
 			setLoading(false);
 			return;
 		}
@@ -205,7 +194,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 		try {
 			// Switch to Solana network if needed
 			const solanaNetwork = networks.find(n => n.id === 'solana');
-			if (solanaNetwork && caipNetwork?.id !== solanaNetwork.id) {
+			if (solanaNetwork && wcCtx.network.caipNetwork?.id !== solanaNetwork.id) {
 				try {
 					await wcModal.switchNetwork(solanaNetwork);
 				} catch (e) {
@@ -251,9 +240,9 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 			}
 
 			// Get latest blockhash and set transaction properties
-			const { blockhash } = await connection.getLatestBlockhash();
+			const { blockhash } = await wcCtx.solConnetction.getLatestBlockhash();
 			transaction.recentBlockhash = blockhash;
-			transaction.feePayer = new PublicKey(address as any);
+			transaction.feePayer = new PublicKey(wcCtx.account.address as any);
 
 			// Add signer if provided
 			if (txData.signer) {
@@ -272,7 +261,7 @@ const SolanaTransactionComponent = ({ input }: { input: any }) => {
 			);
 
 			// Send transaction
-			const signedTx = await walletProvider.sendTransaction(transaction, connection);
+			const signedTx = await (wcCtx.solanaProvider as any).sendTransaction(transaction, wcCtx.solConnetction);
 
 			// Show success message
 			showToast(toast, 'Transaction Sent', 'Transaction successfully sent.', 'success');

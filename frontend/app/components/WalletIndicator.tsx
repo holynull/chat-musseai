@@ -5,6 +5,7 @@ import { TooltipIconButton } from "./ui/assistant-ui/tooltip-icon-button";
 import { Wallet } from "lucide-react";
 import { useAppKit, useAppKitAccount, useAppKitNetwork } from "@reown/appkit/react";
 import { FC, useEffect, useState } from "react";
+import { useWalletConnect } from "../contexts/appkit";
 const NETWORK_CHAIN_ID_MAP = {
 	"1": "Ethereum",
 	"56": "BSC",
@@ -15,9 +16,7 @@ const NETWORK_CHAIN_ID_MAP = {
 }
 
 export const WalletIndicator: FC<{}> = () => {
-	const { open, close } = useAppKit();
-	const { address, isConnected, caipAddress, status, embeddedWalletInfo } = useAppKitAccount()
-	const { caipNetwork, caipNetworkId, chainId, switchNetwork } = useAppKitNetwork()
+	const walletconnectCtx = useWalletConnect();
 
 	// 确保初始状态为 'disconnected'，防止服务器/客户端不匹配
 	const [walletStatus, setWalletStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -28,13 +27,13 @@ export const WalletIndicator: FC<{}> = () => {
 	// 在组件挂载后更新状态
 	useEffect(() => {
 		setIsClient(true);
-		setWalletStatus(isConnected ? 'connected' : 'disconnected');
-	}, [isConnected]);
+		setWalletStatus(walletconnectCtx.account.isConnected ? 'connected' : 'disconnected');
+	}, [walletconnectCtx.account.isConnected]);
 	// 更新连接钱包函数
 	const connectWallet = async () => {
 		try {
 			setWalletStatus('connecting');
-			await open({ view: "Connect" });
+			await walletconnectCtx.open({ view: "Connect" });
 			// AppKit会自动更新isConnected状态
 		} catch (error) {
 			setWalletStatus('error');
@@ -45,25 +44,25 @@ export const WalletIndicator: FC<{}> = () => {
 
 	// 在useEffect中监听连接状态变化
 	useEffect(() => {
-		setWalletStatus(isConnected ? 'connected' : 'disconnected');
-	}, [isConnected]);
+		setWalletStatus(walletconnectCtx.account.isConnected ? 'connected' : 'disconnected');
+	}, [walletconnectCtx.account.isConnected]);
 	// 添加选中状态管理
 	const [isSelected, setIsSelected] = useState(false);
 
-	const formattedAddress = address ?
+	const formattedAddress = walletconnectCtx?.account?.address ?
 		window.innerWidth < 768 ?
-			`${address.substring(0, 8)}...${address.substring(address.length - 6)}` :
-			`${address.substring(0, 6)}...${address.substring(address.length - 4)}` : '';
+			`${walletconnectCtx?.account?.address?.substring(0, 8)}...${walletconnectCtx?.account?.address?.substring(walletconnectCtx?.account?.address?.length - 6)}` :
+			`${walletconnectCtx?.account?.address?.substring(0, 6)}...${walletconnectCtx?.account?.address?.substring(walletconnectCtx?.account?.address?.length - 4)}` : '';
 
 	const [tooltipContent, setTooltipContent] = useState('Connect your wallet');
 
 	useEffect(() => {
-		if (status === 'connected') {
-			setTooltipContent(`Addr: ${formattedAddress} (${NETWORK_CHAIN_ID_MAP[chainId as keyof typeof NETWORK_CHAIN_ID_MAP] || 'Unknown Network'}, Chain ID: ${chainId || '?'}) `);
+		if (walletStatus === 'connected') {
+			setTooltipContent(`Addr: ${formattedAddress} (${NETWORK_CHAIN_ID_MAP[walletconnectCtx.network.chainId as keyof typeof NETWORK_CHAIN_ID_MAP] || 'Unknown Network'}, Chain ID: ${walletconnectCtx.network.chainId || '?'}) `);
 		} else {
 			setTooltipContent('Connect your wallet');
 		}
-	}, [status, formattedAddress, chainId]);
+	}, [status, formattedAddress, walletconnectCtx.network.chainId]);
 
 	const statusConfig = {
 		'disconnected': {
@@ -106,7 +105,7 @@ export const WalletIndicator: FC<{}> = () => {
 		setIsSelected(true);
 		try {
 			if (status === 'connected') {
-				await open({ view: "Account" });
+				await walletconnectCtx.open({ view: "Account" });
 			} else {
 				await connectWallet();
 			}
