@@ -212,7 +212,7 @@ export default function PrivacyPage(): React.ReactElement {
 							</p>
 							<div className="p-6 bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl">
 								<p className="mb-2"><span className="font-medium">Email:</span> privacy@musseai.com</p>
-								<p><span className="font-medium">Address:</span> Musse AI Headquarters, 123 Blockchain Avenue, San Francisco, CA 94105, USA</p>
+								{/* <p><span className="font-medium">Address:</span> Musse AI Headquarters, 123 Blockchain Avenue, San Francisco, CA 94105, USA</p> */}
 							</div>
 						</section>
 					</div>
