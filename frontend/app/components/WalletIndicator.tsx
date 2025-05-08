@@ -1,9 +1,6 @@
 "use client";
-import { add } from "date-fns";
-import { Tooltip } from "@radix-ui/react-tooltip";
 import { TooltipIconButton } from "./ui/assistant-ui/tooltip-icon-button";
 import { Wallet } from "lucide-react";
-import { useAppKit, useAppKitAccount, useAppKitNetwork } from "@reown/appkit/react";
 import { FC, useEffect, useState } from "react";
 import { useWalletConnect } from "../contexts/appkit";
 const NETWORK_CHAIN_ID_MAP = {
@@ -22,13 +19,11 @@ export const WalletIndicator: FC<{}> = () => {
 	const [walletStatus, setWalletStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
 	const [isClient, setIsClient] = useState(false);
 
-
-
 	// 在组件挂载后更新状态
 	useEffect(() => {
 		setIsClient(true);
 		setWalletStatus(walletconnectCtx.account.isConnected ? 'connected' : 'disconnected');
-	}, [walletconnectCtx.account.isConnected]);
+	}, [walletconnectCtx.account.isConnected, walletStatus]);
 	// 更新连接钱包函数
 	const connectWallet = async () => {
 		try {
@@ -42,10 +37,6 @@ export const WalletIndicator: FC<{}> = () => {
 		}
 	}
 
-	// 在useEffect中监听连接状态变化
-	useEffect(() => {
-		setWalletStatus(walletconnectCtx.account.isConnected ? 'connected' : 'disconnected');
-	}, [walletconnectCtx.account.isConnected]);
 	// 添加选中状态管理
 	const [isSelected, setIsSelected] = useState(false);
 
@@ -62,7 +53,7 @@ export const WalletIndicator: FC<{}> = () => {
 		} else {
 			setTooltipContent('Connect your wallet');
 		}
-	}, [status, formattedAddress, walletconnectCtx.network.chainId]);
+	}, [walletStatus, formattedAddress, walletconnectCtx.network.chainId]);
 
 	const statusConfig = {
 		'disconnected': {

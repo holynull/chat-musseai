@@ -203,7 +203,7 @@ export default function HomePage(): React.ReactElement {
 						<p>© {new Date().getFullYear()} Musse AI. All rights reserved.</p>
 						<div className="mt-4 flex justify-center space-x-6">
 							<a href="#" className="hover:text-gray-300 transition-colors">Terms</a>
-							<a href="#" className="hover:text-gray-300 transition-colors">Privacy</a>
+							<a href="/privacy" className="hover:text-gray-300 transition-colors">Privacy</a>
 							<a href="#" className="hover:text-gray-300 transition-colors">Contact</a>
 						</div>
 					</div>
