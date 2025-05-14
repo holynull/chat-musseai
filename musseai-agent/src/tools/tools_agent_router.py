@@ -9,7 +9,7 @@ def route_to_swap_agent():
     Expert capabilities include:
         - Get the list of supported tokens for token cross chain swap functionality.
         - Get a detailed quote for token cross chain swap transaction, including expected output amount, fees, and transaction parameters.
-		- Generate swap transaction data, and notify the front end to generate a button to send a token swap transaction.
+        - Generate swap transaction data, and notify the front end to generate a button to send a token swap transaction.
         - Get transaction records using the Bridgers API.
         - Get detailed information about a specific transaction using the Bridgers API.
     """
@@ -64,8 +64,8 @@ def route_to_cryptocurrency_quote_agent():
         - Retrieves the latest cryptocurrency quotation data from CoinMarketCap API.
         - Retrieves detailed metadata and information about a cryptocurrency from CoinMarketCap API.
         - Analyzes trading signals for cryptocurrency pairs against USDT using TradingView technical analysis.
-		- Retrieves the latest content including news, trending coins, and educational materials.
-		- Retrieves trending tokens based on community activity.
+        - Retrieves the latest content including news, trending coins, and educational materials.
+        - Retrieves trending tokens based on community activity.
     """
     return "Now requesting a Cryptocurrency Market Analysis Expert."
 
@@ -78,6 +78,24 @@ def route_to_image_agent():
         - Generate images and return markdown format image links of generated images, separated by newlines.
     """
     return "Now requesting a Text-to-Image Generation Expert."
+
+
+@tool
+def route_to_infura_agent():
+    """
+    This tool will hand over the question to a Blockchain Data Expert.
+    Expert capabilities include:
+        - Getting blockchain network information for various networks (Ethereum, Polygon, Optimism, etc.)
+        - Checking wallet native token balances
+        - Looking up transaction details on the blockchain
+        - Viewing block information and contents
+        - Checking ERC20 token balances
+        - Estimating gas fees for transactions
+        - Getting contract events and logs
+        - Calling blockchain JSON-RPC methods
+        - Retrieving supported network information
+    """
+    return "Now requesting a Blockchain Data Expert."
 
 
 @tool
@@ -96,6 +114,7 @@ from graphs.graph_wallet import graph as wallet_graph
 from graphs.graph_search import graph as search_webpage_graph
 from graphs.graph_quote import graph as quote_graph
 from graphs.graph_image import graph as image_graph
+from graphs.graph_infura import graph as infura_graph
 
 
 def get_next_node(tool_name: str):
@@ -109,6 +128,8 @@ def get_next_node(tool_name: str):
         return quote_graph.get_name()
     elif tool_name == route_to_image_agent.get_name():
         return image_graph.get_name()
+    elif tool_name == route_to_infura_agent.get_name():
+        return infura_graph.get_name()
     else:
         return None
 
@@ -120,4 +141,5 @@ tools = [
     route_to_search_agent,
     route_to_cryptocurrency_quote_agent,
     route_to_image_agent,
+    route_to_infura_agent,
 ]

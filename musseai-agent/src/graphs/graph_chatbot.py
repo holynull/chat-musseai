@@ -32,6 +32,7 @@ from graphs.graph_wallet import graph as wallet_graph
 from graphs.graph_search import graph as search_webpage_graph
 from graphs.graph_quote import graph as quote_graph
 from graphs.graph_image import graph as image_graph
+from graphs.graph_infura import graph as infura_graph
 
 llm = ChatAnthropic(
     model="claude-3-5-sonnet-20241022",
@@ -61,33 +62,6 @@ llm = ChatAnthropic(
         # anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
         streaming=True,
         verbose=True,
-    ),
-    openai_gpt_4o=ChatOpenAI(
-        temperature=0.9,
-        model="gpt-4o",
-        verbose=True,
-        streaming=True,
-    ),
-    openai_gpt_3_5_turbo_1106=ChatOpenAI(
-        model="gpt-3.5-turbo-1106",
-        verbose=True,
-        streaming=True,
-        temperature=0.9,
-    ),
-    openai_gpt_4_turbo_preview=ChatOpenAI(
-        temperature=0.9,
-        model="gpt-4-turbo-preview",
-        verbose=True,
-        streaming=True,
-    ),
-    openai_gpt_4o_mini=ChatOpenAI(
-        temperature=0.9,
-        model="gpt-4o-mini",
-        verbose=True,
-        streaming=True,
-    ),
-    pplx_sonar_medium_chat=ChatPerplexity(
-        model="sonar-medium-chat", temperature=0.9, verbose=True, streaming=True
     ),
 )
 
@@ -225,6 +199,7 @@ graph_builder.add_node(wallet_graph.get_name(), wallet_graph)
 graph_builder.add_node(search_webpage_graph.get_name(), search_webpage_graph)
 graph_builder.add_node(quote_graph.get_name(), quote_graph)
 graph_builder.add_node(image_graph)
+graph_builder.add_node(infura_graph)
 
 graph_builder.add_node(router_tools.get_name(), router_tools)
 graph_builder.add_edge(START, node_llm.get_name())
@@ -239,6 +214,7 @@ graph_builder.add_edge(wallet_graph.get_name(), node_llm.get_name())
 graph_builder.add_edge(search_webpage_graph.get_name(), node_llm.get_name())
 graph_builder.add_edge(quote_graph.get_name(), node_llm.get_name())
 graph_builder.add_edge(image_graph.get_name(), node_llm.get_name())
+graph_builder.add_edge(infura_graph.get_name(), node_llm.get_name())
 from langgraph.store.memory import InMemoryStore
 from langchain_ollama import OllamaEmbeddings
 from langgraph.checkpoint.memory import MemorySaver
