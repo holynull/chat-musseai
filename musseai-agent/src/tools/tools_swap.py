@@ -2,6 +2,7 @@ import requests
 from typing import List, Dict, Optional
 from langchain.agents import tool
 from web3 import Web3
+from tools.tools_infura import NETWORK_CONFIG, estimate_gas as infura_estimate_gas
 
 
 @tool
@@ -266,28 +267,45 @@ def generate_swap_tx_data(
         and from_token_chain == t["chain"]
     ]
     if len(evm_from_token) > 0 and evm_from_token[0]["chain"] != "TRON":
-        # RPC URL mapping for different chains
-        rpc_urls = {
-            1: "https://eth.public-rpc.com",  # Ethereum mainnet
-            56: "https://bsc-dataseed.bnbchain.org",  # BSC mainnet
-            137: "https://polygon-rpc.com",  # Polygon mainnet
-            42161: "https://arb1.arbitrum.io/rpc",  # Arbitrum One
-            10: "https://mainnet.optimism.io",  # Optimism
-        }
-        rpc_url = rpc_urls.get(
-            int(evm_from_token[0]["chainId"])
-        )  # Default to Ethereum mainnet if chain_id not found
-
         # Create Web3 instance
-        w3 = Web3(Web3.HTTPProvider(rpc_url))
         tx = data.get("data", {}).get("txData")
         tx["to"] = Web3.to_checksum_address(tx["to"])
         tx["from"] = Web3.to_checksum_address(from_address)
         try:
-            # Estimate gas limit
-            gas_limit = w3.eth.estimate_gas(tx)
-            # Get current gas price
-            gas_price = w3.eth.gas_price
+            # 使用 tools_infura 中的 estimate_gas 函数
+            chain_id = int(evm_from_token[0]["chainId"])
+            # 确定网络名称
+            network = "ethereum"  # 默认值
+            for net, config in NETWORK_CONFIG.items():
+                for net_type, net_config in config.items():
+                    if net_config.get("chain_id") == chain_id:
+                        network = net
+                        network_type = net_type
+                        break
+
+            # 调用 infura 的 estimate_gas 函数
+            gas_result = infura_estimate_gas.invoke(
+                {
+                    "from_address": from_address,
+                    to_address: tx["to"],
+                    "value": int(tx.get("value", 0)),
+                    data: tx.get("data", ""),
+                    network: network,
+                    network_type: network_type,
+                }
+            )
+
+            if isinstance(gas_result, str):  # 错误情况
+                return (
+                    f"Failed when estimate gas. {gas_result}",
+                    {
+                        "success": False,
+                        "message": f"Failed when estimate gas. {gas_result}",
+                    },
+                )
+
+            gas_limit = gas_result["estimated_gas"]
+            gas_price = gas_result["gas_price"]
         except Exception as e:
             return (
                 f"Failed when estimate gas. {e}",
@@ -366,8 +384,8 @@ def generate_swap_tx_data(
             "order_info": order_info,
             "tx_detail": {
                 "from_token_address": from_token_address,
-                "from_token_symbol":from_token_symbol,
-                "from_token_decimals":from_token_decimals,
+                "from_token_symbol": from_token_symbol,
+                "from_token_decimals": from_token_decimals,
                 "amount_out_min": amount_out_min,
                 "equipment_no": equipment_no,
                 "to_address": to_address,
@@ -375,8 +393,8 @@ def generate_swap_tx_data(
                 "from_token_amount": from_token_amount,
                 "from_token_chain": from_token_chain,
                 "to_token_address": to_token_address,
-                "to_token_symbol":to_token_symbol,
-                "to_token_decimals":to_token_decimals,
+                "to_token_symbol": to_token_symbol,
+                "to_token_decimals": to_token_decimals,
                 "from_address": from_address,
                 "from_coin_code": from_coin_code,
                 "to_coin_code": to_coin_code,
