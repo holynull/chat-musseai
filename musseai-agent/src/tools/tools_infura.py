@@ -1,3 +1,4 @@
+import logging
 import requests
 import json
 from typing import List, Dict, Optional, Any, Union
@@ -362,7 +363,7 @@ def get_supported_networks() -> List[Dict]:
 
     Returns:
         List[Dict]: Returns a list of supported networks, each containing:
-            - network: Network name (e.g., ethereum, polygon)
+            - network: Network name
             - network_type: Network type (e.g., mainnet, testnet)
             - chain_id: Chain ID
             - name: Full network name
@@ -391,7 +392,7 @@ def get_eth_block_number(network: str, network_type: str = "mainnet") -> Dict:
     Get the latest block number for the specified network.
 
     Args:
-        network (str): Blockchain network name (ethereum, polygon, optimism, arbitrum)
+        network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -401,7 +402,7 @@ def get_eth_block_number(network: str, network_type: str = "mainnet") -> Dict:
             - network_type: Requested network type
     """
     try:
-        infura_url = get_infura_url(network, network_type)
+        infura_url = get_rpc_url(network, network_type)
         w3 = Web3(Web3.HTTPProvider(infura_url))
 
         # Get latest block number
@@ -413,6 +414,7 @@ def get_eth_block_number(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error getting block number: {str(e)}"
 
 
@@ -423,7 +425,7 @@ def get_eth_balance(address: str, network: str, network_type: str = "mainnet") -
 
     Args:
         address (str): Ethereum address to query balance for
-        network (str): Blockchain network name (ethereum, polygon, optimism, arbitrum)
+        network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -459,6 +461,7 @@ def get_eth_balance(address: str, network: str, network_type: str = "mainnet") -
             "network_type": network_type,
         }
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error getting balance: {str(e)}"
 
 
@@ -471,7 +474,7 @@ def get_eth_transaction(
 
     Args:
         tx_hash (str): Transaction hash
-        network (str): Blockchain network name (ethereum, polygon, optimism, arbitrum)
+        network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -522,6 +525,7 @@ def get_eth_transaction(
 
         return tx_dict
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error getting transaction: {str(e)}"
 
 
@@ -537,7 +541,7 @@ def get_eth_block(
 
     Args:
         block_identifier (Union[str, int]): Block number or block hash or special tag (e.g., "latest")
-        network (str): Blockchain network name (ethereum, polygon, optimism, arbitrum)
+        network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
         full_transactions (bool, optional): Whether to return full transaction objects. If False, only returns transaction hashes. Defaults to False.
 
@@ -615,6 +619,7 @@ def get_eth_block(
 
         return block_dict
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error getting block: {str(e)}"
 
 
@@ -628,7 +633,7 @@ def call_eth_method(
     Args:
         method (str): JSON-RPC method name (e.g., "eth_gasPrice", "net_version")
         params (List): List of method parameters
-        network (str): Blockchain network name (ethereum, polygon, optimism, arbitrum)
+        network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -657,6 +662,7 @@ def call_eth_method(
             "network_type": network_type,
         }
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error calling RPC method: {str(e)}"
 
 
@@ -670,7 +676,7 @@ def get_token_balance(
     Args:
         token_address (str): ERC20 token contract address
         wallet_address (str): Wallet address to query balance for
-        network (str): Blockchain network name (ethereum, polygon, optimism, arbitrum)
+        network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -751,6 +757,7 @@ def get_token_balance(
             "network_type": network_type,
         }
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error getting token balance: {str(e)}"
 
 
@@ -814,6 +821,7 @@ def estimate_gas(
             "network_type": network_type,
         }
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error estimating gas: {str(e)}"
 
 
@@ -884,6 +892,7 @@ def get_contract_events(
             "network_type": network_type,
         }
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error getting contract events: {str(e)}"
 
 
@@ -893,7 +902,7 @@ def get_network_info(network: str, network_type: str = "mainnet") -> Dict:
     Get general information about the specified network.
 
     Args:
-        network (str): Blockchain network name (ethereum, polygon, optimism, arbitrum)
+        network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -930,7 +939,439 @@ def get_network_info(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
+        logging.error(e.with_traceback())
         return f"Error getting network info: {str(e)}"
+
+
+def _make_request(
+    method: str,
+    params: List = None,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """
+    发送 JSON-RPC 请求
+
+    Args:
+        method: RPC 方法名
+        params: 方法参数列表
+        network: 网络名称
+        network_type: 网络类型
+
+    Returns:
+        JSON-RPC 响应
+    """
+    try:
+        infura_url = get_rpc_url(network, network_type)
+
+        # Build JSON-RPC request
+        payload = {"jsonrpc": "2.0", "method": method, "params": params or [], "id": 1}
+
+        # Send request
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(infura_url, headers=headers, json=payload)
+        response.raise_for_status()
+
+        # Parse response
+        result = response.json()
+
+        if "error" in result:
+            return {"error": result["error"]["message"]}
+
+        return {
+            "result": result["result"],
+            "method": method,
+            "network": network,
+            "network_type": network_type,
+        }
+    except Exception as e:
+        logging.error(e.with_traceback())
+        return {"error": f"RPC request failed: {str(e)}"}
+
+
+# @tool
+# def eth_accounts(network: str, network_type: str = "mainnet") -> Dict:
+#     """Returns a list of addresses owned by client."""
+#     return _make_request("eth_accounts", [], network, network_type)
+
+
+@tool
+def eth_blockNumber(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns the number of most recent block."""
+    return _make_request("eth_blockNumber", [], network, network_type)
+
+
+@tool
+def eth_call(
+    tx_object: Dict,
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Executes a new message call immediately without creating a transaction."""
+    return _make_request(
+        "eth_call", [tx_object, block_parameter], network, network_type
+    )
+
+
+@tool
+def eth_chainId(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns the chain ID of the current network."""
+    return _make_request("eth_chainId", [], network, network_type)
+
+
+@tool
+def eth_coinbase(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns the client coinbase address."""
+    return _make_request("eth_coinbase", [], network, network_type)
+
+
+@tool
+def eth_createAccessList(
+    tx_object: Dict,
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Creates an access list for a transaction."""
+    return _make_request(
+        "eth_createAccessList", [tx_object, block_parameter], network, network_type
+    )
+
+
+@tool
+def eth_estimateGas(
+    tx_object: Dict,
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Generates and returns an estimate of how much gas is necessary to allow the transaction to complete."""
+    return _make_request(
+        "eth_estimateGas", [tx_object, block_parameter], network, network_type
+    )
+
+
+@tool
+def eth_feeHistory(
+    block_count: int,
+    newest_block: str = "latest",
+    reward_percentiles: List[float] = None,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns a collection of historical gas information."""
+    params = [hex(block_count), newest_block]
+    if reward_percentiles:
+        params.append(reward_percentiles)
+    return _make_request("eth_feeHistory", params, network, network_type)
+
+
+@tool
+def eth_gasPrice(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns the current price per gas in wei."""
+    return _make_request("eth_gasPrice", [], network, network_type)
+
+
+@tool
+def eth_getBalance(
+    address: str,
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns the balance of the account of given address."""
+    return _make_request(
+        "eth_getBalance",
+        [Web3.to_checksum_address(address), block_parameter],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getBlockByHash(
+    block_hash: str,
+    full_transactions: bool = True,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns information about a block by hash."""
+    return _make_request(
+        "eth_getBlockByHash", [block_hash, full_transactions], network, network_type
+    )
+
+
+@tool
+def eth_getBlockByNumber(
+    block_parameter: Union[str, int],
+    full_transactions: bool = True,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns information about a block by block number."""
+    if isinstance(block_parameter, int):
+        block_parameter = hex(block_parameter)
+    return _make_request(
+        "eth_getBlockByNumber",
+        [block_parameter, full_transactions],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getBlockReceipts(
+    block_parameter: Union[str, int],
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns all transaction receipts for a block."""
+    if isinstance(block_parameter, int):
+        block_parameter = hex(block_parameter)
+    return _make_request(
+        "eth_getBlockReceipts", [block_parameter], network, network_type
+    )
+
+
+@tool
+def eth_getBlockTransactionCountByHash(
+    block_hash: str, network: str = "ethereum", network_type: str = "mainnet"
+) -> Dict:
+    """Returns the number of transactions in a block from a block matching the given block hash."""
+    return _make_request(
+        "eth_getBlockTransactionCountByHash", [block_hash], network, network_type
+    )
+
+
+@tool
+def eth_getBlockTransactionCountByNumber(
+    block_parameter: Union[str, int],
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns the number of transactions in a block matching the given block number."""
+    if isinstance(block_parameter, int):
+        block_parameter = hex(block_parameter)
+    return _make_request(
+        "eth_getBlockTransactionCountByNumber", [block_parameter], network, network_type
+    )
+
+
+@tool
+def eth_getCode(
+    address: str,
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns code at a given address."""
+    return _make_request(
+        "eth_getCode",
+        [Web3.to_checksum_address(address), block_parameter],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getLogs(
+    filter_params: Dict, network: str = "ethereum", network_type: str = "mainnet"
+) -> Dict:
+    """Returns an array of all logs matching a given filter object."""
+    return _make_request("eth_getLogs", [filter_params], network, network_type)
+
+
+@tool
+def eth_getProof(
+    address: str,
+    storage_keys: List[str],
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns the account and storage values of the specified account including the Merkle-proof."""
+    return _make_request(
+        "eth_getProof",
+        [Web3.to_checksum_address(address), storage_keys, block_parameter],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getStorageAt(
+    address: str,
+    position: str,
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns the value from a storage position at a given address."""
+    return _make_request(
+        "eth_getStorageAt",
+        [Web3.to_checksum_address(address), position, block_parameter],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getTransactionByBlockHashAndIndex(
+    block_hash: str,
+    index: int,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns information about a transaction by block hash and transaction index position."""
+    return _make_request(
+        "eth_getTransactionByBlockHashAndIndex",
+        [block_hash, hex(index)],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getTransactionByBlockNumberAndIndex(
+    block_parameter: Union[str, int],
+    index: int,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns information about a transaction by block number and transaction index position."""
+    if isinstance(block_parameter, int):
+        block_parameter = hex(block_parameter)
+    return _make_request(
+        "eth_getTransactionByBlockNumberAndIndex",
+        [block_parameter, hex(index)],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getTransactionByHash(
+    tx_hash: str, network: str = "ethereum", network_type: str = "mainnet"
+) -> Dict:
+    """Returns the information about a transaction requested by transaction hash."""
+    return _make_request("eth_getTransactionByHash", [tx_hash], network, network_type)
+
+
+@tool
+def eth_getTransactionCount(
+    address: str,
+    block_parameter: str = "latest",
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns the number of transactions sent from an address."""
+    return _make_request(
+        "eth_getTransactionCount",
+        [Web3.to_checksum_address(address), block_parameter],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getTransactionReceipt(
+    tx_hash: str, network: str = "ethereum", network_type: str = "mainnet"
+) -> Dict:
+    """Returns the receipt of a transaction by transaction hash."""
+    return _make_request("eth_getTransactionReceipt", [tx_hash], network, network_type)
+
+
+@tool
+def eth_getUncleByBlockHashAndIndex(
+    block_hash: str,
+    index: int,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns information about an uncle of a block by hash and uncle index position."""
+    return _make_request(
+        "eth_getUncleByBlockHashAndIndex",
+        [block_hash, hex(index)],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getUncleByBlockNumberAndIndex(
+    block_parameter: Union[str, int],
+    index: int,
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns information about an uncle of a block by number and uncle index position."""
+    if isinstance(block_parameter, int):
+        block_parameter = hex(block_parameter)
+    return _make_request(
+        "eth_getUncleByBlockNumberAndIndex",
+        [block_parameter, hex(index)],
+        network,
+        network_type,
+    )
+
+
+@tool
+def eth_getUncleCountByBlockHash(
+    block_hash: str, network: str = "ethereum", network_type: str = "mainnet"
+) -> Dict:
+    """Returns the number of uncles in a block from a block matching the given block hash."""
+    return _make_request(
+        "eth_getUncleCountByBlockHash", [block_hash], network, network_type
+    )
+
+
+@tool
+def eth_getUncleCountByBlockNumber(
+    block_parameter: Union[str, int],
+    network: str = "ethereum",
+    network_type: str = "mainnet",
+) -> Dict:
+    """Returns the number of uncles in a block from a block matching the given block number."""
+    if isinstance(block_parameter, int):
+        block_parameter = hex(block_parameter)
+    return _make_request(
+        "eth_getUncleCountByBlockNumber", [block_parameter], network, network_type
+    )
+
+
+@tool
+def eth_maxPriorityFeePerGas(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns the current maxPriorityFeePerGas in wei."""
+    return _make_request("eth_maxPriorityFeePerGas", [], network, network_type)
+
+
+# @tool
+# def eth_sendRawTransaction(
+#     signed_tx_data: str, network: str = "ethereum", network_type: str = "mainnet"
+# ) -> Dict:
+#     """Creates new message call transaction or a contract creation for signed transactions."""
+#     return _make_request(
+#         "eth_sendRawTransaction", [signed_tx_data], network, network_type
+#     )
+
+
+@tool
+def eth_syncing(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns an object with data about the sync status or false."""
+    return _make_request("eth_syncing", [], network, network_type)
+
+
+@tool
+def net_peerCount(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns number of peers currently connected to the client."""
+    return _make_request("net_peerCount", [], network, network_type)
+
+
+@tool
+def net_version(network: str, network_type: str = "mainnet") -> Dict:
+    """Returns the current network id."""
+    return _make_request("net_version", [], network, network_type)
 
 
 # Export all tools
@@ -945,4 +1386,37 @@ tools = [
     estimate_gas,
     get_contract_events,
     get_network_info,
+    # eth_accounts,
+    eth_blockNumber,
+    eth_call,
+    eth_chainId,
+    eth_coinbase,
+    eth_createAccessList,
+    eth_estimateGas,
+    eth_feeHistory,
+    eth_gasPrice,
+    eth_getBalance,
+    eth_getBlockByHash,
+    eth_getBlockByNumber,
+    eth_getBlockReceipts,
+    eth_getBlockTransactionCountByHash,
+    eth_getBlockTransactionCountByNumber,
+    eth_getCode,
+    eth_getLogs,
+    eth_getProof,
+    eth_getStorageAt,
+    eth_getTransactionByBlockHashAndIndex,
+    eth_getTransactionByBlockNumberAndIndex,
+    eth_getTransactionByHash,
+    eth_getTransactionCount,
+    eth_getTransactionReceipt,
+    eth_getUncleByBlockHashAndIndex,
+    eth_getUncleByBlockNumberAndIndex,
+    eth_getUncleCountByBlockHash,
+    eth_getUncleCountByBlockNumber,
+    eth_maxPriorityFeePerGas,
+    # eth_sendRawTransaction,
+    eth_syncing,
+    net_peerCount,
+    net_version,
 ]

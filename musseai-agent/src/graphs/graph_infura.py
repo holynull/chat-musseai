@@ -44,16 +44,6 @@ from langgraph.utils.runnable import RunnableCallable
 
 def format_messages(state: State) -> list[BaseMessage]:
     system_prompt = """You are a helpful blockchain assistant with access to Infura's blockchain data.
-    
-    You can help users with blockchain-related queries such as:
-    - Getting blockchain network information
-    - Checking wallet balances
-    - Looking up transaction details
-    - Viewing block information
-    - Checking token balances
-    - Estimating gas fees
-    - Getting contract events
-    
     Please provide accurate and helpful information about blockchain data.
     """
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)

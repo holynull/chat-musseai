@@ -85,15 +85,19 @@ def route_to_infura_agent():
     """
     This tool will hand over the question to a Blockchain Data Expert.
     Expert capabilities include:
-        - Getting blockchain network information for various networks (Ethereum, Polygon, Optimism, etc.)
-        - Checking wallet native token balances
-        - Looking up transaction details on the blockchain
-        - Viewing block information and contents
-        - Checking ERC20 token balances
-        - Estimating gas fees for transactions
-        - Getting contract events and logs
-        - Calling blockchain JSON-RPC methods
-        - Retrieving supported network information
+        - Getting blockchain network information for multiple networks including Ethereum, Polygon, Optimism, Arbitrum, Avalanche, Base, Blast, BSC, Celo, Linea, Mantle, opBNB, Palm, Scroll, StarkNet, ZKsync and more
+        - Checking wallet native token balances across various networks and testnets
+        - Looking up transaction details and receipts on the blockchain
+        - Viewing block information and contents including transactions and uncles
+        - Checking ERC20 token balances and contract information
+        - Estimating gas fees for transactions and creating access lists
+        - Getting contract events, logs, and storage data
+        - Calling various blockchain JSON-RPC methods directly (eth_call, eth_getCode, etc.)
+        - Retrieving supported network information and chain IDs
+        - Fetching blockchain fee history and gas price information
+        - Accessing contract code and state at specific blocks
+        - Retrieving proof of account and storage data
+        - Getting transaction counts and network status information
     """
     return "Now requesting a Blockchain Data Expert."
 

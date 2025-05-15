@@ -274,7 +274,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			if (chunk.data.event === "on_chat_model_stream") {
 
 				if (chunk.data.metadata.langgraph_node === "respond" ||
-					["node_llm_musseai", "node_llm_image", "node_llm_quote", "node_llm_search", "node_llm_swap", "node_llm_wallet"]
+					["node_llm_musseai", "node_llm_image", "node_llm_quote", "node_llm_search", "node_llm_swap", "node_llm_wallet","node_llm_infura"]
 						.includes(chunk.data.metadata.langgraph_node)) {
 					const message = chunk.data.data.chunk;
 					if (message.content && Array.isArray(message.content) && message.content.length > 0) {

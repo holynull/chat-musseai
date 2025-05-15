@@ -11,11 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import uuid
 
-from langsmith import Client
+# from langsmith import Client
+# lsclient = Client(api_key=os.getenv("LANGCHAIN_API_KEY"))
 
 app = FastAPI()
 
-lsclient = Client(api_key=os.getenv("LANGCHAIN_API_KEY"))
 
 origins = [
     "*",  # 注意：生产环境不建议使用通配符
@@ -738,7 +738,6 @@ def initialize_test_users():
                 "disabled": False,
                 "created_at": datetime.datetime.now(tz=pytz.UTC).isoformat(" "),
             }
-
 
 # 初始化测试用户
 initialize_test_users()
