@@ -35,6 +35,9 @@ import { useGetLatestContent } from "../GetLatestContent";
 import { useGetCommunityTrendingToken } from "../GetCommunityTrendingToken";
 import { useGenerateImage } from "../GenerateImage";
 import React from "react";
+import { useSupportedNetworks } from "../SupportedNetworks";
+import { useGetEthBlockNumber } from "../GetEthBlockNumber";
+import { useGetEthBalance } from "../GetEthBalance";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
@@ -80,6 +83,9 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	useGetLatestContent();
 	useGetCommunityTrendingToken();
 	useGenerateImage();
+	useSupportedNetworks();
+	useGetEthBlockNumber();
+	useGetEthBalance();
 
 	return (
 		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full h-full">

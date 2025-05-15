@@ -274,7 +274,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			if (chunk.data.event === "on_chat_model_stream") {
 
 				if (chunk.data.metadata.langgraph_node === "respond" ||
-					["node_llm_musseai", "node_llm_image", "node_llm_quote", "node_llm_search", "node_llm_swap", "node_llm_wallet","node_llm_infura"]
+					["node_llm_musseai", "node_llm_image", "node_llm_quote", "node_llm_search", "node_llm_swap", "node_llm_wallet", "node_llm_infura"]
 						.includes(chunk.data.metadata.langgraph_node)) {
 					const message = chunk.data.data.chunk;
 					if (message.content && Array.isArray(message.content) && message.content.length > 0) {
@@ -324,9 +324,10 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				}
 			}
 			if (chunk.data.event === "on_tool_end") {
-				if (["search_news", "search_webpage", "access_links_content"].includes(chunk?.data?.name)) {
+				// 辅助函数定义
+				const handleSearchResult = (chunk: any) => {
 					const output = chunk.data.data.output.content;
-					let sources: any[] = []
+					let sources: any[] = [];
 					if (output) {
 						try {
 							const result = JSON.parse(output);
@@ -339,435 +340,173 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 							console.error("Error parsing JSON:", error);
 						}
 					}
-					setMessages((prevMessages) => {
-						const searchResultToolMsg = new AIMessage({
+					setMessages((prevMessages) => [
+						...prevMessages,
+						new AIMessage({
 							content: "",
-							tool_calls: [
-								{
-									name: "source_list",
-									args: { sources: sources },
-								},
-							],
-						});
-						return [...prevMessages, searchResultToolMsg];
-					});
-				}
-				if (chunk?.data?.name === "connect_to_wallet") {
-					connectWallet()
-				}
-				if (chunk?.data?.name === 'change_network_to') {
+							tool_calls: [{
+								name: "source_list",
+								args: { sources: sources },
+							}],
+						})
+					]);
+				};
+
+				const handleNetworkChange = (chunk: any) => {
 					let content = chunk.data.data.output.content;
-					const result = JSON.parse(content)
-					change_network_to(result)
-				}
-				if (["generate_approve_erc20"].includes(chunk.data.name)) {
+					const result = JSON.parse(content);
+					change_network_to(result);
+				};
+
+				const handleApproveERC20 = (chunk: any) => {
 					let content = chunk.data.data.output.content;
 					try {
 						const result = JSON.parse(content);
-						let chainType: "evm" | "sol" | "tron" | undefined = undefined;
-						let txData: any = null;
-						let txName: string = '';
+						let chainType: string | undefined, txData: any, txName: string = '';
+
 						if (Array.isArray(result) && result.length >= 2) {
-							txData = result[1] as any;
+							txData = result[1];
 							if (txData["chain_id"] != chainId && txData['chain_id'] !== 'tron') {
-								await _change_network_to(txData["chain_id"])
+								_change_network_to(txData["chain_id"]);
 							}
-							// setTxDataEvm(txData);
-							// setShowSendEvmTx(true);
+
 							chainType = 'evm';
-							txData = txData;
-							txName = txData['name']
-							setMessages((prevMessages) => {
-								const searchResultToolMsg = new AIMessage({
+							txName = txData['name'];
+
+							setMessages((prevMessages) => [
+								...prevMessages,
+								new AIMessage({
 									content: "",
-									tool_calls: [
-										{
-											name: "generate_approve_erc20",
-											args: { txData: txData, name: txName, orderInfo: undefined, tx_detail: result[1]?.tx_detail },
+									tool_calls: [{
+										name: "generate_approve_erc20",
+										args: {
+											txData: txData,
+											name: txName,
+											orderInfo: undefined,
+											tx_detail: result[1]?.tx_detail
 										},
-									],
-								});
-								return [...prevMessages, searchResultToolMsg];
-							});
+									}],
+								})
+							]);
 						}
 					} catch (e) {
-						console.error(e)
+						console.error(e);
 					}
-				}
-				if (chunk.data.name === 'generate_swap_tx_data') {
+				};
+
+				const handleSwapTx = (chunk: { data: { data: { output: { content: string } } } }) => {
 					let content = chunk.data.data.output.content;
 					try {
 						let result = JSON.parse(content);
 						let orderInfo: any = null;
 						let chainType = "";
-						let txName: string = '';
+						let txName = '';
+
 						if (Array.isArray(result) && result.length >= 2) {
-							result = result[1] as any;
+							result = result[1];
 							if (result["success"]) {
 								orderInfo = result.order_info;
-								const swap_data = result["swap_data"] as any;
+								const swap_data = result["swap_data"];
 								txName = swap_data.name;
+
 								if (!swap_data.chain_type) {
 									throw new Error("Missing chain_type in swap data");
 								}
+
 								if (swap_data.chain_type === "evm") {
-									chainType = 'evm'
-									setMessages((prevMessages) => {
-										const searchResultToolMsg = new AIMessage({
+									chainType = 'evm';
+									setMessages((prevMessages) => [
+										...prevMessages,
+										new AIMessage({
 											content: "",
-											tool_calls: [
-												{
-													name: "send_evm_transaction",
-													args: { txData: swap_data.txData, name: txName, orderInfo: orderInfo, tx_detail: result?.tx_detail },
+											tool_calls: [{
+												name: "send_evm_transaction",
+												args: {
+													txData: swap_data.txData,
+													name: txName,
+													orderInfo: orderInfo,
+													tx_detail: result?.tx_detail
 												},
-											],
-										});
-										return [...prevMessages, searchResultToolMsg];
-									});
+											}],
+										})
+									]);
 								} else if (swap_data.chain_type === "solana") {
 									if (!connection) {
-										wcModal.switchNetwork(solana)
+										wcModal.switchNetwork(solana);
 									}
-									chainType = 'sol'
-									setMessages((prevMessages) => {
-										const searchResultToolMsg = new AIMessage({
+									chainType = 'sol';
+									setMessages((prevMessages) => [
+										...prevMessages,
+										new AIMessage({
 											content: "",
-											tool_calls: [
-												{
-													name: "send_solana_transaction",
-													args: { txData: swap_data.txData, name: txName, orderInfo: orderInfo, tx_detail: result?.tx_detail },
+											tool_calls: [{
+												name: "send_solana_transaction",
+												args: {
+													txData: swap_data.txData,
+													name: txName,
+													orderInfo: orderInfo,
+													tx_detail: result?.tx_detail
 												},
-											],
-										});
-										return [...prevMessages, searchResultToolMsg];
-									});
-								}
-								// else if (swap_data.chain_type === "tron") {
-								// 	if (!connection) {
-								// 		wcModal.switchNetwork(solana)
-								// 		// open({ view: "Connect" })
-								// 	}
-								// 	chainType = 'tron'
-
-								// } 
-								else {
-									throw new DOMException('Unsupported chain type:', swap_data.chain_type)
+											}],
+										})
+									]);
+								} else {
+									throw new Error(`Unsupported chain type: ${swap_data.chain_type}`);
 								}
 							}
 						}
 					} catch (e) {
-						console.error(e)
+						console.error(e);
 					}
-				}
-				if (chunk.data.name === 'get_available_tokens') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "get_available_tokens",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-				if (chunk.data.name === 'swap_quote') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "swap_quote",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-				if (chunk.data.name === 'get_transaction_records') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "get_transaction_records",
-										args: { data: result.list },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-				if (chunk.data.name === 'get_transaction_details') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "get_transaction_details",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-				if (chunk.data.name === 'get_balance_of_address') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "get_balance_of_address",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
+				};
 
-				if (chunk.data.name === 'get_erc20_decimals') {
+				const handleRegularTool = (toolName: string, chunk: any) => {
 					let content = chunk.data.data.output.content;
 					try {
 						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
+						setMessages((prevMessages) => [
+							...prevMessages,
+							new AIMessage({
 								content: "",
-								tool_calls: [
-									{
-										name: "get_erc20_decimals",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
+								tool_calls: [{
+									name: toolName,
+									args: { data: toolName === "get_transaction_records" ? result.list : result },
+								}],
+							})
+						]);
 					} catch (e) {
-						console.error(e)
+						console.error(e);
 					}
-				}
+				};
+				// 定义特殊处理的工具
+				const specialTools = {
+					"search_news": handleSearchResult,
+					"search_webpage": handleSearchResult,
+					"access_links_content": handleSearchResult,
+					"connect_to_wallet": () => connectWallet(),
+					"change_network_to": handleNetworkChange,
+					"generate_approve_erc20": handleApproveERC20,
+					"generate_swap_tx_data": handleSwapTx,
+				};
 
-				if (chunk.data.name === 'allowance_erc20') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "allowance_erc20",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
+				// 定义常规工具处理函数
+				const regularTools = [
+					"get_available_tokens", "swap_quote", "get_transaction_records",
+					"get_transaction_details", "get_balance_of_address", "get_erc20_decimals",
+					"allowance_erc20", "get_sol_balance", "get_spl_token_balance", "getLatestQuote",
+					"buy_sell_signal", "getTokenMetadata", "getLatestContent",
+					"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance"
+				];
 
-				if (chunk.data.name === 'get_sol_balance') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "get_sol_balance",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
+				const toolName = chunk?.data?.name;
 
-				if (chunk.data.name === 'get_spl_token_balance') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "get_spl_token_balance",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
+				// 处理特殊工具
+				if (specialTools[toolName as keyof typeof specialTools]) {
+					specialTools[toolName as keyof typeof specialTools](chunk);
 				}
-
-				if (chunk.data.name === 'getLatestQuote') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "getLatestQuote",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-
-				if (chunk.data.name === 'buy_sell_signal') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "buy_sell_signal",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-
-				if (chunk.data.name === 'getTokenMetadata') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "getTokenMetadata",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-
-				if (chunk.data.name === 'getLatestContent') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "getLatestContent",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-
-				if (chunk.data.name === 'getCommunityTrendingToken') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "getCommunityTrendingToken",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
-				}
-
-				if (chunk.data.name === 'gen_images') {
-					let content = chunk.data.data.output.content;
-					try {
-						let result = JSON.parse(content);
-						setMessages((prevMessages) => {
-							const toolMsg = new AIMessage({
-								content: "",
-								tool_calls: [
-									{
-										name: "gen_images",
-										args: { data: result },
-									},
-								],
-							});
-							return [...prevMessages, toolMsg];
-						});
-					} catch (e) {
-						console.error(e)
-					}
+				// 处理常规工具
+				else if (regularTools.includes(toolName)) {
+					handleRegularTool(toolName, chunk);
 				}
 			}
 			if (chunk.data.event === "on_chain_end") {
@@ -884,556 +623,254 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 
 	const switchSelectedThread = (thread: Thread) => {
 		setThreadId(thread.thread_id);
+
+		// 早期返回优化
 		if (!thread.values) {
 			setMessages([]);
 			return;
 		}
+
 		const threadValues = thread.values as Record<string, any>;
+		const messageArray = threadValues.messages as Record<string, any>[] || [];
 
-		const actualMessages = (
-			threadValues.messages as Record<string, any>[]
-		).flatMap((msg, index, array) => {
-			if (msg.type === "human") {
-				// insert progress bar afterwards
-				// 	const progressAIMessage = new AIMessage({
-				// 		id: uuidv4(),
-				// 		content: "",
-				// 		tool_calls: [
-				// 			{
-				// 				name: "progress",
-				// 				args: {
-				// 					step: 4, // Set to done.
-				// 				},
-				// 			},
-				// 		],
-				// 	});
-				return [
-					new HumanMessage({
-						...msg,
-						content: msg.content,
-					}),
-					// progressAIMessage,
-				];
-			}
-
-			if (msg.type === "ai") {
-				let processedContent = '';
-				if (msg.content) {
-					if (Array.isArray(msg.content)) {
-						if (msg.content.length > 0) {
-							const content = msg.content[0];
-							if (typeof content === 'object') {
-								processedContent = 'text' in content
-									? content.text
-									: "";
-							} else if (typeof content === 'string') {
-								processedContent = content
-							} else {
-								throw new DOMException("Unsupport content type: " + typeof content)
-							}
-						}
-					} else {
-						processedContent = String(msg.content);
-					}
+		// 提取消息处理函数
+		const processMessages = () => {
+			return messageArray.flatMap((msg, index, array) => {
+				// 处理Human消息
+				if (msg.type === "human") {
+					return [
+						new HumanMessage({
+							...msg,
+							content: msg.content,
+						}),
+					];
 				}
 
-				// const answerHeaderToolMsg = new AIMessage({
-				// 	content: "",
-				// 	tool_calls: [{
-				// 		name: "answer_header",
-				// 		args: { node_name: "" },
-				// 	}],
-				// });
+				// 处理AI消息
+				if (msg.type === "ai") {
+					const processedContent = processAIContent(msg.content);
+					return [
+						new AIMessage({
+							...msg,
+							content: processedContent,
+						})
+					];
+				}
 
-				// if (processedContent && array[index - 1]?.type === 'human') {
-				// 	return [
-				// 		answerHeaderToolMsg,
-				// 		new AIMessage({
-				// 			...msg,
-				// 			content: processedContent,
-				// 		})
-				// 	];
-				// }
+				// 处理Tool消息
+				if (msg.type === "tool") {
+					return handleToolMessage(msg);
+				}
 
-				return [new AIMessage({
-					...msg,
-					content: processedContent,
-				})];
+				return []; // 未知消息类型
+			});
+		};
+
+		// 处理AI内容的辅助函数
+		const processAIContent = (content: any): string => {
+			if (!content) return '';
+
+			if (Array.isArray(content)) {
+				if (content.length === 0) return '';
+
+				const firstContent = content[0];
+				if (typeof firstContent === 'object') {
+					return 'text' in firstContent ? firstContent.text : '';
+				} else if (typeof firstContent === 'string') {
+					return firstContent;
+				}
 			}
 
-			if (msg.type === "tool" && (msg.name === "search_webpage" || msg.name === "search_news" || msg.name === "access_links_content")) {
-				const output = msg.content;
-				let sources = []
-				if (output) {
-					try {
-						const result = JSON.parse(output);
-						if ("search_result" in result) {
-							sources = result["search_result"];
-						} else {
-							console.error("search_result not found in result");
-						}
-					} catch (error) {
-						console.error("Error parsing JSON:", error);
-					}
+			return String(content);
+		};
+
+		// 处理工具消息的辅助函数
+		const handleToolMessage = (msg: Record<string, any>): AIMessage[] => {
+			const { name, content } = msg;
+
+			// 搜索相关工具特殊处理
+			if (["search_webpage", "search_news", "access_links_content"].includes(name)) {
+				return handleSearchToolMessage(msg, content);
+			}
+
+			// 交易相关工具特殊处理
+			if (name === "generate_approve_erc20") {
+				return handleApproveERC20Message(msg, content);
+			}
+
+			if (name === "generate_swap_tx_data") {
+				return handleSwapTxMessage(msg, content);
+			}
+
+			// 通用工具消息处理
+			const regularTools = [
+				"get_available_tokens", "swap_quote", "get_transaction_records",
+				"get_transaction_details", "get_balance_of_address", "get_erc20_decimals",
+				"allowance_erc20", "get_sol_balance", "get_spl_token_balance", "getLatestQuote",
+				"buy_sell_signal", "getTokenMetadata", "getLatestContent",
+				"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance"
+			];
+
+			if (regularTools.includes(name) && content) {
+				try {
+					const result = JSON.parse(content);
+					return [
+						new AIMessage({
+							...msg,
+							content: "",
+							tool_calls: [{
+								name,
+								args: { data: name === "get_transaction_records" ? result.list : result },
+							}],
+						})
+					];
+				} catch (e) {
+					console.error(`Error parsing ${name} result:`, e);
+					return [];
 				}
-				return [new AIMessage({
+			}
+
+			return []; // 默认返回空数组
+		};
+
+		// 处理搜索工具消息
+		const handleSearchToolMessage = (msg: Record<string, any>, content: string): AIMessage[] => {
+			let sources = [];
+			if (content) {
+				try {
+					const result = JSON.parse(content);
+					if ("search_result" in result) {
+						sources = result["search_result"];
+					}
+				} catch (error) {
+					console.error("Error parsing search result JSON:", error);
+				}
+			}
+
+			// 返回三个消息：源列表和两个进度条（已完成）
+			return [
+				new AIMessage({
 					...msg,
 					content: "",
-					tool_calls: [
-						{
-							name: "source_list",
-							args: { sources: sources },
-						},
-					],
-				}), new AIMessage({
+					tool_calls: [{
+						name: "source_list",
+						args: { sources },
+					}],
+				}),
+				new AIMessage({
 					...msg,
 					content: "",
-					tool_calls: [
-						{
-							name: "progress",
-							args: {
-								step: { text: "Reading Links", progress: 100 },
-							},
-						},
-					],
-				}), new AIMessage({
+					tool_calls: [{
+						name: "progress",
+						args: { step: { text: "Reading Links", progress: 100 } },
+					}],
+				}),
+				new AIMessage({
 					...msg,
 					content: "",
-					tool_calls: [
-						{
-							name: "progress",
-							args: {
-								step: { text: "Extract Content", progress: 100 },
-							},
-						},
-					],
-				}),];
-			}
+					tool_calls: [{
+						name: "progress",
+						args: { step: { text: "Extract Content", progress: 100 } },
+					}],
+				}),
+			];
+		};
 
-			if (msg.type === "tool" && ["generate_approve_erc20"].includes(msg.name)) {
-				const output = msg.content;
-				if (output) {
-					try {
-						const result = JSON.parse(output);
-						let chainType: "evm" | "sol" | "tron" | undefined = undefined;
-						let txData: any = null;
-						let txName: string = '';
-						if (Array.isArray(result) && result.length >= 2) {
-							txData = result[1] as any;
-							chainType = 'evm';
-							txData = txData;
-							txName = txData['name']
-							return [new AIMessage({
-								...msg,
-								content: "",
-								tool_calls: [
-									{
-										name: "generate_approve_erc20",
-										args: { txData: txData, name: txName, orderInfo: undefined, tx_detail: result[1]?.tx_detail },
-									},
-								],
-							})];
-						}
-					} catch (e) {
-						return []
-					}
-				}
-			}
+		// 处理ERC20授权消息
+		const handleApproveERC20Message = (msg: Record<string, any>, content: string): AIMessage[] => {
+			if (!content) return [];
 
-			if (msg.type === "tool" && msg.name === 'generate_swap_tx_data') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						let orderInfo: any = null;
-						let chainType = "";
-						let txName: string = '';
-						if (Array.isArray(result) && result.length >= 2) {
-							result = result[1] as any;
-							if (result["success"]) {
-								orderInfo = result.order_info;
-								const swap_data = result["swap_data"] as any;
-								txName = swap_data.name;
-								if (!swap_data.chain_type) {
-									throw new Error("Missing chain_type in swap data");
-								}
-								if (swap_data.chain_type === "evm") {
-									chainType = 'evm'
-									return [new AIMessage({
-										...msg,
-										content: "",
-										tool_calls: [
-											{
-												name: "send_evm_transaction",
-												args: { txData: swap_data.txData, name: txName, orderInfo: orderInfo, tx_detail: result?.tx_detail },
-											},
-										],
-									})];
-								} else if (swap_data.chain_type === "solana") {
-									if (!connection) {
-										wcModal.switchNetwork(solana)
-									}
-									chainType = 'sol'
-									return [new AIMessage({
-										...msg,
-										content: "",
-										tool_calls: [
-											{
-												name: "send_solana_transaction",
-												args: { txData: swap_data.txData, name: txName, orderInfo: orderInfo, tx_detail: result?.tx_detail },
-											},
-										],
-									})];
-								}
-								// else if (swap_data.chain_type === "tron") {
-								// 	if (!connection) {
-								// 		wcModal.switchNetwork(solana)
-								// 		// open({ view: "Connect" })
-								// 	}
-								// 	chainType = 'tron'
+			try {
+				const result = JSON.parse(content);
+				if (Array.isArray(result) && result.length >= 2) {
+					const txData = result[1];
+					const txName = txData['name'];
 
-								// } 
-								else {
-									throw new DOMException('Unsupported chain type:', swap_data.chain_type)
-								}
-							}
-						}
-					} catch (e) {
-						return []
-					}
-				}
-			}
-			if (msg.type === "tool" && msg.name === 'get_available_tokens') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
+					return [
+						new AIMessage({
 							...msg,
 							content: "",
-							tool_calls: [
-								{
-									name: "get_available_tokens",
-									args: { data: result },
+							tool_calls: [{
+								name: "generate_approve_erc20",
+								args: {
+									txData,
+									name: txName,
+									orderInfo: undefined,
+									tx_detail: result[1]?.tx_detail
 								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
+							}],
+						})
+					];
 				}
-			}
-			if (msg.type === "tool" && msg.name === 'swap_quote') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "swap_quote",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-			if (msg.type === "tool" && msg.name === 'get_transaction_records') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "get_transaction_records",
-									args: { data: result.list },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
+			} catch (e) {
+				console.error("Error parsing approve ERC20 JSON:", e);
 			}
 
-			if (msg.type === "tool" && msg.name === 'get_transaction_details') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
+			return [];
+		};
+
+		// 处理Swap交易消息
+		const handleSwapTxMessage = (msg: Record<string, any>, content: string): AIMessage[] => {
+			if (!content) return [];
+
+			try {
+				let result = JSON.parse(content);
+				if (!Array.isArray(result) || result.length < 2) return [];
+
+				result = result[1];
+				if (!result["success"]) return [];
+
+				const orderInfo = result.order_info;
+				const swap_data = result["swap_data"];
+				const txName = swap_data.name;
+
+				if (!swap_data.chain_type) {
+					throw new Error("Missing chain_type in swap data");
+				}
+
+				if (swap_data.chain_type === "evm") {
+					return [
+						new AIMessage({
 							...msg,
 							content: "",
-							tool_calls: [
-								{
-									name: "get_transaction_details",
-									args: { data: result },
+							tool_calls: [{
+								name: "send_evm_transaction",
+								args: {
+									txData: swap_data.txData,
+									name: txName,
+									orderInfo,
+									tx_detail: result?.tx_detail
 								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
+							}],
+						})
+					];
 				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'get_balance_of_address') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
+				else if (swap_data.chain_type === "solana") {
+					return [
+						new AIMessage({
 							...msg,
 							content: "",
-							tool_calls: [
-								{
-									name: "get_balance_of_address",
-									args: { data: result },
+							tool_calls: [{
+								name: "send_solana_transaction",
+								args: {
+									txData: swap_data.txData,
+									name: txName,
+									orderInfo,
+									tx_detail: result?.tx_detail
 								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
+							}],
+						})
+					];
 				}
+			} catch (e) {
+				console.error("Error parsing swap tx data:", e);
 			}
 
-			if (msg.type === "tool" && msg.name === 'get_erc20_decimals') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "get_erc20_decimals",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
+			return [];
+		};
 
-			if (msg.type === "tool" && msg.name === 'allowance_erc20') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "allowance_erc20",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'get_sol_balance') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "get_sol_balance",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'get_spl_token_balance') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "get_spl_token_balance",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'getLatestQuote') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "getLatestQuote",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'buy_sell_signal') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "buy_sell_signal",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'getTokenMetadata') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "getTokenMetadata",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'getLatestContent') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "getLatestContent",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'getCommunityTrendingToken') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "getCommunityTrendingToken",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			if (msg.type === "tool" && msg.name === 'gen_images') {
-				const output = msg.content;
-				if (output) {
-					try {
-						let result = JSON.parse(output);
-						return [new AIMessage({
-							...msg,
-							content: "",
-							tool_calls: [
-								{
-									name: "gen_images",
-									args: { data: result },
-								},
-							],
-						})];
-					}
-					catch (e) {
-						return []
-					}
-				}
-			}
-
-			return []; // Return an empty array for any other message types
-		});
-
+		// 处理并设置消息
+		const actualMessages = processMessages();
 		setMessages(actualMessages);
 	};
 
