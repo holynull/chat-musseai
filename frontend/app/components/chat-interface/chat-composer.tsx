@@ -191,6 +191,33 @@ export const ChatComposer: FC<ChatComposerProps> = (
 	const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
 		const items = Array.from(e.clipboardData?.items || []);
 
+		// 辅助函数：生成唯一文件名
+		const generateUniqueFileName = (originalFile: File): File => {
+			// 获取现有附件列表中的文件名
+			const existingFileNames = composerRuntime.getState().attachments.map(att => att.name);
+
+			const fileName = originalFile.name;
+			const lastDotIndex = fileName.lastIndexOf('.');
+			const nameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
+			const extension = lastDotIndex !== -1 ? fileName.substring(lastDotIndex) : '';
+
+			let newFileName = fileName;
+			let counter = 1;
+
+			// 如果文件名已存在，添加计数后缀
+			while (existingFileNames.includes(newFileName)) {
+				newFileName = `${nameWithoutExt} (${counter})${extension}`;
+				counter++;
+			}
+
+			// 如果文件名发生改变，创建新的File对象
+			if (newFileName !== fileName) {
+				return new File([originalFile], newFileName, { type: originalFile.type });
+			}
+
+			return originalFile;
+		};
+
 		// 处理所有可能的文件类型
 		for (const item of items) {
 			// 检查是否是文件类型
@@ -205,18 +232,21 @@ export const ChatComposer: FC<ChatComposerProps> = (
 						continue;
 					}
 
+					// 生成唯一文件名
+					const uniqueFile = generateUniqueFileName(file);
+
 					// 根据文件类型分别处理
 					if (item.type.startsWith('image/')) {
 						// 处理图片
-						composerRuntime.addAttachment(file);
+						composerRuntime.addAttachment(uniqueFile);
 					} else if (item.type.includes('pdf') ||
 						item.type.includes('document') ||
 						item.type.includes('text/plain')) {
 						// 处理文档类型
-						composerRuntime.addAttachment(file);
+						composerRuntime.addAttachment(uniqueFile);
 					} else {
 						// 其他文件类型
-						composerRuntime.addAttachment(file);
+						composerRuntime.addAttachment(uniqueFile);
 					}
 				}
 			}
