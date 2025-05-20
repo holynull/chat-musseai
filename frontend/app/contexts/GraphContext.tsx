@@ -495,7 +495,10 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 					"get_transaction_details", "get_balance_of_address", "get_erc20_decimals",
 					"allowance_erc20", "get_sol_balance", "get_spl_token_balance", "getLatestQuote",
 					"buy_sell_signal", "getTokenMetadata", "getLatestContent",
-					"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance"
+					"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance",
+					"get_eth_transaction", "get_eth_block", "call_eth_method", "get_token_balance", "estimate_gas", "get_contract_events",
+					"get_network_info", "eth_createAccessList", "eth_feeHistory", "eth_getBlockReceipts", "eth_getCode", "eth_getLogs", "eth_getProof",
+					"eth_getStorageAt", "eth_getTransactionCount", "eth_getTransactionReceipt", "eth_maxPriorityFeePerGas", "net_peerCount", "net_version"
 				];
 
 				const toolName = chunk?.data?.name;
@@ -708,7 +711,10 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				"get_transaction_details", "get_balance_of_address", "get_erc20_decimals",
 				"allowance_erc20", "get_sol_balance", "get_spl_token_balance", "getLatestQuote",
 				"buy_sell_signal", "getTokenMetadata", "getLatestContent",
-				"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance"
+				"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance",
+				"get_eth_transaction", "get_eth_block", "call_eth_method", "get_token_balance", "estimate_gas", "get_contract_events",
+				"get_network_info", "eth_createAccessList", "eth_feeHistory", "eth_getBlockReceipts", "eth_getCode", "eth_getLogs", "eth_getProof",
+				"eth_getStorageAt", "eth_getTransactionCount", "eth_getTransactionReceipt", "eth_maxPriorityFeePerGas", "net_peerCount", "net_version"
 			];
 
 			if (regularTools.includes(name) && content) {

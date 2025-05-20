@@ -1,4 +1,5 @@
 import logging
+from types import TracebackType
 import requests
 import json
 from typing import List, Dict, Optional, Any, Union
@@ -414,7 +415,7 @@ def get_eth_block_number(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error getting block number: {str(e)}"
 
 
@@ -461,7 +462,7 @@ def get_eth_balance(address: str, network: str, network_type: str = "mainnet") -
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error getting balance: {str(e)}"
 
 
@@ -525,7 +526,7 @@ def get_eth_transaction(
 
         return tx_dict
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error getting transaction: {str(e)}"
 
 
@@ -534,92 +535,97 @@ def get_eth_block(
     block_identifier: Union[str, int],
     network: str,
     network_type: str = "mainnet",
-    full_transactions: bool = False,
+    tx_limit: int = 3,
 ) -> Dict:
     """
-    Get block details for specified block on specified network.
+    Get basic block details for specified block on specified network.
 
     Args:
         block_identifier (Union[str, int]): Block number or block hash or special tag (e.g., "latest")
         network (str): Blockchain network name
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
-        full_transactions (bool, optional): Whether to return full transaction objects. If False, only returns transaction hashes. Defaults to False.
+        tx_limit (int, optional): Maximum number of transactions to return. Defaults to 3.
 
     Returns:
-        Dict: Returns a dictionary containing:
-            - number: Block number
-            - hash: Block hash
-            - parentHash: Parent block hash
-            - timestamp: Block timestamp
-            - transactions: List of transactions (hashes or full objects)
-            - miner: Miner address
-            - gasUsed: Gas used
-            - gasLimit: Gas limit
-            - network: Requested network
-            - network_type: Requested network type
-            - explorer_url: Block URL in block explorer
+        Dict: Returns a dictionary containing block information
     """
     try:
         infura_url = get_rpc_url(network, network_type)
-        w3 = Web3(Web3.HTTPProvider(infura_url))
+        # 使用自定义的请求头，忽略 PoA 校验
+        provider = Web3.HTTPProvider(
+            infura_url,
+            request_kwargs={
+                "headers": {
+                    "content-type": "application/json",
+                    "user-agent": "Mozilla/5.0",
+                }
+            },
+        )
+        w3 = Web3(provider)
 
-        # Get block
-        block = w3.eth.get_block(block_identifier, full_transactions=full_transactions)
+        # 为POA链添加中间件
+        if network.lower() == "bsc" or network.lower() in [
+            "avalanche",
+            "polygon",
+            "optimism",
+            "arbitrum",
+        ]:
+            from web3.middleware import ExtraDataToPOAMiddleware
 
-        # Build explorer URL
-        explorer_base = NETWORK_CONFIG[network.lower()][network_type.lower()][
-            "explorer"
-        ]
-        if isinstance(block_identifier, (int, str)) and not isinstance(
-            block_identifier, bool
-        ):
-            block_id_for_url = (
-                block.hash.hex() if hasattr(block, "hash") else block_identifier
-            )
-            explorer_url = f"{explorer_base}/block/{block_id_for_url}"
-        else:
-            explorer_url = f"{explorer_base}"
+            w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+        try:
+            # 获取区块信息，强制关闭 extraData 校验
+            block = w3.eth.get_block(block_identifier, full_transactions=False)
 
-        # Convert to serializable dictionary
-        if full_transactions:
-            # Convert transaction objects to dictionaries if full transactions requested
-            transactions = []
-            for tx in block.transactions:
-                if hasattr(tx, "to") and hasattr(tx, "from"):
-                    tx_dict = {
-                        "hash": tx.hash.hex(),
-                        "from": tx["from"],
-                        "to": (
-                            tx["to"] if tx["to"] else None
-                        ),  # Contract creation transactions have no 'to' address
-                        "value": tx.value,
-                        "gas": tx.gas,
-                        "gasPrice": tx.gasPrice,
-                        "nonce": tx.nonce,
-                    }
-                    transactions.append(tx_dict)
-                else:
-                    transactions.append(tx.hex())
-        else:
-            transactions = [tx.hex() for tx in block.transactions]
+            # 构建响应数据
+            response = {
+                "basic_info": {
+                    "number": block.number,
+                    "timestamp": block.timestamp,
+                    "tx_count": (
+                        len(block.transactions) if hasattr(block, "transactions") else 0
+                    ),
+                },
+                "gas_info": {
+                    "gas_used": block.gasUsed,
+                    "gas_limit": block.gasLimit,
+                    "used_percentage": (
+                        round((block.gasUsed / block.gasLimit) * 100, 2)
+                        if block.gasLimit > 0
+                        else 0
+                    ),
+                    "base_fee_gwei": (
+                        w3.from_wei(block.baseFeePerGas, "gwei")
+                        if hasattr(block, "baseFeePerGas")
+                        else None
+                    ),
+                },
+                "miner": block.miner if hasattr(block, "miner") else None,
+                "network_info": {
+                    "network": network,
+                    "network_type": network_type,
+                    "explorer_url": f"{NETWORK_CONFIG[network.lower()][network_type.lower()]['explorer']}/block/{block.number}",
+                },
+                "transactions": {
+                    "preview": (
+                        [tx.hex() for tx in block.transactions[:tx_limit]]
+                        if hasattr(block, "transactions")
+                        else []
+                    ),
+                    "total": (
+                        len(block.transactions) if hasattr(block, "transactions") else 0
+                    ),
+                },
+            }
 
-        block_dict = {
-            "number": block.number,
-            "hash": block.hash.hex(),
-            "parentHash": block.parentHash.hex(),
-            "timestamp": block.timestamp,
-            "transactions": transactions,
-            "miner": block.miner,
-            "gasUsed": block.gasUsed,
-            "gasLimit": block.gasLimit,
-            "network": network,
-            "network_type": network_type,
-            "explorer_url": explorer_url,
-        }
+            return response
 
-        return block_dict
+        except ValueError as e:
+            logging.warning(f"Error getting block with full data: {e}")
+            return f"Error: Could not retrieve block data. The block might not exist or network issues occurred."
+
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(f"Error in get_eth_block: {str(e)}")
         return f"Error getting block: {str(e)}"
 
 
@@ -662,7 +668,7 @@ def call_eth_method(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error calling RPC method: {str(e)}"
 
 
@@ -757,7 +763,7 @@ def get_token_balance(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error getting token balance: {str(e)}"
 
 
@@ -821,7 +827,7 @@ def estimate_gas(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error estimating gas: {str(e)}"
 
 
@@ -892,7 +898,7 @@ def get_contract_events(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error getting contract events: {str(e)}"
 
 
@@ -939,7 +945,7 @@ def get_network_info(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return f"Error getting network info: {str(e)}"
 
 
@@ -985,7 +991,7 @@ def _make_request(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e.with_traceback())
+        logging.error(e)
         return {"error": f"RPC request failed: {str(e)}"}
 
 
@@ -1387,17 +1393,17 @@ tools = [
     get_contract_events,
     get_network_info,
     # eth_accounts,
-    eth_blockNumber,
-    eth_call,
-    eth_chainId,
-    eth_coinbase,
+    # eth_blockNumber,
+    # eth_call,
+    # eth_chainId,
+    # eth_coinbase,
     eth_createAccessList,
     eth_estimateGas,
     eth_feeHistory,
-    eth_gasPrice,
-    eth_getBalance,
-    eth_getBlockByHash,
-    eth_getBlockByNumber,
+    # eth_gasPrice,
+    # eth_getBalance,
+    # eth_getBlockByHash,
+    # eth_getBlockByNumber,
     eth_getBlockReceipts,
     eth_getBlockTransactionCountByHash,
     eth_getBlockTransactionCountByNumber,
@@ -1405,15 +1411,15 @@ tools = [
     eth_getLogs,
     eth_getProof,
     eth_getStorageAt,
-    eth_getTransactionByBlockHashAndIndex,
-    eth_getTransactionByBlockNumberAndIndex,
-    eth_getTransactionByHash,
+    # eth_getTransactionByBlockHashAndIndex,
+    # eth_getTransactionByBlockNumberAndIndex,
+    # eth_getTransactionByHash,
     eth_getTransactionCount,
     eth_getTransactionReceipt,
-    eth_getUncleByBlockHashAndIndex,
-    eth_getUncleByBlockNumberAndIndex,
-    eth_getUncleCountByBlockHash,
-    eth_getUncleCountByBlockNumber,
+    # eth_getUncleByBlockHashAndIndex,
+    # eth_getUncleByBlockNumberAndIndex,
+    # eth_getUncleCountByBlockHash,
+    # eth_getUncleCountByBlockNumber,
     eth_maxPriorityFeePerGas,
     # eth_sendRawTransaction,
     eth_syncing,

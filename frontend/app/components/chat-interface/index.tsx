@@ -38,6 +38,25 @@ import React from "react";
 import { useSupportedNetworks } from "../SupportedNetworks";
 import { useGetEthBlockNumber } from "../GetEthBlockNumber";
 import { useGetEthBalance } from "../GetEthBalance";
+import { useGetEthTransaction } from "../GetEthTransaction";
+import { useGetEthBlock } from "../GetEthBlock";
+import { useCallEthMethod } from "../CallEthMethod";
+import { useTokenBalance } from "../TokenBalance";
+import { useEstimateGas } from "../EstimateGas";
+import { useContractEvents } from "../ContractEvents";
+import { useNetworkInfo } from "../NetworkInfo";
+import { useCreateAccessList } from "../CreateAccessList";
+import { useEthFeeHistory } from "../EthFeeHistory";
+import { useEthBlockReceipts } from "../EthBlockReceipts";
+import { useEthGetCode } from "../EthGetCode";
+import { useEthGetLogs } from "../EthGetLogs";
+import { useEthGetProof } from "../EthGetProof";
+import { useEthGetStorageAt } from "../EthGetStorageAt";
+import { useEthGetTransactionCount } from "../EthGetTransactionCount";
+import { useEthTransactionReceipt } from "../EthTransactionReceipt";
+import { useEthMaxPriorityFeePerGas } from "../EthMaxPriorityFeePerGas";
+import { useNetPeerCount } from "../NetPeerCount";
+import { useNetVersion } from "../NetVersion";
 
 export interface ThreadChatProps extends ChatComposerProps {
 	currentThreadId: string | null
@@ -86,6 +105,25 @@ export const ThreadChat: FC<ThreadChatProps> = (props: ThreadChatProps) => {
 	useSupportedNetworks();
 	useGetEthBlockNumber();
 	useGetEthBalance();
+	useGetEthTransaction();
+	useGetEthBlock();
+	useCallEthMethod();
+	useTokenBalance();
+	useEstimateGas();
+	useContractEvents()
+	useNetworkInfo()
+	useCreateAccessList()
+	useEthFeeHistory()
+	useEthBlockReceipts()
+	useEthGetCode()
+	useEthGetLogs()
+	useEthGetProof()
+	useEthGetStorageAt()
+	useEthGetTransactionCount()
+	useEthTransactionReceipt()
+	useEthMaxPriorityFeePerGas()
+	useNetPeerCount()
+	useNetVersion()
 
 	return (
 		<ThreadPrimitive.Root className="flex flex-col h-screen overflow-hidden w-full h-full">
