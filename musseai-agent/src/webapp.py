@@ -552,7 +552,7 @@ async def register_user(user_data: UserRegister):
     # 创建新用户
     hashed_password = get_password_hash(user_data.password)
     user_obj = User(
-        user_id=str(uuid.uuid4()),
+        user_id=generate_user_id_from_email(user_data.email),
         email=user_data.email,
         username=user_data.username,
         hashed_password=hashed_password,
@@ -681,6 +681,15 @@ async def change_password(
     return {"message": "Password updated successfully"}
 
 
+def generate_user_id_from_email(email):
+    """基于email生成确定性的用户ID"""
+    # 可以添加一个盐值增加安全性
+    salt = "your_app_specific_salt"
+    # 使用email和盐值生成哈希
+    user_id = hashlib.sha256((email + salt).encode()).hexdigest()
+    return user_id
+
+
 # 预设几个测试用户
 def initialize_test_users():
     """
@@ -730,7 +739,7 @@ def initialize_test_users():
         if user["email"] not in users_db:
             hashed_password = get_password_hash(user["password"])
             users_db[user["email"]] = {
-                "user_id": str(uuid.uuid4()),
+                "user_id": generate_user_id_from_email(user["email"]),
                 "email": user["email"],
                 "username": user["username"],
                 "hashed_password": hashed_password,
@@ -738,6 +747,7 @@ def initialize_test_users():
                 "disabled": False,
                 "created_at": datetime.datetime.now(tz=pytz.UTC).isoformat(" "),
             }
+
 
 # 初始化测试用户
 initialize_test_users()
