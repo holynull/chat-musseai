@@ -618,7 +618,18 @@ def get_eth_block(
                 },
             }
 
-            return response
+            # 在文件顶部导入：
+            from decimal import Decimal
+
+            # 添加编码器类：
+            class DecimalEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    if isinstance(obj, Decimal):
+                        return float(obj)
+                    return super(DecimalEncoder, self).default(obj)
+
+            # 修改 get_eth_block 函数中的 return 语句（第621行）：
+            return json.dumps(response, cls=DecimalEncoder)
 
         except ValueError as e:
             logging.warning(f"Error getting block with full data: {e}")
@@ -1397,7 +1408,7 @@ tools = [
     # eth_call,
     # eth_chainId,
     # eth_coinbase,
-    eth_createAccessList,
+    # eth_createAccessList,
     eth_estimateGas,
     eth_feeHistory,
     # eth_gasPrice,
@@ -1422,7 +1433,7 @@ tools = [
     # eth_getUncleCountByBlockNumber,
     eth_maxPriorityFeePerGas,
     # eth_sendRawTransaction,
-    eth_syncing,
+    # eth_syncing,
     net_peerCount,
     net_version,
 ]

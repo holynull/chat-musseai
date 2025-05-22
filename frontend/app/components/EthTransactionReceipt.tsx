@@ -149,7 +149,7 @@ const formatStatus = (status: string): { text: string, color: string } => {
 export const useEthTransactionReceipt = () => useAssistantToolUI({
 	toolName: "eth_getTransactionReceipt",
 	render: (input) => {
-		const data: TransactionReceipt = input.args.data;
+		const data: TransactionReceipt = input.args.data?.result;
 
 		if (!data) return null;
 

@@ -113,10 +113,10 @@ const FeeHistoryDisplay: FC<FeeHistoryDisplayProps> = ({ data, networkInfo }) =>
 export const useEthFeeHistory = () => useAssistantToolUI({
 	toolName: "eth_feeHistory",
 	render: (input) => {
-		const data: FeeHistoryData = input.args.data.result;
+		const data: FeeHistoryData = input.args.data?.result;
 		const networkInfo = {
-			network: input.args.data.network,
-			network_type: input.args.data.network_type
+			network: input.args.data?.network,
+			network_type: input.args.data?.network_type
 		};
 
 		if (!data) return null;
