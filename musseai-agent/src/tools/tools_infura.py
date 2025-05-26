@@ -1391,6 +1391,144 @@ def net_version(network: str, network_type: str = "mainnet") -> Dict:
     return _make_request("net_version", [], network, network_type)
 
 
+def generate_erc20_approve_data(spender_address: str, amount: str) -> str:
+    """Generate unsigned transaction data for ERC20 token approve."""
+    approve_function_signature = "approve(address,uint256)"
+    w3 = Web3()
+    fn_selector = w3.keccak(text=approve_function_signature)[:4].hex()
+    padded_address = Web3.to_bytes(hexstr=spender_address).rjust(32, b"\0")
+    amount_int = int(amount)
+    padded_amount = amount_int.to_bytes(32, "big")
+    data = fn_selector + padded_address.hex() + padded_amount.hex()
+    return data
+
+
+@tool
+def generate_approve_erc20(
+    token_address: str,
+    spender_address: str,
+    amount: str,
+    chain_id: int,
+    symbol: str,
+    decimals: int,
+):
+    """Generate transaction data for approving ERC20 token."""
+    try:
+        rpc_url = get_rpc_url(chain_id)
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        token_address = Web3.to_checksum_address(token_address)
+        spender_address = Web3.to_checksum_address(spender_address)
+        tx_data = generate_erc20_approve_data(
+            spender_address=spender_address, amount=amount
+        )
+        tx = {
+            "to": token_address,
+            "data": tx_data,
+            "from": spender_address,
+        }
+        try:
+            gas_limit = w3.eth.estimate_gas(tx)
+            gas_price = w3.eth.gas_price
+        except Exception as e:
+            return (
+                f"Failed when estimate gas. {e}",
+                {
+                    "success": False,
+                    "message": f"Failed when estimate gas. {e}",
+                },
+            )
+
+        return (
+            "Already notify the front end to sign the transaction data and send the transaction.",
+            {
+                "to": token_address,
+                "data": tx_data,
+                "value": "0x0",
+                "chain_id": chain_id,
+                "name": "Approve",
+                "tx_detail": {
+                    "token_address": token_address,
+                    "spender_address": spender_address,
+                    "amount": amount,
+                    "symbol": symbol,
+                    "decimals": decimals,
+                },
+            },
+        )
+    except Exception as e:
+        return (f"Error generating ERC20 approve transaction: {str(e)}", None)
+
+
+# Minimal ABI for ERC20 balanceOf
+ERC20_ABI = [
+    {
+        "constant": True,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [
+            {"name": "_owner", "type": "address"},
+            {"name": "_spender", "type": "address"},
+        ],
+        "name": "allowance",
+        "outputs": [{"name": "remaining", "type": "uint256"}],
+        "type": "function",
+    },
+]
+
+
+@tool
+def allowance_erc20(
+    token_address: str,
+    owner_address: str,
+    spender_address: str,
+    symbol: str,
+    decimals: int,
+    chain_id: int,
+) -> dict:
+    """Check the approved amount of an ERC20 token."""
+    try:
+        rpc_url = get_rpc_url(chain_id)
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        token_address = Web3.to_checksum_address(token_address)
+        owner_address = owner_address = Web3.to_checksum_address(owner_address)
+        spender_address = Web3.to_checksum_address(spender_address)
+        token_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
+        allowance = token_contract.functions.allowance(
+            owner_address, spender_address
+        ).call()
+
+        return {
+            "success": True,
+            "allowance": str(allowance),
+            "owner_address": owner_address,
+            "spender_address": spender_address,
+            "token_address": token_address,
+            "symbol": symbol,
+            "decimals": decimals,
+            "chainId": chain_id,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "owner_address": owner_address,
+            "spender_address": spender_address,
+            "token_address": token_address,
+        }
+
+
 # Export all tools
 tools = [
     get_supported_networks,
@@ -1436,4 +1574,5 @@ tools = [
     # eth_syncing,
     net_peerCount,
     net_version,
+    generate_approve_erc20,
 ]

@@ -103,6 +103,20 @@ def route_to_infura_agent():
 
 
 @tool
+def route_to_solana_agent():
+    """
+    This tool will hand over the question to a Solana Blockchain Expert.
+    Expert capabilities include:
+        - Accessing Solana blockchain data through RPC endpoints
+        - Querying Solana account information and balances
+        - Getting information about Solana blocks and transactions
+        - Working with Solana Program accounts and tokens
+        - Analyzing Solana blockchain state and statistics
+    """
+    return "Now requesting a Solana Blockchain Expert."
+
+
+@tool
 def get_utc_time():
     """
     Useful when you need to get the current UTC time of the system.
@@ -119,6 +133,7 @@ from graphs.graph_search import graph as search_webpage_graph
 from graphs.graph_quote import graph as quote_graph
 from graphs.graph_image import graph as image_graph
 from graphs.graph_infura import graph as infura_graph
+from graphs.graph_solana import graph as solana_graph
 
 
 def get_next_node(tool_name: str):
@@ -134,6 +149,8 @@ def get_next_node(tool_name: str):
         return image_graph.get_name()
     elif tool_name == route_to_infura_agent.get_name():
         return infura_graph.get_name()
+    elif tool_name == route_to_solana_agent.get_name():
+        return solana_graph.get_name()
     else:
         return None
 
@@ -146,4 +163,5 @@ tools = [
     route_to_cryptocurrency_quote_agent,
     route_to_image_agent,
     route_to_infura_agent,
+    route_to_solana_agent,
 ]

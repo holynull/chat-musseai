@@ -160,7 +160,6 @@ def generate_erc20_transfer_data(to_address: str, amount: str) -> str:
     return data
 
 
-@tool
 def get_erc20_decimals(token_address: str, symbol: str, chain_id) -> dict:
     """Get the decimals of an ERC20 token."""
     try:
@@ -184,7 +183,6 @@ def get_erc20_decimals(token_address: str, symbol: str, chain_id) -> dict:
         }
 
 
-@tool
 def generate_transfer_erc20_tx_data(
     token_address: str, to_address: str, amount: str, chain_id: int = 1
 ):
@@ -217,36 +215,6 @@ def generate_transfer_erc20_tx_data(
             "chain_id": chain_id,
         },
     )
-
-
-@tool
-def get_balance_of_address(
-    token_address: str, wallet_address: str, symbol: str, decimals: int, chain_id: int
-) -> dict:
-    """Get the balance of an ERC20 token for a specific address."""
-    try:
-        rpc_url = get_rpc_url(chain_id)
-        w3 = Web3(Web3.HTTPProvider(rpc_url))
-        token_address = Web3.to_checksum_address(token_address)
-        wallet_address = Web3.to_checksum_address(wallet_address)
-        token_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
-        balance = token_contract.functions.balanceOf(wallet_address).call()
-        return {
-            "success": True,
-            "balance": str(balance),
-            "wallet_address": wallet_address,
-            "token_address": token_address,
-            "symbol": symbol,
-            "decimals": decimals,
-            "chainId": chain_id,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "wallet_address": wallet_address,
-            "token_address": token_address,
-        }
 
 
 @tool
@@ -291,177 +259,6 @@ def change_network_to(target_network: str):
     )
 
 
-def generate_erc20_approve_data(spender_address: str, amount: str) -> str:
-    """Generate unsigned transaction data for ERC20 token approve."""
-    approve_function_signature = "approve(address,uint256)"
-    w3 = Web3()
-    fn_selector = w3.keccak(text=approve_function_signature)[:4].hex()
-    padded_address = Web3.to_bytes(hexstr=spender_address).rjust(32, b"\0")
-    amount_int = int(amount)
-    padded_amount = amount_int.to_bytes(32, "big")
-    data = fn_selector + padded_address.hex() + padded_amount.hex()
-    return data
-
-
-@tool
-def generate_approve_erc20(
-    token_address: str,
-    spender_address: str,
-    amount: str,
-    chain_id: int,
-    symbol: str,
-    decimals: int,
-):
-    """Generate transaction data for approving ERC20 token."""
-    try:
-        rpc_url = get_rpc_url(chain_id)
-        w3 = Web3(Web3.HTTPProvider(rpc_url))
-        token_address = Web3.to_checksum_address(token_address)
-        spender_address = Web3.to_checksum_address(spender_address)
-        tx_data = generate_erc20_approve_data(
-            spender_address=spender_address, amount=amount
-        )
-        tx = {
-            "to": token_address,
-            "data": tx_data,
-            "from": spender_address,
-        }
-        try:
-            gas_limit = w3.eth.estimate_gas(tx)
-            gas_price = w3.eth.gas_price
-        except Exception as e:
-            return (
-                f"Failed when estimate gas. {e}",
-                {
-                    "success": False,
-                    "message": f"Failed when estimate gas. {e}",
-                },
-            )
-
-        return (
-            "Already notify the front end to sign the transaction data and send the transaction.",
-            {
-                "to": token_address,
-                "data": tx_data,
-                "value": "0x0",
-                "chain_id": chain_id,
-                "name": "Approve",
-                "tx_detail": {
-                    "token_address": token_address,
-                    "spender_address": spender_address,
-                    "amount": amount,
-                    "symbol": symbol,
-                    "decimals": decimals,
-                },
-            },
-        )
-    except Exception as e:
-        return (f"Error generating ERC20 approve transaction: {str(e)}", None)
-
-
-@tool
-def allowance_erc20(
-    token_address: str,
-    owner_address: str,
-    spender_address: str,
-    symbol: str,
-    decimals: int,
-    chain_id: int,
-) -> dict:
-    """Check the approved amount of an ERC20 token."""
-    try:
-        rpc_url = get_rpc_url(chain_id)
-        w3 = Web3(Web3.HTTPProvider(rpc_url))
-        token_address = Web3.to_checksum_address(token_address)
-        owner_address = owner_address = Web3.to_checksum_address(owner_address)
-        spender_address = Web3.to_checksum_address(spender_address)
-        token_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
-        allowance = token_contract.functions.allowance(
-            owner_address, spender_address
-        ).call()
-
-        return {
-            "success": True,
-            "allowance": str(allowance),
-            "owner_address": owner_address,
-            "spender_address": spender_address,
-            "token_address": token_address,
-            "symbol": symbol,
-            "decimals": decimals,
-            "chainId": chain_id,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "owner_address": owner_address,
-            "spender_address": spender_address,
-            "token_address": token_address,
-        }
-
-
-@tool
-def get_sol_balance(wallet_address: str) -> Optional[float]:
-    """Query SOL balance for a specified wallet address on Solana blockchain."""
-    rpc_url: str = "https://api.mainnet-beta.solana.com"
-    try:
-        solana_client = Client(rpc_url)
-        response = solana_client.get_balance(Pubkey.from_string(wallet_address))
-
-        if response.value:
-            balance_in_sol = response.value / 1_000_000_000
-            return {"address": wallet_address, "balance": balance_in_sol}
-        return None
-
-    except Exception as e:
-        print(f"Error occurred while querying SOL balance: {str(e)}")
-        return None
-
-
-@tool
-def get_spl_token_balance(
-    wallet_address: str, token_mint_address: str, symbol: str
-) -> Optional[Union[float, int]]:
-    """Query SPL token balance for a specified wallet address on Solana blockchain."""
-    rpc_url: str = "https://api.mainnet-beta.solana.com"
-    try:
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getTokenAccountsByOwner",
-            "params": [
-                wallet_address,
-                {"mint": token_mint_address},
-                {"encoding": "jsonParsed"},
-            ],
-        }
-
-        response = requests.post(rpc_url, headers=headers, json=payload)
-        result = response.json()
-
-        if (
-            "result" in result
-            and "value" in result["result"]
-            and len(result["result"]["value"]) > 0
-        ):
-            token_balance = result["result"]["value"][0]["account"]["data"]["parsed"][
-                "info"
-            ]["tokenAmount"]["uiAmount"]
-            return {
-                "success": True,
-                "balance": token_balance,
-                "symbol": symbol,
-                "token_mint_address": token_mint_address,
-            }
-
-        return 0  # Return 0 if no token account found
-
-    except Exception as e:
-        return f"Error occurred while querying token balance: {str(e)}"
-
-
-@tool
 def get_trc20_balance(token_address: str, wallet_address: str) -> dict:
     """Get TRC20 token balance of a wallet address."""
     try:
@@ -494,7 +291,6 @@ def get_trc20_balance(token_address: str, wallet_address: str) -> dict:
         }
 
 
-@tool
 def get_trx_balance(wallet_address: str) -> dict:
     """Get TRX balance of a wallet address."""
     try:
@@ -526,7 +322,6 @@ def generate_trc20_approve_data(spender_address: str, amount: str) -> str:
     return data
 
 
-@tool
 def generate_approve_trc20(token_address: str, spender_address: str, amount: str):
     """Generate transaction data for approving TRC20 token spending."""
     try:
@@ -553,7 +348,6 @@ def generate_approve_trc20(token_address: str, spender_address: str, amount: str
         return (f"Error generating TRC20 approve transaction: {str(e)}", None)
 
 
-@tool
 def allowance_trc20(
     token_address: str, owner_address: str, spender_address: str
 ) -> dict:
@@ -586,10 +380,5 @@ def allowance_trc20(
 # Export all tools
 tools = [
     connect_to_wallet,
-    get_balance_of_address,
     change_network_to,
-    generate_approve_erc20,
-    allowance_erc20,
-    get_sol_balance,
-    get_spl_token_balance,
 ]

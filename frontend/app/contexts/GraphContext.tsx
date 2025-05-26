@@ -492,7 +492,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				// 定义常规工具处理函数
 				const regularTools = [
 					"get_available_tokens", "swap_quote", "get_transaction_records",
-					"get_transaction_details", "get_balance_of_address", "get_erc20_decimals",
+					"get_transaction_details",
 					"allowance_erc20", "get_sol_balance", "get_spl_token_balance", "getLatestQuote",
 					"buy_sell_signal", "getTokenMetadata", "getLatestContent",
 					"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance",
@@ -708,7 +708,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			// 通用工具消息处理
 			const regularTools = [
 				"get_available_tokens", "swap_quote", "get_transaction_records",
-				"get_transaction_details", "get_balance_of_address", "get_erc20_decimals",
+				"get_transaction_details",
 				"allowance_erc20", "get_sol_balance", "get_spl_token_balance", "getLatestQuote",
 				"buy_sell_signal", "getTokenMetadata", "getLatestContent",
 				"getCommunityTrendingToken", "gen_images", "get_supported_networks", "get_eth_block_number", "get_eth_balance",
