@@ -1,5 +1,7 @@
 import os
 from typing import Annotated, Literal, cast
+from enhanced_router_tools import EnhancedRouterTools
+from agent_config import AGENT_CONFIGS, get_agent_config
 from typing_extensions import TypedDict
 
 from langchain_anthropic import ChatAnthropic
@@ -14,6 +16,7 @@ from langchain_core.language_models import BaseChatModel
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
+from langchain_core.messages import SystemMessage
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,
 )
@@ -34,6 +37,59 @@ from graphs.graph_quote import graph as quote_graph
 from graphs.graph_image import graph as image_graph
 from graphs.graph_infura import graph as infura_graph
 from graphs.graph_solana import graph as solana_graph
+
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+from typing import List
+
+
+class AgentSelection(BaseModel):
+    agent: str = Field(description="The most suitable agent for handling the query")
+    confidence: float = Field(description="Confidence score (0-1) for this selection")
+    reasoning: str = Field(description="Reasoning for selecting this agent")
+
+
+class AgentRouter:
+    def __init__(self, llm):
+        self.llm = llm
+        self.parser = PydanticOutputParser(pydantic_object=AgentSelection)
+
+    def route_query(self, query: str) -> str:
+        """智能路由到最合适的专家"""
+        prompt = f"""
+        Based on the user query, determine the most appropriate expert agent to handle it.
+        
+        Available experts:
+        {self._format_agent_descriptions()}
+        
+        User query: {query}
+        
+        {self.parser.get_format_instructions()}
+        """
+
+        result = self.llm.invoke(prompt)
+        try:
+            selection = self.parser.parse(result)
+            agent_config = get_agent_config(selection.agent)
+            if agent_config and selection.confidence > 0.7:
+                # 高置信度直接路由
+                return f"route_to_{selection.agent}_agent"
+            # 否则让主LLM决定
+            return None
+        except Exception as e:
+            print(f"Error in intelligent routing: {e}")
+            return None
+
+    def _format_agent_descriptions(self) -> str:
+        """格式化所有专家描述"""
+        descriptions = []
+        for agent_id, config in AGENT_CONFIGS.items():
+            capabilities = "\n".join([f"  - {cap}" for cap in config.capabilities])
+            descriptions.append(
+                f"- {agent_id}: {config.name}\n  Capabilities:\n{capabilities}\n"
+            )
+        return "\n".join(descriptions)
+
 
 llm = ChatAnthropic(
     model="claude-3-5-sonnet-20241022",
@@ -149,46 +205,37 @@ async def acall_model(state: State, config: RunnableConfig):
     return state
 
 
-router_tools = ToolNode(tools=tools_router, name="node_tools_router")
+router_tools = EnhancedRouterTools(tools=tools_router, name="node_tools_router")
+
+
+def create_command(next_node: str, state: State) -> Command:
+    """创建带有完整状态的命令"""
+    return Command(
+        goto=next_node,
+        update={
+            "messages": state["messages"],
+            "wallet_is_connected": state["wallet_is_connected"],
+            "chain_id": state["chain_id"],
+            "wallet_address": state["wallet_address"],
+            "llm": state["llm"],
+            "time_zone": state["time_zone"],
+        },
+    )
 
 
 def node_router(state: State):
     last_message = state["messages"][-1]
     if isinstance(last_message, ToolMessage):
-        next_node = get_next_node(last_message.name)
+        tool_name = last_message.name
+        next_node = get_next_node(tool_name)
+
+        # 1. 尝试精确路由
         if next_node:
-            return Command(
-                goto=next_node,
-                update={
-                    "messages": state["messages"],
-                    "wallet_is_connected": state["wallet_is_connected"],
-                    "chain_id": state["chain_id"],
-                    "wallet_address": state["wallet_address"],
-                    "llm": state["llm"],
-                },
-            )
+            return create_command(next_node, state)
         else:
-            return Command(
-                goto=node_llm.get_name(),
-                update={
-                    "messages": state["messages"],
-                    "wallet_is_connected": state["wallet_is_connected"],
-                    "chain_id": state["chain_id"],
-                    "wallet_address": state["wallet_address"],
-                    "llm": state["llm"],
-                },
-            )
+            return create_command(node_llm.get_name(), state)
     else:
-        return Command(
-            goto=node_llm.get_name(),
-            update={
-                "messages": state["messages"],
-                "wallet_is_connected": state["wallet_is_connected"],
-                "chain_id": state["chain_id"],
-                "wallet_address": state["wallet_address"],
-                "llm": state["llm"],
-            },
-        )
+        return create_command(node_llm.get_name(), state)
 
 
 node_llm = RunnableCallable(call_model, acall_model, name="node_llm_musseai")
