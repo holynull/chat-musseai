@@ -26,8 +26,10 @@ class State(TypedDict):
     # in the annotation defines how this state key should be updated
     # (in this case, it appends messages to the list, rather than overwriting them)
     messages: Annotated[list, add_messages]
-    network: str
-    cluster: str
+    user_id: str
+    wallet_is_connected: bool
+    chain_id: int
+    wallet_address: str
 
 
 graph_builder = StateGraph(State)

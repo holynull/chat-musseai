@@ -1,4 +1,5 @@
 import logging
+import traceback
 from types import TracebackType
 import requests
 import json
@@ -393,7 +394,7 @@ def get_eth_block_number(network: str, network_type: str = "mainnet") -> Dict:
     Get the latest block number for the specified network.
 
     Args:
-        network (str): Blockchain network name
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -426,7 +427,7 @@ def get_eth_balance(address: str, network: str, network_type: str = "mainnet") -
 
     Args:
         address (str): Ethereum address to query balance for
-        network (str): Blockchain network name
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -475,7 +476,7 @@ def get_eth_transaction(
 
     Args:
         tx_hash (str): Transaction hash
-        network (str): Blockchain network name
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -542,7 +543,7 @@ def get_eth_block(
 
     Args:
         block_identifier (Union[str, int]): Block number or block hash or special tag (e.g., "latest")
-        network (str): Blockchain network name
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
         tx_limit (int, optional): Maximum number of transactions to return. Defaults to 3.
 
@@ -650,7 +651,7 @@ def call_eth_method(
     Args:
         method (str): JSON-RPC method name (e.g., "eth_gasPrice", "net_version")
         params (List): List of method parameters
-        network (str): Blockchain network name
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -693,7 +694,7 @@ def get_token_balance(
     Args:
         token_address (str): ERC20 token contract address
         wallet_address (str): Wallet address to query balance for
-        network (str): Blockchain network name
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:
@@ -774,7 +775,9 @@ def get_token_balance(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logging.error(
+            f"Failed to get token balance of an address: {str(e)}\n{traceback.format_exc()}"
+        )
         return f"Error getting token balance: {str(e)}"
 
 
@@ -795,7 +798,7 @@ def estimate_gas(
         to_address (str): Recipient address
         value (int): Transaction value in Wei
         data (str, optional): Transaction data hexstring. Defaults to empty string.
-        network (str, optional): Blockchain network name. Defaults to "ethereum".
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type. Defaults to "mainnet".
 
     Returns:
@@ -859,7 +862,7 @@ def get_contract_events(
         event_name (str): Name of the event to fetch
         from_block (Union[int, str]): Starting block number or "earliest"
         to_block (Union[int, str], optional): Ending block number or "latest". Defaults to "latest".
-        network (str, optional): Blockchain network name. Defaults to "ethereum".
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type. Defaults to "mainnet".
 
     Returns:
@@ -919,7 +922,7 @@ def get_network_info(network: str, network_type: str = "mainnet") -> Dict:
     Get general information about the specified network.
 
     Args:
-        network (str): Blockchain network name
+        network (str): Blockchain network name, in the `NETWORK_CONFIG`
         network_type (str, optional): Network type (mainnet, goerli, sepolia, etc.). Defaults to "mainnet".
 
     Returns:

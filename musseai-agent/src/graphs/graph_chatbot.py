@@ -37,6 +37,7 @@ from graphs.graph_quote import graph as quote_graph
 from graphs.graph_image import graph as image_graph
 from graphs.graph_infura import graph as infura_graph
 from graphs.graph_solana import graph as solana_graph
+from graphs.graph_crypto_portfolios import graph as crypto_portfolios_graph
 
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
@@ -133,6 +134,7 @@ class State(TypedDict):
     wallet_address: str
     time_zone: str
     llm: str
+    user_id: str
 
 
 graph_builder = StateGraph(State)
@@ -219,6 +221,7 @@ def create_command(next_node: str, state: State) -> Command:
             "wallet_address": state["wallet_address"],
             "llm": state["llm"],
             "time_zone": state["time_zone"],
+            "user_id": state["user_id"],
         },
     )
 
@@ -249,6 +252,7 @@ graph_builder.add_node(quote_graph.get_name(), quote_graph)
 graph_builder.add_node(image_graph)
 graph_builder.add_node(infura_graph)
 graph_builder.add_node(solana_graph)
+graph_builder.add_node(crypto_portfolios_graph)
 
 graph_builder.add_node(router_tools.get_name(), router_tools)
 graph_builder.add_edge(START, node_llm.get_name())
@@ -263,8 +267,9 @@ graph_builder.add_edge(wallet_graph.get_name(), node_llm.get_name())
 graph_builder.add_edge(search_webpage_graph.get_name(), node_llm.get_name())
 graph_builder.add_edge(quote_graph.get_name(), node_llm.get_name())
 graph_builder.add_edge(image_graph.get_name(), node_llm.get_name())
-graph_builder.add_edge(infura_graph.get_name(), node_llm.get_name())
-graph_builder.add_edge(solana_graph.get_name(), node_llm.get_name())
+graph_builder.add_edge(infura_graph.get_name(), crypto_portfolios_graph.get_name())
+graph_builder.add_edge(solana_graph.get_name(), crypto_portfolios_graph.get_name())
+graph_builder.add_edge(crypto_portfolios_graph.get_name(), node_llm.get_name())
 from langgraph.store.memory import InMemoryStore
 from langchain_ollama import OllamaEmbeddings
 from langgraph.checkpoint.memory import MemorySaver

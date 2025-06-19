@@ -191,6 +191,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			wallet_is_connected: isConnected,
 			time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 			llm: selectedModel,
+			user_id: user?.user_id,
 			// chat_history: chatHistory,
 			chat_history: [],
 			// image_urls: currentImages,
@@ -274,7 +275,16 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			if (chunk.data.event === "on_chat_model_stream") {
 
 				if (chunk.data.metadata.langgraph_node === "respond" ||
-					["node_llm_musseai", "node_llm_image", "node_llm_quote", "node_llm_search", "node_llm_swap", "node_llm_wallet", "node_llm_infura"]
+					["node_llm_musseai",
+						"node_llm_image",
+						"node_llm_quote",
+						"node_llm_search",
+						"node_llm_swap",
+						"node_llm_wallet",
+						"node_llm_infura",
+						"node_llm_pumpfun",
+						"node_llm_crypto_portfolios"
+					]
 						.includes(chunk.data.metadata.langgraph_node)) {
 					const message = chunk.data.data.chunk;
 					if (message.content && Array.isArray(message.content) && message.content.length > 0) {

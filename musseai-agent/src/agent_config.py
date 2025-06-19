@@ -118,6 +118,22 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         graph_module="graphs.graph_solana",
         required_env_vars=["SOLANA_RPC_URL"],
     ),
+    "crypto_portfolios": AgentConfig(
+        name="Cryptocurrency Portfolio Management Expert",
+        description="Expert in analyzing and optimizing cryptocurrency asset portfolios and investment positions",
+        capabilities=[
+            "Analyze portfolio allocation and asset distribution",
+            "Track performance metrics and ROI for digital assets",
+            "Provide risk assessment and diversification recommendations",
+            "Generate rebalancing strategies based on market conditions",
+            "Create visual portfolio reports and analytics",
+            "Compare performance against market benchmarks",
+            "Monitor position changes and historical performance",
+            "Query supported assets and their market data",
+        ],
+        graph_module="graphs.graph_crypto_portfolios",
+        required_env_vars=[],  # 根据需要添加
+    ),
 }
 
 # 辅助函数
@@ -195,6 +211,7 @@ ROUTE_MAPPING = {
     "route_to_image_agent": "image",
     "route_to_infura_agent": "infura",
     "route_to_solana_agent": "solana",
+    "route_to_crypto_portfolios_agent": "crypto_portfolios",
 }
 
 
