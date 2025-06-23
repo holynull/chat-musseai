@@ -83,3 +83,7 @@ stop:
 	else \
 	    echo "No PID file found. Is Langgraph running?"; \
 	fi
+
+build:
+# langgraph build -t musseai_agent
+	docker build -t musseai-agent .

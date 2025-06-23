@@ -164,5 +164,6 @@ notebooks
 *.patched
 patches/
 *.content.json
-chromedriver**
 test**
+volumes/
+logs/

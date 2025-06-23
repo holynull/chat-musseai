@@ -3,10 +3,7 @@ import time
 from datetime import datetime
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langgraph.prebuilt import ToolNode, tools_condition
-
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("agent_router")
+from loggers import logger
 
 
 # 增强router_tools节点

@@ -15,6 +15,7 @@ from mysql.model import (
     PositionHistoryNewModel,
     AssetTransactionModel,
 )
+from loggers import logger
 
 
 @tool
@@ -66,7 +67,7 @@ def get_user_asset_sources(user_id: str) -> Dict:
 
             return result
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Failed to get user asset sources: {str(e)}\n{traceback.format_exc()}"
         )
         return {"error": f"Failed to get user asset sources: {str(e)}"}
@@ -148,9 +149,7 @@ def add_wallet_source(
                 "message": f"Successfully added wallet {wallet_address} as asset source for user {user_id}",
             }
     except Exception as e:
-        logging.error(
-            f"Failed to add wallet source: {str(e)}\n{traceback.format_exc()}"
-        )
+        logger.error(f"Failed to add wallet source: {str(e)}\n{traceback.format_exc()}")
         return {"error": f"Failed to add wallet source: {str(e)}"}
 
 
@@ -228,7 +227,7 @@ def add_exchange_source(
                 "message": f"Successfully added {exchange_name} exchange account as asset source for user {user_id}",
             }
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Failed to add exchange account: {str(e)}\n{traceback.format_exc()}"
         )
         return {"error": f"Failed to add exchange account: {str(e)}"}
@@ -376,7 +375,7 @@ def add_defi_source(
                         db.add(position)
 
                     except Exception as asset_error:
-                        logging.warning(
+                        logger.warning(
                             f"Failed to add default asset {asset_info['symbol']}: {str(asset_error)}"
                         )
 
@@ -394,7 +393,7 @@ def add_defi_source(
             }
 
     except Exception as e:
-        logging.error(f"Failed to add DeFi source: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Failed to add DeFi source: {str(e)}\n{traceback.format_exc()}")
         return {"error": f"Failed to add DeFi source: {str(e)}"}
 
 
@@ -466,7 +465,7 @@ def get_source_positions(source_id: int) -> Dict:
 
             return result
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Failed to get source positions: {str(e)}\n{traceback.format_exc()}"
         )
         return {"error": f"Failed to get source positions: {str(e)}"}
@@ -647,7 +646,7 @@ def update_position(
             }
 
     except Exception as e:
-        logging.error(f"Failed to update position: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Failed to update position: {str(e)}\n{traceback.format_exc()}")
         return {"error": f"Failed to update position: {str(e)}"}
 
 
@@ -731,7 +730,7 @@ def get_position_history(
 
             return result
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Failed to get position history: {str(e)}\n{traceback.format_exc()}"
         )
         return {"error": f"Failed to get position history: {str(e)}"}
@@ -828,7 +827,7 @@ def get_user_portfolio_summary(user_id: str) -> Dict:
 
             return portfolio_summary
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Failed to get user portfolio summary: {str(e)}\n{traceback.format_exc()}"
         )
         return {"error": f"Failed to get user portfolio summary: {str(e)}"}

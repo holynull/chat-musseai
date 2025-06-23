@@ -10,7 +10,7 @@ import os
 # 数据库连接配置
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "mysql+pymysql://asset_agent:asset_agent_123456@localhost:3307/crypto_positions",
+    "mysql+pymysql://asset_agent:asset_agent_123456@mysql:3307/crypto_positions",
 )
 
 # 创建数据库引擎

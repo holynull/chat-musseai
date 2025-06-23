@@ -7,6 +7,7 @@ from typing import List, Dict, Optional, Any, Union
 from langchain.agents import tool
 from web3 import Web3
 import os
+from loggers import logger
 
 # Network configurations with Infura endpoints and chain IDs
 NETWORK_CONFIG = {
@@ -416,7 +417,7 @@ def get_eth_block_number(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return f"Error getting block number: {str(e)}"
 
 
@@ -463,7 +464,7 @@ def get_eth_balance(address: str, network: str, network_type: str = "mainnet") -
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return f"Error getting balance: {str(e)}"
 
 
@@ -527,7 +528,7 @@ def get_eth_transaction(
 
         return tx_dict
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return f"Error getting transaction: {str(e)}"
 
 
@@ -633,11 +634,11 @@ def get_eth_block(
             return json.dumps(response, cls=DecimalEncoder)
 
         except ValueError as e:
-            logging.warning(f"Error getting block with full data: {e}")
+            logger.warning(f"Error getting block with full data: {e}")
             return f"Error: Could not retrieve block data. The block might not exist or network issues occurred."
 
     except Exception as e:
-        logging.error(f"Error in get_eth_block: {str(e)}")
+        logger.error(f"Error in get_eth_block: {str(e)}")
         return f"Error getting block: {str(e)}"
 
 
@@ -680,7 +681,7 @@ def call_eth_method(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return f"Error calling RPC method: {str(e)}"
 
 
@@ -775,7 +776,7 @@ def get_token_balance(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Failed to get token balance of an address: {str(e)}\n{traceback.format_exc()}"
         )
         return f"Error getting token balance: {str(e)}"
@@ -841,7 +842,7 @@ def estimate_gas(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return f"Error estimating gas: {str(e)}"
 
 
@@ -912,7 +913,7 @@ def get_contract_events(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return f"Error getting contract events: {str(e)}"
 
 
@@ -959,7 +960,7 @@ def get_network_info(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return f"Error getting network info: {str(e)}"
 
 
@@ -1005,7 +1006,7 @@ def _make_request(
             "network_type": network_type,
         }
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         return {"error": f"RPC request failed: {str(e)}"}
 
 

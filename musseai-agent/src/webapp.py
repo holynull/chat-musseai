@@ -10,6 +10,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import uuid
+from loggers import logger
+
+logger.info("Musse AI Agent starting.")
 
 # from langsmith import Client
 # lsclient = Client(api_key=os.getenv("LANGCHAIN_API_KEY"))
@@ -110,9 +113,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
-app.add_middleware(AuthenticationMiddleware)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -121,6 +121,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
+app.add_middleware(AuthenticationMiddleware)
 
 
 @app.post("/api/runs/share")
@@ -711,7 +714,7 @@ def initialize_test_users():
     # 查找所有TEST_USER_开头的环境变量
     test_user_pattern = re.compile(r"^TEST_USER_\d+$")
     test_user_vars = [var for var in os.environ.keys() if test_user_pattern.match(var)]
-    logging.info(test_user_vars)
+    logger.info(test_user_vars)
 
     if test_user_vars:
         # 从环境变量中解析用户信息

@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+import os
 
 _llm = ChatAnthropic(
     model="claude-3-7-sonnet-20250219",
@@ -129,8 +130,7 @@ class LinkRelaventContentState:
 KEY_LINK_RELAVENT_CONTENT = "link_relavent_content"
 KEY_LINK_CONTENT_SPLITS = "link_content_splits"
 
-# driver_path = "chromedriver-linux64/chromedriver"
-driver_path = "chromedriver-mac-x64/chromedriver"
+driver_path = os.getenv("CHROME_DRIVER_PATH")
 service = Service(executable_path=driver_path)
 # 创建ChromeOptions对象
 chrome_options = Options()
@@ -143,10 +143,29 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
+from loggers import logger
 
 
 def getHTMLChrome(url: str) -> str:
     """useful when you need get the HTML of URL asynchronously. The input to this should be URL."""
+    logger.info(f"Access url use Chrome. {url}")
+
+    # 容器环境下的Chrome选项配置
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--disable-images")
+    chrome_options.add_argument("--disable-javascript")
+    chrome_options.add_argument(
+        "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+    )
+
+    driver_path = os.getenv("CHROME_DRIVER_PATH", "/chromedriver-linux64/chromedriver")
+    service = Service(executable_path=driver_path)
 
     browser = webdriver.Chrome(service=service, options=chrome_options)
     try:
@@ -159,14 +178,14 @@ def getHTMLChrome(url: str) -> str:
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
         except TimeoutException:
-            logging.warning(f"Page load timeout for URL: {url}")
+            logger.warning(f"Page load timeout for URL: {url}")
 
         html_content = browser.page_source
         soup = BeautifulSoup(html_content, "html.parser")
         body = soup.find("body")
 
         if not body:
-            logging.warning(f"No body tag found in the HTML from URL: {url}")
+            logger.warning(f"No body tag found in the HTML from URL: {url}")
             return html_content
 
         # Remove unwanted tags
@@ -198,7 +217,7 @@ def getHTMLChrome(url: str) -> str:
         clean_html = re.sub(r"(?m)^[\t ]+$", "", str(body))
         return clean_html
     except Exception as e:
-        logging.error(f"Error fetching HTML from {url}: {str(e)}")
+        logger.error(f"Error fetching HTML from {url}: {str(e)}")
         return ""
     finally:
         browser.quit()
@@ -212,24 +231,24 @@ async def getDocumentFromLink(
 ) -> List[Document]:
     """get documents from link."""
     html = []
+    # try:
+    #     clean_html = await asyncio.to_thread(getHTMLChrome, link)
+    #     html = [Document(page_content=clean_html)]
+    # except Exception as e:
+    #     logger.error(f"Error loading {link}: {e}")
     try:
-        clean_html = await asyncio.to_thread(getHTMLChrome, link)
-        html = [Document(page_content=clean_html)]
+        loader = SpiderLoader(
+            url=link,
+            mode="scrape",  # if no API key is provided it looks for SPIDER_API_KEY in env
+        )
+        docs = await loader.aload()
+        html += docs
     except Exception as e:
-        logging.error(f"Error loading {link}: {e}")
-        try:
-            loader = SpiderLoader(
-                url=link,
-                ode="scrape",  # if no API key is provided it looks for SPIDER_API_KEY in env
-            )
-            docs = await loader.aload()
-            html += docs
-        except Exception as e:
-            logging.warning(e)
-            loader = WebBaseLoader(web_paths=[link])
-            html = await asyncio.to_thread(loader.load)
-        #     async for doc in loader.alazy_load():
-        #         html.append(doc)
+        logger.warning(e)
+        loader = WebBaseLoader(web_paths=[link])
+        html = await asyncio.to_thread(loader.load)
+    #     async for doc in loader.alazy_load():
+    #         html.append(doc)
 
     def split_documents(html):
         return RecursiveCharacterTextSplitter(
