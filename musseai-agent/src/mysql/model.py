@@ -11,140 +11,219 @@ from sqlalchemy import (
     Text,
     JSON,
     TIMESTAMP,
+    Enum,
+    UniqueConstraint,
+    Index,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .db import Base
-import datetime
+import enum
 
 
-class AssetSourceTypeModel(Base):
-    __tablename__ = "asset_source_types"
+class SourceType(enum.Enum):
+    """资产来源类型枚举"""
 
-    source_type_id = Column(Integer, primary_key=True, autoincrement=True)
-    type_name = Column(String(50), nullable=False)
-    description = Column(Text)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    status = Column(Integer, default=1)
+    WALLET = "WALLET"
+    EXCHANGE = "EXCHANGE"
+    DEFI = "DEFI"
 
 
-class AssetSourceModel(Base):
-    __tablename__ = "asset_sources"
+class TransactionType(enum.Enum):
+    """交易类型枚举"""
+
+    BUY = "BUY"
+    SELL = "SELL"
+    DEPOSIT = "DEPOSIT"
+    WITHDRAW = "WITHDRAW"
+    TRANSFER = "TRANSFER"
+
+
+class PortfolioSourceModel(Base):
+    """用户资产来源表"""
+
+    __tablename__ = "portfolio_sources"
 
     source_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(100), nullable=False)
-    source_type_id = Column(
-        Integer, ForeignKey("asset_source_types.source_type_id"), nullable=False
+    user_id = Column(String(100), nullable=False, comment="用户标识")
+    source_type = Column(Enum(SourceType), nullable=False, comment="来源类型")
+    source_name = Column(String(100), nullable=False, comment="来源名称")
+    source_config = Column(
+        JSON, nullable=False, comment="配置信息（地址、交易所信息等）"
     )
-    source_name = Column(String(100), nullable=False)
-    source_details = Column(JSON)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    last_sync_time = Column(TIMESTAMP)
+    is_active = Column(Boolean, default=True, comment="是否激活")
+    created_at = Column(TIMESTAMP, server_default=func.now(), comment="创建时间")
+    last_sync_at = Column(TIMESTAMP, nullable=True, comment="最后同步时间")
 
-    source_type = relationship("AssetSourceTypeModel")
-    positions = relationship("AssetPositionModel", back_populates="source")
+    # 关系映射
+    positions = relationship(
+        "PositionModel", back_populates="source", cascade="all, delete-orphan"
+    )
+    transactions = relationship(
+        "TransactionModel", back_populates="source", cascade="all, delete-orphan"
+    )
 
-
-class SupportedExchangeModel(Base):
-    __tablename__ = "supported_exchanges"
-
-    exchange_id = Column(Integer, primary_key=True, autoincrement=True)
-    exchange_name = Column(String(50), nullable=False)
-    display_name = Column(String(100), nullable=False)
-    api_base_url = Column(String(200), nullable=False)
-    logo_url = Column(String(200))
-    supported_features = Column(JSON)
-    status = Column(Integer, default=1)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-
-
-class ExchangeApiCredentialModel(Base):
-    __tablename__ = "exchange_api_credentials"
-
-    credential_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(100), nullable=False)
-    exchange_name = Column(String(50), nullable=False)
-    api_key = Column(String(200), nullable=False)
-    api_secret = Column(String(500), nullable=False)
-    api_passphrase = Column(String(200))
-    description = Column(String(200))
-    is_active = Column(Integer, default=1)
-    permissions = Column(JSON)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    last_used_at = Column(TIMESTAMP)
+    # 索引
+    __table_args__ = (
+        Index("idx_user_type", "user_id", "source_type"),
+        Index("idx_user_active", "user_id", "is_active"),
+        Index("idx_active", "is_active"),
+        {"comment": "用户资产来源表"},
+    )
 
 
-class CryptoAssetModel(Base):
-    __tablename__ = "crypto_assets"
+class AssetModel(Base):
+    """资产定义表"""
+
+    __tablename__ = "assets"
 
     asset_id = Column(Integer, primary_key=True, autoincrement=True)
-    asset_symbol = Column(String(20), nullable=False)
-    asset_name = Column(String(50), nullable=False)
-    chain_type = Column(String(20), nullable=False)
-    contract_address = Column(String(100))
-    decimals = Column(Integer, default=18)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    status = Column(Integer, default=1)
+    symbol = Column(String(20), nullable=False, comment="资产符号")
+    name = Column(String(100), nullable=False, comment="资产名称")
+    chain = Column(String(20), nullable=False, default="GENERAL", comment="所属链")
+    contract_address = Column(String(100), nullable=True, comment="合约地址")
+    decimals = Column(Integer, default=18, comment="精度")
+    logo_url = Column(String(255), nullable=True, comment="Logo图片URL")
+    is_active = Column(Boolean, default=True, comment="是否激活")
+    created_at = Column(TIMESTAMP, server_default=func.now(), comment="创建时间")
+
+    # 关系映射 - 修复：明确指定foreign_keys
+    positions = relationship("PositionModel", back_populates="asset")
+    transactions = relationship(
+        "TransactionModel",
+        foreign_keys="[TransactionModel.asset_id]",
+        back_populates="asset",
+    )
+    fee_transactions = relationship(
+        "TransactionModel",
+        foreign_keys="[TransactionModel.fee_asset_id]",
+        back_populates="fee_asset",
+    )
+    price_snapshots = relationship(
+        "PriceSnapshotModel", back_populates="asset", cascade="all, delete-orphan"
+    )
+
+    # 约束和索引
+    __table_args__ = (
+        UniqueConstraint("symbol", "chain", name="unique_asset"),
+        Index("idx_symbol", "symbol"),
+        Index("idx_chain", "chain"),
+        {"comment": "资产定义表"},
+    )
 
 
-class AssetPositionModel(Base):
-    __tablename__ = "asset_positions"
+class PositionModel(Base):
+    """持仓表"""
+
+    __tablename__ = "positions"
 
     position_id = Column(Integer, primary_key=True, autoincrement=True)
-    source_id = Column(Integer, ForeignKey("asset_sources.source_id"), nullable=False)
-    asset_id = Column(Integer, ForeignKey("crypto_assets.asset_id"), nullable=False)
-    quantity = Column(Numeric(65, 18), nullable=False)
-    cost_basis = Column(Numeric(20, 8))
-    last_updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
-    last_sync_time = Column(TIMESTAMP)
-    additional_data = Column(JSON)
+    source_id = Column(
+        Integer,
+        ForeignKey("portfolio_sources.source_id", ondelete="CASCADE"),
+        nullable=False,
+        comment="来源ID",
+    )
+    asset_id = Column(
+        Integer,
+        ForeignKey("assets.asset_id", ondelete="RESTRICT"),
+        nullable=False,
+        comment="资产ID",
+    )
+    quantity = Column(Numeric(30, 18), nullable=False, default=0, comment="持仓数量")
+    avg_cost = Column(Numeric(20, 8), nullable=True, comment="平均成本")
+    last_price = Column(Numeric(20, 8), nullable=True, comment="最新价格")
+    updated_at = Column(
+        TIMESTAMP, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+    )
 
-    source = relationship("AssetSourceModel", back_populates="positions")
-    asset = relationship("CryptoAssetModel")
+    # 关系映射
+    source = relationship("PortfolioSourceModel", back_populates="positions")
+    asset = relationship("AssetModel", back_populates="positions")
+
+    # 约束和索引
+    __table_args__ = (
+        UniqueConstraint("source_id", "asset_id", name="unique_position"),
+        Index("idx_source", "source_id"),
+        Index("idx_asset", "asset_id"),
+        Index("idx_updated", "updated_at"),
+        {"comment": "持仓表"},
+    )
 
 
-class PositionHistoryNewModel(Base):
-    __tablename__ = "position_history_new"
+class TransactionModel(Base):
+    """交易记录表"""
 
-    history_id = Column(Integer, primary_key=True, autoincrement=True)
-    source_id = Column(Integer, ForeignKey("asset_sources.source_id"), nullable=False)
-    asset_id = Column(Integer, ForeignKey("crypto_assets.asset_id"), nullable=False)
-    quantity = Column(Numeric(65, 18), nullable=False)
-    change_amount = Column(Numeric(65, 18), nullable=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    agent_id = Column(String(50))
-    conversation_id = Column(String(100))
-    sync_type = Column(String(30))
-    operation_type = Column(String(30))
-    operation_details = Column(JSON)
-
-    source = relationship("AssetSourceModel")
-    asset = relationship("CryptoAssetModel")
-
-
-class AssetTransactionModel(Base):
-    __tablename__ = "asset_transactions"
+    __tablename__ = "transactions"
 
     transaction_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(100), nullable=False)
-    source_id = Column(Integer, ForeignKey("asset_sources.source_id"), nullable=False)
-    transaction_type = Column(String(30), nullable=False)
-    base_asset_id = Column(
-        Integer, ForeignKey("crypto_assets.asset_id"), nullable=False
+    source_id = Column(
+        Integer,
+        ForeignKey("portfolio_sources.source_id", ondelete="CASCADE"),
+        nullable=False,
+        comment="来源ID",
     )
-    quote_asset_id = Column(Integer, ForeignKey("crypto_assets.asset_id"))
-    base_amount = Column(Numeric(65, 18), nullable=False)
-    quote_amount = Column(Numeric(65, 18))
-    fee_asset_id = Column(Integer, ForeignKey("crypto_assets.asset_id"))
-    fee_amount = Column(Numeric(65, 18))
-    price = Column(Numeric(65, 18))
-    transaction_time = Column(TIMESTAMP, nullable=False)
-    external_id = Column(String(200))
-    status = Column(String(20), default="COMPLETED", nullable=False)
-    additional_info = Column(JSON)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    transaction_type = Column(Enum(TransactionType), nullable=False, comment="交易类型")
+    asset_id = Column(
+        Integer,
+        ForeignKey("assets.asset_id", ondelete="RESTRICT"),
+        nullable=False,
+        comment="资产ID",
+    )
+    quantity = Column(Numeric(30, 18), nullable=False, comment="交易数量")
+    price = Column(Numeric(20, 8), nullable=True, comment="交易价格")
+    fee = Column(Numeric(20, 8), default=0, comment="手续费")
+    fee_asset_id = Column(
+        Integer,
+        ForeignKey("assets.asset_id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="手续费资产ID",
+    )
+    external_tx_id = Column(String(200), nullable=True, comment="外部交易ID")
+    transaction_time = Column(TIMESTAMP, nullable=False, comment="交易时间")
+    notes = Column(Text, nullable=True, comment="备注")
+    created_at = Column(TIMESTAMP, server_default=func.now(), comment="记录创建时间")
 
-    source = relationship("AssetSourceModel")
-    base_asset = relationship("CryptoAssetModel", foreign_keys=[base_asset_id])
-    quote_asset = relationship("CryptoAssetModel", foreign_keys=[quote_asset_id])
-    fee_asset = relationship("CryptoAssetModel", foreign_keys=[fee_asset_id])
+    # 关系映射 - 修复：明确指定关系
+    source = relationship("PortfolioSourceModel", back_populates="transactions")
+    asset = relationship(
+        "AssetModel", foreign_keys=[asset_id], back_populates="transactions"
+    )
+    fee_asset = relationship(
+        "AssetModel", foreign_keys=[fee_asset_id], back_populates="fee_transactions"
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_source_time", "source_id", "transaction_time"),
+        Index("idx_asset", "asset_id"),
+        Index("idx_type_time", "transaction_type", "transaction_time"),
+        Index("idx_external", "external_tx_id"),
+        {"comment": "交易记录表"},
+    )
+
+
+class PriceSnapshotModel(Base):
+    """价格快照表"""
+
+    __tablename__ = "price_snapshots"
+
+    snapshot_id = Column(Integer, primary_key=True, autoincrement=True)
+    asset_id = Column(
+        Integer,
+        ForeignKey("assets.asset_id", ondelete="CASCADE"),
+        nullable=False,
+        comment="资产ID",
+    )
+    price = Column(Numeric(20, 8), nullable=False, comment="价格")
+    timestamp = Column(TIMESTAMP, nullable=False, comment="时间戳")
+
+    # 关系映射
+    asset = relationship("AssetModel", back_populates="price_snapshots")
+
+    # 约束和索引
+    __table_args__ = (
+        UniqueConstraint("asset_id", "timestamp", name="unique_asset_time"),
+        Index("idx_asset_time", "asset_id", "timestamp", postgresql_using="btree"),
+        {"comment": "价格快照表"},
+    )

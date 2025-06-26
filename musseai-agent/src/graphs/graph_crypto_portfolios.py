@@ -1,6 +1,4 @@
 from typing import Annotated, cast
-from mysql.db import get_db
-from mysql.model import AssetSourceModel
 from typing_extensions import TypedDict
 
 from langchain_anthropic import ChatAnthropic
@@ -41,34 +39,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 def format_messages(state: State) -> list[BaseMessage]:
     """Format system prompt and messages"""
     # 检查用户是否有任何资产来源
-    user_id = state.get("user_id")
-    has_sources = False
 
-    if user_id:
-        try:
-            with get_db() as db:
-                source_count = (
-                    db.query(AssetSourceModel)
-                    .filter(AssetSourceModel.user_id == user_id)
-                    .count()
-                )
-                has_sources = source_count > 0
-        except:
-            pass
-
-    # 根据用户状态调整提示
-    if not has_sources:
-        additional_guidance = """
-
-        IMPORTANT: This user has no asset sources configured yet. 
-        Priority: Guide them to add their first asset source before managing positions.
-        Suggest starting with their connected wallet if available, or help them add exchange/DeFi sources.
-        """
-    else:
-        additional_guidance = """
-                
-        This user has existing asset sources. You can help them manage positions or add new sources.
-        """
     # Get wallet connection status
     wallet_status = (
         "Connected" if state.get("wallet_is_connected", False) else "Not Connected"
@@ -129,7 +100,7 @@ def format_messages(state: State) -> list[BaseMessage]:
 	- Portfolio analysis aggregates across all sources
 	- Users can track assets they don't directly control (e.g., exchange balances)
 	
-	Always clarify the difference between connected wallet and managed portfolio sources when users seem confused about adding assets or positions.{additional_guidance}
+	Always clarify the difference between connected wallet and managed portfolio sources when users seem confused about adding assets or positions.
 	"""
 
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)

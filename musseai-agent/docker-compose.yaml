@@ -72,12 +72,12 @@ services:
           - "3307:3306"
         volumes:
           - mysql_data:/var/lib/mysql
-          - ./src/mysql/crypto_positions_schema.sql:/docker-entrypoint-initdb.d/01-crypto_positions_schema.sql
-          - ./src/mysql/insert_assets.sql:/docker-entrypoint-initdb.d/02-insert_assets.sql
+          - ./src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
+          - ./src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
           - ./src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
         environment:
           - MYSQL_ROOT_PASSWORD=root
-          - MYSQL_DATABASE=crypto_positions
+          - MYSQL_DATABASE=crypto_portfolio
           - MYSQL_USER=asset_agent
           - MYSQL_PASSWORD=asset_agent_123456
 
