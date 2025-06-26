@@ -1,5 +1,6 @@
 import os
 from typing import Annotated, Optional, cast
+from enhanced_router_tools import EnhancedRouterTools
 from typing_extensions import TypedDict
 from langchain_anthropic import ChatAnthropic
 from langchain_core.runnables import (
@@ -180,6 +181,8 @@ async def acall_model(state: State, config: RunnableConfig):
         )
 
 
+router_tools = EnhancedRouterTools(tools=tools_router, name="node_tools_router")
+
 node_llm = RunnableCallable(call_model, acall_model, name="node_llm_musseai")
 
 
@@ -209,6 +212,23 @@ def _extract_message_content(message: AIMessage) -> Optional[str]:
         return None
 
 
+def _build_routing_prompt(content: str) -> HumanMessage:
+    """构建路由判断提示"""
+    prompt_text = f"""
+    Based on the following AI response, determine if it needs to be routed to a specialized agent:
+    
+    AI Response: {content}
+    
+    Analyze if the response:
+    1. Mentions specific actions that require specialized tools
+    2. Contains incomplete information that needs additional processing
+    3. References functionality handled by specific agents
+    
+    If routing is needed, call the appropriate routing tool. Otherwise, do not call any tools.
+    """
+    return HumanMessage(content=prompt_text)
+
+
 def _parse_routing_response(response: AIMessage) -> Optional[str]:
     """解析路由响应"""
     try:
@@ -228,272 +248,43 @@ def _parse_routing_response(response: AIMessage) -> Optional[str]:
         return None
 
 
-def _extract_keywords(content: str) -> list:
-    """从内容中提取关键词"""
-    # DeFi和加密货币相关关键词
-    crypto_keywords = [
-        "swap",
-        "trade",
-        "exchange",
-        "token",
-        "coin",
-        "price",
-        "chart",
-        "wallet",
-        "balance",
-        "transaction",
-        "defi",
-        "nft",
-        "staking",
-        "yield",
-        "liquidity",
-        "ethereum",
-        "bitcoin",
-        "solana",
-        "polygon",
-        "binance",
-        "uniswap",
-    ]
-
-    # 搜索相关关键词
-    search_keywords = [
-        "search",
-        "find",
-        "lookup",
-        "news",
-        "information",
-        "latest",
-        "current",
-        "what is",
-        "how to",
-        "where can",
-        "when did",
-    ]
-
-    # 图像相关关键词
-    image_keywords = [
-        "image",
-        "picture",
-        "generate",
-        "create",
-        "visual",
-        "photo",
-        "art",
-        "design",
-        "draw",
-        "illustration",
-    ]
-
-    found_keywords = []
-    content_lower = content.lower()
-
-    for keyword in crypto_keywords + search_keywords + image_keywords:
-        if keyword in content_lower:
-            found_keywords.append(keyword)
-
-    return found_keywords
-
-
-def _classify_user_intent(content: str) -> str:
-    """分类用户意图"""
-    content_lower = content.lower()
-
-    if any(word in content_lower for word in ["swap", "trade", "exchange", "bridge"]):
-        return "swap_intent"
-    elif any(word in content_lower for word in ["price", "chart", "market", "quote"]):
-        return "quote_intent"
-    elif any(word in content_lower for word in ["search", "find", "news"]):
-        return "search_intent"
-    elif any(
-        word in content_lower for word in ["image", "generate", "create", "picture"]
-    ):
-        return "image_intent"
-    elif any(word in content_lower for word in ["wallet", "connect", "balance"]):
-        return "wallet_intent"
-    elif any(word in content_lower for word in ["solana", "sol", "spl"]):
-        return "solana_intent"
-    elif any(word in content_lower for word in ["portfolio", "position", "asset"]):
-        return "portfolio_intent"
-    else:
-        return "general_intent"
-
-
-def _identify_pending_actions(content: str) -> list:
-    """识别AI响应中提到的待处理操作"""
-    pending_actions = []
-    content_lower = content.lower()
-
-    action_patterns = [
-        ("need to check", "verification_needed"),
-        ("let me search", "search_needed"),
-        ("i can help you", "assistance_offered"),
-        ("would you like", "user_confirmation_needed"),
-        ("please provide", "additional_info_needed"),
-        ("i need to", "action_required"),
-    ]
-
-    for pattern, action_type in action_patterns:
-        if pattern in content_lower:
-            pending_actions.append(action_type)
-
-    return pending_actions
-
-
-def _build_enhanced_routing_prompt(
-    ai_message: AIMessage, context: dict, recent_messages: list
-) -> HumanMessage:
-    """构建增强的路由判断提示"""
-
-    ai_content = _extract_message_content(ai_message)
-    if not ai_content:
-        return None
-
-    # 构建上下文信息
-    context_info = f"""
-    Recent conversation context:
-    - User intents: {', '.join(context.get('user_intents', []))}
-    - Key topics mentioned: {', '.join(context.get('mentioned_keywords', []))}
-    - Tools recently used: {', '.join(context.get('tool_usage_history', []))}
-    - Pending actions: {', '.join(context.get('pending_actions', []))}
+async def _intelligent_routing(ai_message: AIMessage) -> Optional[str]:
     """
-
-    # 构建最近消息摘要
-    recent_conversation = ""
-    for i, msg in enumerate(recent_messages[-3:]):
-        role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-        content = (
-            msg.content
-            if isinstance(msg.content, str)
-            else str(msg.content)[:200] + "..."
-        )
-        recent_conversation += f"\n{role}: {content}"
-
-    prompt_text = f"""
-    You are a smart routing agent that determines if the AI response requires specialized processing.
-    
-    Current AI Response: {ai_content}
-    
-    {context_info}
-    
-    Recent Conversation:{recent_conversation}
-    
-    Available specialized agents and their capabilities:
-    
-    1. Swap Agent - Token swapping, cross-chain transactions, bridging
-    2. Wallet Agent - Wallet connection, network switching, account management  
-    3. Search Agent - Web search, news lookup, content retrieval
-    4. Quote Agent - Price data, market analysis, trading signals
-    5. Image Agent - Image generation, visual content creation
-    6. Infura Agent - Blockchain data, transaction details, smart contract interaction
-    7. Solana Agent - Solana-specific operations, SPL tokens, Solana DeFi
-    8. Crypto Portfolios Agent - Portfolio management, asset tracking, position analysis
-    
-    Analysis Guidelines:
-    1. Consider the FULL conversation context, not just the last message
-    2. Look for incomplete information that needs specialized processing
-    3. Identify if user intent requires specific domain expertise
-    4. Check if the AI response mentions actions requiring specialized tools
-    5. Consider follow-up questions that might need expert knowledge
-    
-    If routing is needed, call the appropriate routing tool. If the response is complete and no specialized processing is required, do not call any tools.
-    """
-
-    return HumanMessage(content=prompt_text)
-
-
-async def _enhanced_intelligent_routing(messages: list) -> Optional[str]:
-    """
-    增强的智能路由决策引擎
+    基于AI消息内容进行智能路由判断
     """
     try:
-        # 分析对话上下文
-        context = await _analyze_conversation_context(messages)
-
-        # 获取最后一条AI消息
-        last_ai_message = None
-        for message in reversed(messages):
-            if isinstance(message, AIMessage):
-                last_ai_message = message
-                break
-
-        if not last_ai_message:
+        # 安全获取消息内容
+        content = _extract_message_content(ai_message)
+        if not content:
             return None
 
-        # 构建增强的路由提示
-        enhanced_prompt = _build_enhanced_routing_prompt(
-            last_ai_message, context, messages[-3:] if len(messages) >= 3 else messages
-        )
-
-        # 使用轻量级LLM进行路由决策
+        # 创建轻量级LLM用于路由判断
         router_llm = ChatAnthropic(
             model="claude-3-5-haiku-latest",
             temperature=0.1,
-            max_tokens=150,
+            max_tokens=100,  # 限制token数量
         )
 
-        llm_with_tools = router_llm.bind_tools(tools_router)
-        response = await llm_with_tools.ainvoke([enhanced_prompt])
+        # 构建路由判断提示
+        routing_prompt = _build_routing_prompt(content)
 
+        # 绑定路由工具
+        llm_with_tools = router_llm.bind_tools(tools_router)
+
+        # 获取路由决策
+        response = await llm_with_tools.ainvoke([routing_prompt])
+
+        # 解析路由结果
         return _parse_routing_response(response)
 
     except Exception as e:
-        print(f"Error in enhanced intelligent routing: {e}")
+        print(f"Error in intelligent routing: {e}")
         return None
-
-
-async def _analyze_conversation_context(messages: list, window_size: int = 5) -> dict:
-    """
-    分析对话上下文，提取关键信息用于路由决策
-
-    Args:
-        messages: 完整消息历史
-        window_size: 分析的消息窗口大小
-
-    Returns:
-        包含上下文信息的字典
-    """
-    # 获取最近的消息窗口
-    recent_messages = (
-        messages[-window_size:] if len(messages) > window_size else messages
-    )
-
-    context = {
-        "user_intents": [],
-        "mentioned_keywords": [],
-        "tool_usage_history": [],
-        "conversation_flow": [],
-        "pending_actions": [],
-    }
-
-    # 分析每条消息
-    for msg in recent_messages:
-        if isinstance(msg, HumanMessage):
-            # 提取用户意图关键词
-            content = (
-                msg.content.lower()
-                if isinstance(msg.content, str)
-                else str(msg.content).lower()
-            )
-            context["mentioned_keywords"].extend(_extract_keywords(content))
-            context["user_intents"].append(_classify_user_intent(content))
-
-        elif isinstance(msg, AIMessage):
-            # 分析AI响应中的工具使用
-            if hasattr(msg, "tool_calls") and msg.tool_calls:
-                for tool_call in msg.tool_calls:
-                    context["tool_usage_history"].append(tool_call.get("name"))
-
-            # 分析AI是否提到了需要进一步处理的内容
-            ai_content = _extract_message_content(msg)
-            if ai_content:
-                context["pending_actions"].extend(_identify_pending_actions(ai_content))
-
-    return context
 
 
 async def aget_next_node(messages: list) -> Optional[str]:
     """
-    增强版路由决策函数
+    根据消息历史确定下一个路由节点
 
     Args:
         messages: 消息历史列表
@@ -502,9 +293,6 @@ async def aget_next_node(messages: list) -> Optional[str]:
         下一个节点名称，如果不需要路由则返回None
     """
     try:
-        if not messages:
-            return None
-
         # 获取最后一个AI消息
         last_ai_message = None
         for message in reversed(messages):
@@ -515,22 +303,23 @@ async def aget_next_node(messages: list) -> Optional[str]:
         if not last_ai_message:
             return None
 
-        # 1. 首先检查直接的工具调用
+        # 检查是否有工具调用
         if hasattr(last_ai_message, "tool_calls") and last_ai_message.tool_calls:
             for tool_call in last_ai_message.tool_calls:
                 tool_name = tool_call.get("name")
                 if tool_name:
-                    # 从路由映射获取节点
+                    # 直接从路由映射获取节点
                     if tool_name in ROUTE_MAPPING:
                         return ROUTE_MAPPING[tool_name]["node_name"]
+                    # 从工具到节点映射获取
                     elif tool_name in TOOL_TO_NODE_MAPPING:
                         return TOOL_TO_NODE_MAPPING[tool_name]
 
-        # 2. 如果没有直接工具调用，使用增强的智能路由
-        return await _enhanced_intelligent_routing(messages)
+        # 如果没有工具调用，使用智能路由判断
+        return await _intelligent_routing(last_ai_message)
 
     except Exception as e:
-        print(f"Error in enhanced get_next_node: {e}")
+        print(f"Error in get_next_node: {e}")
         return None
 
 

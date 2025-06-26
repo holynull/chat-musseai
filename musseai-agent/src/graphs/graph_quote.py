@@ -11,7 +11,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
 _llm = ChatAnthropic(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-sonnet-4-20250514",
     max_tokens=4096,
     temperature=0.9,
     # anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
@@ -31,6 +31,7 @@ class SwapGraphState(TypedDict):
 graph_builder = StateGraph(SwapGraphState)
 
 from tools.tools_quote import tools
+from tools.tools_agent_router import generate_routing_tools
 
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,
@@ -46,7 +47,7 @@ system_template = SystemMessagePromptTemplate.from_template(system_prompt)
 
 
 def call_model_swap(state: SwapGraphState, config: RunnableConfig) -> SwapGraphState:
-    llm_with_tools = _llm.bind_tools(tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     system_message = system_template.format_messages()
     response = cast(
         AIMessage, llm_with_tools.invoke(system_message + state["messages"], config)
@@ -58,7 +59,7 @@ def call_model_swap(state: SwapGraphState, config: RunnableConfig) -> SwapGraphS
 async def acall_model_swap(
     state: SwapGraphState, config: RunnableConfig
 ) -> SwapGraphState:
-    llm_with_tools = _llm.bind_tools(tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     system_message = system_template.format_messages()
     response = cast(
         AIMessage,
@@ -70,7 +71,7 @@ async def acall_model_swap(
 
 from langgraph.prebuilt import ToolNode, tools_condition
 
-tool_node = ToolNode(tools=tools, name="node_tools_quote")
+tool_node = ToolNode(tools=tools + generate_routing_tools(), name="node_tools_quote")
 
 from langgraph.utils.runnable import RunnableCallable
 

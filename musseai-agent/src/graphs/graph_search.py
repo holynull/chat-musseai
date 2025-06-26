@@ -26,7 +26,7 @@ from selenium.webdriver.chrome.options import Options
 import os
 
 _llm = ChatAnthropic(
-    model="claude-3-7-sonnet-20250219",
+    model="claude-sonnet-4-20250514",
     max_tokens=4096,
     temperature=0.9,
     # anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
@@ -51,6 +51,7 @@ from tools.tools_search import (
     search_news,
     access_links_content,
 )
+from tools.tools_agent_router import generate_routing_tools
 
 from langchain_core.prompts import SystemMessagePromptTemplate, ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -69,7 +70,7 @@ from langgraph.types import Command, Send
 
 
 def call_model(state: State, config: RunnableConfig) -> State | Command:
-    llm_with_tools = _llm.bind_tools(tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     system_message = system_template.format_messages()
     response = cast(
         AIMessage, llm_with_tools.invoke(system_message + state["messages"], config)
@@ -79,7 +80,7 @@ def call_model(state: State, config: RunnableConfig) -> State | Command:
 
 
 async def acall_model(state: State, config: RunnableConfig) -> State:
-    llm_with_tools = _llm.bind_tools(tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     system_message = system_template.format_messages()
     response = cast(
         AIMessage,
@@ -325,8 +326,12 @@ Context:
 
     # loader = AsyncChromiumLoader(links)
     # html = loader.load()
-
-    contents = await _llm.ainvoke(messages)
+    _extract_llm = ChatAnthropic(
+        model="claude-3-5-haiku-latest",
+        temperature=0.7,
+        max_tokens=150,
+    )
+    contents = await _extract_llm.ainvoke(messages)
     relevant_content = (
         "The contents of the first three search results are extracted as follows:\n"
         + contents.content
@@ -366,7 +371,7 @@ graph_builder.add_node(node_llm)
 
 from langgraph.prebuilt import ToolNode, tools_condition
 
-tool_node = ToolNode(tools=tools, name="node_tools_search")
+tool_node = ToolNode(tools=tools + generate_routing_tools(), name="node_tools_search")
 graph_builder.add_node(tool_node.get_name(), tool_node)
 graph_builder.add_node(node_read_content.__name__, node_read_content)
 graph_builder.add_node(node_read_content_reduce.__name__, node_read_content_reduce)

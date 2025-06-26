@@ -11,7 +11,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
 _llm = ChatAnthropic(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-sonnet-4-20250514",
     max_tokens=4096,
     temperature=0.9,
     # anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
@@ -35,6 +35,7 @@ class State(TypedDict):
 graph_builder = StateGraph(State)
 
 from tools.tools_solana import tools
+from tools.tools_agent_router import generate_routing_tools
 
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,
@@ -54,7 +55,7 @@ def format_messages(state: State) -> list[BaseMessage]:
 
 
 def call_model_solana(state: State, config: RunnableConfig) -> State:
-    llm_with_tools = _llm.bind_tools(tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     response = cast(
         AIMessage, llm_with_tools.invoke(format_messages(state=state), config)
     )
@@ -63,7 +64,7 @@ def call_model_solana(state: State, config: RunnableConfig) -> State:
 
 
 async def acall_model_solana(state: State, config: RunnableConfig) -> State:
-    llm_with_tools = _llm.bind_tools(tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     response = cast(
         AIMessage, await llm_with_tools.ainvoke(format_messages(state), config)
     )
@@ -73,7 +74,7 @@ async def acall_model_solana(state: State, config: RunnableConfig) -> State:
 
 from langgraph.prebuilt import ToolNode, tools_condition
 
-tool_node = ToolNode(tools=tools, name="node_tools_solana")
+tool_node = ToolNode(tools=tools + generate_routing_tools(), name="node_tools_solana")
 
 from langgraph.utils.runnable import RunnableCallable
 

@@ -71,7 +71,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 	const [messages, setMessages] = useState<BaseMessage[]>([]);
 	const [curThreadId, setCurThreadId] = useState<string>();
 	const [selectedModel, setSelectedModel] = useState<ModelOptions>(
-		"anthropic_claude_3_7_sonnet",
+		"anthropic_claude_4_sonnet",
 	);
 	const [_threadId, setThreadId] = useQueryState("threadId");
 	const [runingId, setRuningId] = useState<string>();

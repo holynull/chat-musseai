@@ -14,8 +14,9 @@ const modelOptionsAndLabels: Partial<Record<ModelOptions, string>> = {
 	//   "openai/gpt-4o-mini": "GPT 4o Mini",
 	// "groq/llama3-70b-8192": "Llama3 70b (Groq)",
 	//   "google_genai/gemini-pro": "Gemini Pro",
-	"anthropic_claude_3_5_sonnet": "Claude 3.5 Sonet",
-	"anthropic_claude_3_7_sonnet": "Claude 3.7 Sonet"
+	"anthropic_claude_3_5_sonnet": "Claude 3.5 Sonnet",
+	"anthropic_claude_3_7_sonnet": "Claude 3.7 Sonnet",
+	"anthropic_claude_4_sonnet":"Claude 4 Sonnet"
 };
 
 export function SelectModelComponent() {

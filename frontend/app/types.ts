@@ -19,7 +19,7 @@ export type Feedback = {
 	comment?: string;
 };
 
-export type ModelOptions = "anthropic_claude_3_5_sonnet" | "anthropic_claude_3_7_sonnet"
+export type ModelOptions = "anthropic_claude_3_5_sonnet" | "anthropic_claude_3_7_sonnet" | "anthropic_claude_4_sonnet"
 	| "openai/gpt-4o-mini"
 	| "anthropic/claude-3-5-haiku-20241022"
 	| "groq/llama3-70b-8192"

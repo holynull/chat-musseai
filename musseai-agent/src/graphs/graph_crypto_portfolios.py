@@ -1,4 +1,6 @@
 from typing import Annotated, cast
+from mysql.db import get_db
+from mysql.model import AssetSourceModel
 from typing_extensions import TypedDict
 
 from langchain_anthropic import ChatAnthropic
@@ -10,7 +12,7 @@ from tools.tools_crypto_portfolios import tools
 
 # Initialize LLM
 _llm = ChatAnthropic(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-sonnet-4-20250514",
     max_tokens=4096,
     temperature=0.9,
     # anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
@@ -38,41 +40,98 @@ from langchain_core.messages import AIMessage, BaseMessage
 
 def format_messages(state: State) -> list[BaseMessage]:
     """Format system prompt and messages"""
+    # 检查用户是否有任何资产来源
+    user_id = state.get("user_id")
+    has_sources = False
+
+    if user_id:
+        try:
+            with get_db() as db:
+                source_count = (
+                    db.query(AssetSourceModel)
+                    .filter(AssetSourceModel.user_id == user_id)
+                    .count()
+                )
+                has_sources = source_count > 0
+        except:
+            pass
+
+    # 根据用户状态调整提示
+    if not has_sources:
+        additional_guidance = """
+
+        IMPORTANT: This user has no asset sources configured yet. 
+        Priority: Guide them to add their first asset source before managing positions.
+        Suggest starting with their connected wallet if available, or help them add exchange/DeFi sources.
+        """
+    else:
+        additional_guidance = """
+                
+        This user has existing asset sources. You can help them manage positions or add new sources.
+        """
     # Get wallet connection status
     wallet_status = (
         "Connected" if state.get("wallet_is_connected", False) else "Not Connected"
     )
 
-    system_prompt = f"""You are a cryptocurrency asset position management expert who helps users analyze and optimize their digital asset portfolios across multiple sources including wallets and exchanges.
+    system_prompt = f"""You are a cryptocurrency asset portfolio management expert who helps users analyze and optimize their digital asset portfolios across multiple sources.
+	
+	IMPORTANT SYSTEM ARCHITECTURE:
+	The system manages asset portfolios through a multi-source architecture where:
+	
+	1. ASSET SOURCES: Each portfolio position belongs to a specific asset source, not directly to the connected wallet
+	   - WALLET: Blockchain wallet addresses (different chains: ETH, BSC, SOL, etc.)
+	   - EXCHANGE: Cryptocurrency exchange accounts (Binance, Coinbase, etc.)  
+	   - DEFI: DeFi protocol positions (Uniswap, Aave, Curve, etc.)
+	
+	2. ASSET POSITIONS: Each position is linked to an asset source via source_id
+	   - Users can have multiple sources of the same type
+	   - Each source can hold multiple asset positions
+	   - Positions are tracked with quantity, cost basis, and additional metadata
+	
+	3. CONNECTED WALLET vs MANAGED PORTFOLIO:
+	   - Connected wallet (Chain ID: {state.get('chain_id')}, Address: {state.get('wallet_address')}) is for frontend interaction
+	   - Portfolio management covers ALL asset sources, not just the connected wallet
+	   - Users must explicitly add asset sources to track their positions
+	
+	Current user information:
+	- User ID: {state.get("user_id", "Unknown")}
+	- Wallet Status: {wallet_status}
+	{f"- Connected Chain ID: {state.get('chain_id')}" if state.get('chain_id') else ""}
+	{f"- Connected Wallet Address: {state.get('wallet_address')}" if state.get('wallet_address') else ""}
+	
+	WORKFLOW GUIDANCE:
+	When users want to add or manage positions:
+	
+	1. FIRST: Check existing asset sources using get_user_asset_sources()
+	2. IF NO SOURCES: Guide user to add asset sources:
+	   - add_wallet_source() for blockchain wallets
+	   - add_exchange_source() for exchange accounts  
+	   - add_defi_source() for DeFi protocol positions
+	
+	3. THEN: Manage positions within those sources:
+	   - get_source_positions() to view positions for a source
+	   - update_position() to add/modify positions
+	   - get_position_history() to track changes
+	
+	KEY CAPABILITIES:
+	✓ Multi-source portfolio management (wallets, exchanges, DeFi)
+	✓ Cross-chain asset tracking and aggregation
+	✓ Position history and transaction recording
+	✓ Portfolio analysis and performance tracking
+	✓ Real-time balance queries for supported chains
+	✓ Cost basis and P&L calculations
+	
+	IMPORTANT DISTINCTIONS:
+	- Asset sources are user-defined portfolio components
+	- Connected wallet is just for authentication/interaction
+	- Each asset source maintains its own set of positions
+	- Portfolio analysis aggregates across all sources
+	- Users can track assets they don't directly control (e.g., exchange balances)
+	
+	Always clarify the difference between connected wallet and managed portfolio sources when users seem confused about adding assets or positions.{additional_guidance}
+	"""
 
-
-    Current user information:
-    - User ID: {state.get("user_id", "Unknown")}
-    - Wallet Status: {wallet_status}
-    {f"- Chain ID: {state.get('chain_id')}" if state.get('chain_id') else ""}
-    {f"- Wallet Address: {state.get('wallet_address')}" if state.get('wallet_address') else ""}
-    
-    You can:
-    1. Manage multiple asset sources (wallets, exchanges, DeFi protocols)
-    2. Add and monitor wallet addresses across different chains
-    3. Connect exchange accounts via API
-    4. Track portfolio positions and balances
-    5. Monitor position changes and transaction history
-    6. Generate portfolio analysis and recommendations
-    7. Compare performance across different sources
-    
-    Your focus is on comprehensive portfolio management across all sources. Consider:
-    - Asset allocation and diversification
-    - Risk management across different platforms
-    - Cost basis and performance tracking
-    - Transaction history and patterns
-    - Market conditions and trends
-    
-    Important: 
-    - If no source is selected, guide the user to add or select an asset source
-    - Maintain security best practices when handling API credentials
-    - Consider the specific features and limitations of each source type
-    """
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)
     system_message = system_template.format_messages()
     return system_message + state["messages"]

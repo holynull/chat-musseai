@@ -39,6 +39,7 @@ sqlalchemy = "^2.0.41"
 pymysql = "^1.1.1"
 alembic = "^1.16.2"
 langgraph = "^0.4.8"
+langgraph-api = "^0.2.61"
 
 [tool.poetry.group.dev.dependencies]
 mypy = ">=1.11.1"

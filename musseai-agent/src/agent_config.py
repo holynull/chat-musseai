@@ -119,20 +119,25 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         required_env_vars=["SOLANA_RPC_URL"],
     ),
     "crypto_portfolios": AgentConfig(
-        name="Cryptocurrency Portfolio Management Expert",
-        description="Expert in analyzing and optimizing cryptocurrency asset portfolios and investment positions",
+        name="Cryptocurrency Portfolio (Positions) Management Expert",
+        description="Expert in managing cryptocurrency portfolios (positions) across multiple asset sources including wallets, exchanges, and DeFi protocols",
         capabilities=[
-            "Analyze portfolio allocation and asset distribution",
-            "Track performance metrics and ROI for digital assets",
-            "Provide risk assessment and diversification recommendations",
-            "Generate rebalancing strategies based on market conditions",
-            "Create visual portfolio reports and analytics",
-            "Compare performance against market benchmarks",
-            "Monitor position changes and historical performance",
-            "Query supported assets and their market data",
+            "Retrieve and manage user's asset sources (wallets, exchanges, DeFi protocols)",
+            "Add new wallet addresses as asset sources with chain type support (ETH, BSC, SOL, etc.)",
+            "Add centralized exchange accounts as asset sources with validation",
+            "Add DeFi protocol positions as asset sources with detailed protocol information",
+            "Query and display asset positions for specific sources with real-time data",
+            "Update asset positions with cost basis tracking and operation type classification",
+            "Track position history with detailed change logs and sync type recording",
+            "Generate comprehensive portfolio summaries with asset aggregation across all sources",
+            "Support multi-chain asset balance queries through integrated blockchain tools",
+            "Provide transaction recording and categorization (DEPOSIT, WITHDRAW, TRADE)",
+            "Maintain detailed audit trails for all portfolio changes and operations",
+            "Cross-reference with real-time blockchain data for accurate position validation",
         ],
         graph_module="graphs.graph_crypto_portfolios",
-        required_env_vars=[],  # 根据需要添加
+        required_env_vars=["DATABASE_URL"],  # 添加数据库连接需求
+        dependencies=["infura", "solana"],  # 添加依赖的区块链数据专家
     ),
 }
 
