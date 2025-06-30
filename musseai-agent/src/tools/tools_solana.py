@@ -6,6 +6,7 @@ from langchain.agents import tool
 from solders.pubkey import Pubkey  # 使用 solders 替代 solana.publickey
 import httpx
 from loggers import logger
+import traceback
 
 # Solana network configurations with endpoints and clusters
 SOLANA_NETWORK_CONFIG = {
@@ -89,7 +90,7 @@ def _make_solana_request(
             "cluster": cluster,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return {"error": f"RPC request failed: {str(e)}"}
 
 
@@ -158,7 +159,7 @@ def get_sol_balance(address: str, cluster: str = "mainnet-beta") -> Dict:
             "cluster": cluster,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting balance: {str(e)}"
 
 
@@ -208,7 +209,7 @@ def get_solana_block(slot: Union[int, str], cluster: str = "mainnet-beta") -> Di
 
         return block_info
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting block: {str(e)}"
 
 
@@ -249,7 +250,7 @@ def get_solana_transaction(signature: str, cluster: str = "mainnet-beta") -> Dic
 
         return tx_info
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting transaction: {str(e)}"
 
 
@@ -292,7 +293,7 @@ def get_solana_block_time(slot: int, cluster: str = "mainnet-beta") -> Dict:
             "cluster": cluster,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting block time: {str(e)}"
 
 
@@ -321,7 +322,7 @@ def get_solana_block_height(cluster: str = "mainnet-beta") -> Dict:
             "cluster": cluster,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting block height: {str(e)}"
 
 
@@ -350,7 +351,7 @@ def get_solana_slot(cluster: str = "mainnet-beta") -> Dict:
             "cluster": cluster,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting slot: {str(e)}"
 
 
@@ -418,7 +419,7 @@ def get_spl_token_balance(
             "cluster": cluster,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting token balance: {str(e)}"
 
 

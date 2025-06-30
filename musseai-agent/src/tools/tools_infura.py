@@ -8,6 +8,7 @@ from langchain.agents import tool
 from web3 import Web3
 import os
 from loggers import logger
+import traceback
 
 # Network configurations with Infura endpoints and chain IDs
 NETWORK_CONFIG = {
@@ -417,7 +418,7 @@ def get_eth_block_number(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting block number: {str(e)}"
 
 
@@ -464,7 +465,7 @@ def get_eth_balance(address: str, network: str, network_type: str = "mainnet") -
             "network_type": network_type,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting balance: {str(e)}"
 
 
@@ -528,7 +529,7 @@ def get_eth_transaction(
 
         return tx_dict
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting transaction: {str(e)}"
 
 
@@ -635,10 +636,11 @@ def get_eth_block(
 
         except ValueError as e:
             logger.warning(f"Error getting block with full data: {e}")
+            logger.error(traceback.format_exc())
             return f"Error: Could not retrieve block data. The block might not exist or network issues occurred."
 
     except Exception as e:
-        logger.error(f"Error in get_eth_block: {str(e)}")
+        logger.error(traceback.format_exc())
         return f"Error getting block: {str(e)}"
 
 
@@ -681,7 +683,7 @@ def call_eth_method(
             "network_type": network_type,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error calling RPC method: {str(e)}"
 
 
@@ -842,7 +844,7 @@ def estimate_gas(
             "network_type": network_type,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error estimating gas: {str(e)}"
 
 
@@ -913,7 +915,7 @@ def get_contract_events(
             "network_type": network_type,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting contract events: {str(e)}"
 
 
@@ -960,7 +962,7 @@ def get_network_info(network: str, network_type: str = "mainnet") -> Dict:
             "network_type": network_type,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return f"Error getting network info: {str(e)}"
 
 
@@ -1006,7 +1008,7 @@ def _make_request(
             "network_type": network_type,
         }
     except Exception as e:
-        logger.error(e)
+        logger.error(traceback.format_exc())
         return {"error": f"RPC request failed: {str(e)}"}
 
 
@@ -1434,6 +1436,7 @@ def generate_approve_erc20(
             gas_limit = w3.eth.estimate_gas(tx)
             gas_price = w3.eth.gas_price
         except Exception as e:
+            logger.error(traceback.format_exc())
             return (
                 f"Failed when estimate gas. {e}",
                 {
@@ -1460,6 +1463,7 @@ def generate_approve_erc20(
             },
         )
     except Exception as e:
+        logger.error(traceback.format_exc())
         return (f"Error generating ERC20 approve transaction: {str(e)}", None)
 
 
@@ -1524,6 +1528,7 @@ def allowance_erc20(
             "chainId": chain_id,
         }
     except Exception as e:
+        logger.error(traceback.format_exc())
         return {
             "success": False,
             "error": str(e),

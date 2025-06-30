@@ -13,6 +13,10 @@ from langchain_core.runnables import (
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
+from loggers import logger
+
+GRAPH_NAME="graph_infura"
+
 _llm = ChatAnthropic(
     model="claude-sonnet-4-20250514",
     max_tokens=4096,
@@ -359,6 +363,7 @@ graph_builder.add_conditional_edges(
 def node_router(state: State):
     last_message = state["messages"][-1]
     if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
+        logger.info(f"Node:{GRAPH_NAME}, Need to route to other node, cause graph end.")
         return Command(goto=END, update=state)
     else:
         return Command(goto=node_llm.get_name(), update=state)
@@ -366,4 +371,4 @@ graph_builder.add_node(node_router)
 graph_builder.add_edge(tool_node.get_name(), node_router.__name__)
 graph_builder.add_edge(START, node_llm.get_name())
 graph = graph_builder.compile()
-graph.name = "graph_infura"
+graph.name = GRAPH_NAME

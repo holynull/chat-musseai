@@ -13,6 +13,8 @@ from tools.tools_agent_router import generate_routing_tools
 from langgraph.types import Command
 from loggers import logger
 
+GRAPH_NAME = "graph_crypto_portfolios"
+
 # Initialize LLM
 _llm = ChatAnthropic(
     model="claude-sonnet-4-20250514",
@@ -132,9 +134,6 @@ async def acall_model(state: State, config: RunnableConfig) -> State:
     return {"messages": [response]}
 
 
-
-
-
 # Add tool node
 from langgraph.prebuilt import ToolNode
 
@@ -155,16 +154,21 @@ graph_builder.add_node(tool_node.get_name(), tool_node)
 graph_builder.add_conditional_edges(
     node_llm.get_name(), tools_condition, {"tools": tool_node.get_name(), END: END}
 )
+
+
 def node_router(state: State):
     last_message = state["messages"][-1]
     if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
+        logger.info(f"Node:{GRAPH_NAME}, Need to route to other node, cause graph end.")
         return Command(goto=END, update=state)
     else:
         return Command(goto=node_llm.get_name(), update=state)
+
+
 graph_builder.add_node(node_router)
 graph_builder.add_edge(tool_node.get_name(), node_router.__name__)
 graph_builder.add_edge(START, node_llm.get_name())
 
 # Compile the graph
 graph = graph_builder.compile()
-graph.name = "graph_crypto_portfolios"
+graph.name = GRAPH_NAME

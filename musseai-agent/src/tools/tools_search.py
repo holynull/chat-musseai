@@ -1,5 +1,7 @@
 from langchain_core.tools import tool
 from openai_assistant_tools import GoogleSerperAPIWrapper
+from loggers import logger
+import traceback
 
 
 @tool
@@ -32,29 +34,32 @@ def search_webpage(terms: str) -> str:
         - Each result item will contain a title and may include link and imageUrl
         - The function processes all result types uniformly for consistent output
     """
-
-    newsSearch = GoogleSerperAPIWrapper(type="search")
-    results = newsSearch.results(terms)
-    if "news" in results:
-        results = results["news"]
-    elif "organic" in results:
-        results = results["organic"]
-    elif "images" in results:
-        results = results["images"]
-    elif "places" in results:
-        results = results["places"]
-    else:
-        return "There is no result return."
-    search_result = [
-        {
-            "title": r["title"],
-            "link": r["link"] if "link" in r else "",
-            "snippet": r["snippet"] if "snippet" in r else "",
-            "imageUrl": r["imageUrl"] if "imageUrl" in r else "",
-        }
-        for r in results
-    ]
-    return {"search_result": search_result}
+    try:
+        newsSearch = GoogleSerperAPIWrapper(type="search")
+        results = newsSearch.results(terms)
+        if "news" in results:
+            results = results["news"]
+        elif "organic" in results:
+            results = results["organic"]
+        elif "images" in results:
+            results = results["images"]
+        elif "places" in results:
+            results = results["places"]
+        else:
+            return "There is no result return."
+        search_result = [
+            {
+                "title": r["title"],
+                "link": r["link"] if "link" in r else "",
+                "snippet": r["snippet"] if "snippet" in r else "",
+                "imageUrl": r["imageUrl"] if "imageUrl" in r else "",
+            }
+            for r in results
+        ]
+        return {"search_result": search_result}
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return e
 
 
 @tool
@@ -88,30 +93,33 @@ def search_news(terms: str, tbs: str) -> str:
         - After executing this tool, you should execute `summarizeRelevantContentsNews`
         - The returned JSON string can be parsed to access structured data
     """
+    try:
+        newsSearch = GoogleSerperAPIWrapper(type="news", tbs=tbs)
+        results = newsSearch.results(query=terms)
 
-    newsSearch = GoogleSerperAPIWrapper(type="news", tbs=tbs)
-    results = newsSearch.results(query=terms)
-
-    if "news" in results:
-        results = results["news"]
-    elif "organic" in results:
-        results = results["organic"]
-    elif "images" in results:
-        results = results["images"]
-    elif "places" in results:
-        results = results["places"]
-    else:
-        return "There is no result return."
-    search_result = [
-        {
-            "title": r["title"],
-            "link": r["link"] if "link" in r else "",
-            "snippet": r["snippet"],
-            "imageUrl": r["imageUrl"] if "imageUrl" in r else "",
-        }
-        for r in results
-    ]
-    return {"search_result": search_result}
+        if "news" in results:
+            results = results["news"]
+        elif "organic" in results:
+            results = results["organic"]
+        elif "images" in results:
+            results = results["images"]
+        elif "places" in results:
+            results = results["places"]
+        else:
+            return "There is no result return."
+        search_result = [
+            {
+                "title": r["title"],
+                "link": r["link"] if "link" in r else "",
+                "snippet": r["snippet"],
+                "imageUrl": r["imageUrl"] if "imageUrl" in r else "",
+            }
+            for r in results
+        ]
+        return {"search_result": search_result}
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return e
 
 
 @tool
@@ -135,19 +143,23 @@ def search_place(terms: str) -> str:
         - Useful for location-based searches and place information retrieval
         - Can be used to find businesses, landmarks, and other physical locations
     """
-    newsSearch = GoogleSerperAPIWrapper(type="places")
-    results = newsSearch.results(query=terms)
-    if "news" in results:
-        results = results["news"]
-    elif "organic" in results:
-        results = results["organic"]
-    elif "images" in results:
-        results = results["images"]
-    elif "places" in results:
-        results = results["places"]
-    else:
-        return "There is no result return."
-    return results
+    try:
+        newsSearch = GoogleSerperAPIWrapper(type="places")
+        results = newsSearch.results(query=terms)
+        if "news" in results:
+            results = results["news"]
+        elif "organic" in results:
+            results = results["organic"]
+        elif "images" in results:
+            results = results["images"]
+        elif "places" in results:
+            results = results["places"]
+        else:
+            return "There is no result return."
+        return results
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return e
 
 
 @tool
@@ -171,20 +183,23 @@ def search_image(terms: str) -> str:
         - Particularly useful for finding images related to search terms
         - Results typically include image URLs and related metadata
     """
-
-    newsSearch = GoogleSerperAPIWrapper(type="images")
-    results = newsSearch.results(query=terms)
-    if "news" in results:
-        results = results["news"]
-    elif "organic" in results:
-        results = results["organic"]
-    elif "images" in results:
-        results = results["images"]
-    elif "places" in results:
-        results = results["places"]
-    else:
-        return "There is no result return."
-    return results
+    try:
+        newsSearch = GoogleSerperAPIWrapper(type="images")
+        results = newsSearch.results(query=terms)
+        if "news" in results:
+            results = results["news"]
+        elif "organic" in results:
+            results = results["organic"]
+        elif "images" in results:
+            results = results["images"]
+        elif "places" in results:
+            results = results["places"]
+        else:
+            return "There is no result return."
+        return results
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return e
 
 
 @tool

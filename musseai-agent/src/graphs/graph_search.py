@@ -26,6 +26,9 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import os
+from loggers import logger
+
+GRAPH_NAME = "graph_search"
 
 _llm = ChatAnthropic(
     model="claude-sonnet-4-20250514",
@@ -393,6 +396,7 @@ graph_builder.add_conditional_edges(
 def node_router(state: State):
     last_message = state["messages"][-1]
     if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
+        logger.info(f"Node:{GRAPH_NAME}, Need to route to other node, cause graph end.")
         return Command(goto=END, update=state)
     else:
         return Command(goto=node_start_read_link.__name__, update=state)
@@ -400,6 +404,7 @@ def node_router(state: State):
 
 def node_start_read_link(state: State):
     return state
+
 
 graph_builder.add_node(node_start_read_link)
 graph_builder.add_node(node_router)
@@ -423,4 +428,4 @@ graph_builder.add_edge(
 )
 graph_builder.add_edge(node_relevant_reduce.__name__, node_llm.get_name())
 graph = graph_builder.compile()
-graph.name = "graph_search"
+graph.name = GRAPH_NAME

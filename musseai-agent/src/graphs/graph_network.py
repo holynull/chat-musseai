@@ -36,6 +36,8 @@ from graphs.graph_solana import graph as solana_graph
 from graphs.graph_crypto_portfolios import graph as crypto_portfolios_graph
 from loggers import logger
 
+GRAPH_NAME = "graph_network"
+
 subgraphs = [
     wallet_graph,
     search_graph,
@@ -81,7 +83,7 @@ async def acall_model(state: State, config: RunnableConfig):
     last_message = state["messages"][-1]
     if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
         next_node = ROUTE_MAPPING[last_message.name]
-        logger.info(f"Node: network, goto {next_node}")
+        logger.info(f"Node: {GRAPH_NAME}, goto {next_node}")
         return Command(goto=next_node, update=state)
     elif isinstance(last_message, AIMessage):
         return Command(goto=END, update=state)
@@ -100,7 +102,7 @@ async def acall_model(state: State, config: RunnableConfig):
         tool_call = ai_message.tool_calls[0]
         tool_name = tool_call.get("name")
         next_node = ROUTE_MAPPING[tool_name]
-    logger.info(f"Node: network, goto {next_node}, after llm handling.")
+    logger.info(f"Node: {GRAPH_NAME}, goto {next_node}, after llm handling.")
     return Command(
         goto=next_node,
         update=state,
@@ -124,4 +126,4 @@ for graph in subgraphs:
     graph_builder.add_edge(graph.get_name(), node_router.get_name())
 
 graph = graph_builder.compile()
-graph.name = "graph_network"
+graph.name = GRAPH_NAME

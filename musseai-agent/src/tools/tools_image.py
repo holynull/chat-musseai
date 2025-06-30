@@ -7,6 +7,8 @@ from vertexai.vision_models import ImageGenerationModel, Image
 from PIL import Image as PILImage
 from langchain.prompts import PromptTemplate
 import io
+from loggers import logger
+import traceback
 
 s3_client = boto3.client("s3")
 
@@ -38,46 +40,53 @@ def gen_images(
             * 21+ (high strength)
 
     Returns:
-       list[str]: Urls of image 
+       list[str]: Urls of image
     """
-    if prompt is None or prompt == "":
-        return "Error:prompt is required."
-    if aspect_ratio not in ["1:1", "9:16", "16:9", "3:4", "4:3"]:
-        return """Error: aspect_ratio: Changes the aspect ratio of the generated image Supported
-            values are:
-            * "1:1" : 1:1 aspect ratio
-            * "9:16" : 9:16 aspect ratio
-            * "16:9" : 16:9 aspect ratio
-            * "4:3" : 4:3 aspect ratio
-            * "3:4" : 3:4 aspect_ratio"""
-    vertexai.init(project="shining-expanse-398306", location="us-central1")
-    model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
-    resp = model.generate_images(
-        prompt=prompt,
-        guidance_scale=guidance_scale,
-        negative_prompt=negative_prompt,
-        aspect_ratio=aspect_ratio,
-        add_watermark=add_watermark,
-    )
-    result_urls = []
-
-    for i, img in enumerate(resp.images):
-        temp_filename = f"generated_image_{uuid.uuid4()}.png"
-        img.save(temp_filename)
-
-        s3_key = f"images/{temp_filename}"
-        s3_client.upload_file(
-            temp_filename, "musse.ai", s3_key, ExtraArgs={"ContentType": "image/png"}
+    try:
+        if prompt is None or prompt == "":
+            return "Error:prompt is required."
+        if aspect_ratio not in ["1:1", "9:16", "16:9", "3:4", "4:3"]:
+            return """Error: aspect_ratio: Changes the aspect ratio of the generated image Supported
+                values are:
+                * "1:1" : 1:1 aspect ratio
+                * "9:16" : 9:16 aspect ratio
+                * "16:9" : 16:9 aspect ratio
+                * "4:3" : 4:3 aspect ratio
+                * "3:4" : 3:4 aspect_ratio"""
+        vertexai.init(project="shining-expanse-398306", location="us-central1")
+        model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
+        resp = model.generate_images(
+            prompt=prompt,
+            guidance_scale=guidance_scale,
+            negative_prompt=negative_prompt,
+            aspect_ratio=aspect_ratio,
+            add_watermark=add_watermark,
         )
+        result_urls = []
 
-        os.remove(temp_filename)
+        for i, img in enumerate(resp.images):
+            temp_filename = f"generated_image_{uuid.uuid4()}.png"
+            img.save(temp_filename)
 
-        # s3_url = f"![Generated Image {i+1}](https://musse.ai/{s3_key})"
-        # s3_url = f"\n<img src='https://musse.ai/{s3_key}'>"
-        s3_url = f"https://musse.ai/{s3_key}"
-        result_urls.append(s3_url)
+            s3_key = f"images/{temp_filename}"
+            s3_client.upload_file(
+                temp_filename,
+                "musse.ai",
+                s3_key,
+                ExtraArgs={"ContentType": "image/png"},
+            )
 
-    return result_urls
+            os.remove(temp_filename)
+
+            # s3_url = f"![Generated Image {i+1}](https://musse.ai/{s3_key})"
+            # s3_url = f"\n<img src='https://musse.ai/{s3_key}'>"
+            s3_url = f"https://musse.ai/{s3_key}"
+            result_urls.append(s3_url)
+
+        return result_urls
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return []
 
 
 @tool
@@ -88,22 +97,27 @@ def gen_images_2(prompt: str) -> str:
     Returns:
         str: Markdown format image links of generated images, separated by newlines
     """
-    vertexai.init(project="shining-expanse-398306", location="us-central1")
-    model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
-    resp = model.generate_images(prompt=prompt)
-    result_urls = []
-    # Ensure temp/images directory exists
-    os.makedirs("temp/images", exist_ok=True)
-    for i, img in enumerate(resp.images):
-        temp_filename = f"generated_image_{uuid.uuid4()}.png"
-        save_path = os.path.join("temp/images", temp_filename)
-        img.save(save_path)
-        # Generate local URL path
-        url = f"![Generated Image {i+1}](temp/images/{temp_filename})"
-        result_urls.append(url)
-    return "I have generated images for you. Here are the image paths:\n" + "\n".join(
-        result_urls
-    )
+    try:
+        vertexai.init(project="shining-expanse-398306", location="us-central1")
+        model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
+        resp = model.generate_images(prompt=prompt)
+        result_urls = []
+        # Ensure temp/images directory exists
+        os.makedirs("temp/images", exist_ok=True)
+        for i, img in enumerate(resp.images):
+            temp_filename = f"generated_image_{uuid.uuid4()}.png"
+            save_path = os.path.join("temp/images", temp_filename)
+            img.save(save_path)
+            # Generate local URL path
+            url = f"![Generated Image {i+1}](temp/images/{temp_filename})"
+            result_urls.append(url)
+        return (
+            "I have generated images for you. Here are the image paths:\n"
+            + "\n".join(result_urls)
+        )
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return e
 
 
 @tool
