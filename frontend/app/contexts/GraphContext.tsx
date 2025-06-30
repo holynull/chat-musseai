@@ -198,7 +198,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			// pdf_files: currentPDFs,
 		};
 
-		const stream = client.runs.stream(currentThreadId, "musseai", {
+		const stream = client.runs.stream(currentThreadId, "network", {
 			input,
 			streamMode: "events",
 			config: {
@@ -276,6 +276,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 
 				if (chunk.data.metadata.langgraph_node === "respond" ||
 					["node_llm_musseai",
+						"node_router",
 						"node_llm_image",
 						"node_llm_quote",
 						"node_llm_search",
@@ -432,7 +433,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 											tool_calls: [{
 												name: "send_evm_transaction",
 												args: {
-													txData: swap_data.txData,
+													swap_data: swap_data,
 													name: txName,
 													orderInfo: orderInfo,
 													tx_detail: result?.tx_detail
@@ -852,7 +853,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 							tool_calls: [{
 								name: "send_evm_transaction",
 								args: {
-									txData: swap_data.txData,
+									swap_data: swap_data,
 									name: txName,
 									orderInfo,
 									tx_detail: result?.tx_detail

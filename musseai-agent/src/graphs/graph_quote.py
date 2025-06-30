@@ -1,5 +1,8 @@
 from typing import Annotated, cast
+from agent_config import ROUTE_MAPPING, tools_condition
 from typing_extensions import TypedDict
+from langgraph.types import Command
+from langchain_core.messages import ToolMessage
 
 from langchain_anthropic import ChatAnthropic
 
@@ -65,11 +68,10 @@ async def acall_model_swap(
         AIMessage,
         await llm_with_tools.ainvoke(system_message + state["messages"], config),
     )
-
     return {"messages": [response]}
 
 
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode 
 
 tool_node = ToolNode(tools=tools + generate_routing_tools(), name="node_tools_quote")
 
@@ -83,7 +85,14 @@ graph_builder.add_conditional_edges(
     tools_condition,
     {"tools": tool_node.get_name(), END: END},
 )
-graph_builder.add_edge(tool_node.get_name(), node_llm.get_name())
+def node_router(state: SwapGraphState):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
+        return Command(goto=END, update=state)
+    else:
+        return Command(goto=node_llm.get_name(), update=state)
+graph_builder.add_node(node_router)
+graph_builder.add_edge(tool_node.get_name(), node_router.__name__)
 graph_builder.add_edge(START, node_llm.get_name())
 graph = graph_builder.compile()
 graph.name = "graph_quote"

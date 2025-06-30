@@ -5,16 +5,13 @@ import { SolanaAdapter } from '@reown/appkit-adapter-solana'
 import { Ethers5Adapter } from '@reown/appkit-adapter-ethers5'
 import type { AppKitNetwork } from '@reown/appkit-common';
 import { mainnet, bsc, tron, arbitrum, sepolia, solana, polygon, optimism } from '@reown/appkit/networks'
-import { SolflareWalletAdapter, PhantomWalletAdapter } from '@solana/wallet-adapter-wallets'
 import React, { createContext, useContext, type ReactNode } from 'react'
 import type { Provider } from '@reown/appkit-adapter-solana'
 import type { Connection } from '@reown/appkit-utils/solana'
 import { useAppKitConnection } from '@reown/appkit-adapter-solana/react';
 
 export const ethersAdapter = new Ethers5Adapter()
-const solanaWeb3JsAdapter = new SolanaAdapter({
-	wallets: [new PhantomWalletAdapter(), new SolflareWalletAdapter()]
-})
+const solanaWeb3JsAdapter = new SolanaAdapter();
 export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, bsc, arbitrum, solana, polygon, optimism]; //tron
 export const wcModal = createAppKit({
 	adapters: [ethersAdapter, solanaWeb3JsAdapter],

@@ -3,6 +3,20 @@ from typing import List, Dict, Optional
 from langchain.agents import tool
 from web3 import Web3
 from tools.tools_infura import NETWORK_CONFIG, estimate_gas as infura_estimate_gas
+from loggers import logger
+import traceback
+
+
+def convert_hex_to_int(value):
+    """将十六进制字符串或整数安全转换为整数"""
+    if isinstance(value, str) and value.startswith("0x"):
+        return int(value, 16)
+    elif isinstance(value, str):
+        return int(value)
+    elif isinstance(value, int):
+        return value
+    else:
+        return 0
 
 
 @tool
@@ -45,10 +59,13 @@ def get_available_tokens() -> Optional[List[Dict]]:
         return data.get("data", {}).get("tokens", [])
 
     except requests.exceptions.RequestException as e:
+        logger.error(traceback.format_exc())
         return f"API request failed: {data.get('resMsg')}"
     except ValueError as e:
+        logger.error(traceback.format_exc())
         return f"API request failed: {data.get('resMsg')}"
     except Exception as e:
+        logger.error(traceback.format_exc())
         return f"API request failed: {data.get('resMsg')}"
 
 
@@ -137,6 +154,9 @@ def swap_quote(
         # Return quote data
         txData = data.get("data", {}).get("txData", {})
         if txData["amountOutMin"] == "0":
+            logger.error(
+                f"Error: Parameter `from_token_amount={from_token_amount}` is wrong, please check the `decimals` of the token on `from_token_address`."
+            )
             return f"Error: Parameter `from_token_amount={from_token_amount}` is wrong, please check the `decimals` of the token on `from_token_address`."
         else:
             txData["tx_detail"] = {
@@ -153,10 +173,13 @@ def swap_quote(
             return txData
 
     except requests.exceptions.RequestException as e:
+        logger.error(traceback.format_exc())
         return f"API request failed: {str(e)}"
     except ValueError as e:
+        logger.error(traceback.format_exc())
         return f"API response parsing failed: {str(e)}"
     except Exception as e:
+        logger.error(traceback.format_exc())
         return f"Unexpected error: {str(e)}"
 
 
@@ -250,13 +273,15 @@ def generate_swap_tx_data(
 
     # Check response status code
     if data.get("resCode") != 100:
-        return (
+        s = (
             f"Generate transaction data API error occured. {data.get('resCode')}",
             {
                 "success": False,
                 "message": f"API request failed: {data.get('resMsg')}",
             },
         )
+        logger.error(s)
+        return s
     tokens = get_available_tokens.invoke({})
     evm_from_token = [
         t
@@ -287,26 +312,29 @@ def generate_swap_tx_data(
             gas_result = infura_estimate_gas.invoke(
                 {
                     "from_address": from_address,
-                    to_address: tx["to"],
-                    "value": int(tx.get("value", 0)),
-                    data: tx.get("data", ""),
-                    network: network,
-                    network_type: network_type,
+                    "to_address": tx["to"],
+                    "value": convert_hex_to_int(tx.get("value", 0)),
+                    "data": tx.get("data", ""),
+                    "network": network,
+                    "network_type": network_type,
                 }
             )
 
             if isinstance(gas_result, str):  # 错误情况
-                return (
+                err_str = (
                     f"Failed when estimate gas. {gas_result}",
                     {
                         "success": False,
                         "message": f"Failed when estimate gas. {gas_result}",
                     },
                 )
+                logger.error(err_str)
+                return err_str
 
             gas_limit = gas_result["estimated_gas"]
             gas_price = gas_result["gas_price"]
         except Exception as e:
+            logger.error(traceback.format_exc())
             return (
                 f"Failed when estimate gas. {e}",
                 {
@@ -351,13 +379,15 @@ def generate_swap_tx_data(
             "chain_type": "unknown",
             "name": "Send Swap Transaction",
         }
-        return (
+        err_str = (
             f"Can't get from chain type from data of token address: `{from_token_address}` and from token chain `{from_token_chain}`",
             {
                 "success": False,
                 "message": f"Can't get from chain type from token address: `{from_token_address}` and from token chain `{from_token_chain}`",
             },
         )
+        logger.error(err_str)
+        return err_str
 
     order_info = {
         "from_token_address": from_token_address,
@@ -476,10 +506,13 @@ def get_transaction_records(
         return data.get("data", {})
 
     except requests.exceptions.RequestException as e:
+        logger.error(traceback.format_exc())
         return f"API request failed: {str(e)}"
     except ValueError as e:
+        logger.error(traceback.format_exc())
         return f"API response parsing failed: {str(e)}"
     except Exception as e:
+        logger.error(traceback.format_exc())
         return f"Unexpected error: {str(e)}"
 
 
@@ -534,10 +567,13 @@ def get_transaction_details(orderId: str) -> Optional[Dict]:
         return data.get("data", {})
 
     except requests.exceptions.RequestException as e:
+        logger.error(traceback.format_exc())
         return f"API request failed: {str(e)}"
     except ValueError as e:
+        logger.error(traceback.format_exc())
         return f"API response parsing failed: {str(e)}"
     except Exception as e:
+        logger.error(traceback.format_exc())
         return f"Unexpected error: {str(e)}"
 
 

@@ -1,5 +1,8 @@
 from typing import Annotated, cast
+from agent_config import ROUTE_MAPPING, tools_condition
 from typing_extensions import TypedDict
+from langgraph.types import Command
+from langchain_core.messages import ToolMessage
 
 from langchain_anthropic import ChatAnthropic
 
@@ -50,269 +53,269 @@ def format_messages(state: State) -> list[BaseMessage]:
     Please provide accurate and helpful information about blockchain data.
 
     NETWORK_CONFIG:
-	```python
+    ```python
     NETWORK_CONFIG = {{
-	    	"ethereum": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 1,
-	    	        "name": "Ethereum Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://etherscan.io",
-	    	    }},
-	    	    "goerli": {{
-	    	        "chain_id": 5,
-	    	        "name": "Goerli Testnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://goerli.etherscan.io",
-	    	    }},
-	    	    "sepolia": {{
-	    	        "chain_id": 11155111,
-	    	        "name": "Sepolia Testnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://sepolia.etherscan.io",
-	    	    }},
-	    	}},
-	    	"polygon": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 137,
-	    	        "name": "Polygon Mainnet",
-	    	        "symbol": "MATIC",
-	    	        "explorer": "https://polygonscan.com",
-	    	    }},
-	    	    "mumbai": {{
-	    	        "chain_id": 80001,
-	    	        "name": "Mumbai Testnet",
-	    	        "symbol": "MATIC",
-	    	        "explorer": "https://mumbai.polygonscan.com",
-	    	    }},
-	    	}},
-	    	"optimism": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 10,
-	    	        "name": "Optimism Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://optimistic.etherscan.io",
-	    	    }},
-	    	    "goerli": {{
-	    	        "chain_id": 420,
-	    	        "name": "Optimism Goerli",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://goerli-optimism.etherscan.io",
-	    	    }},
-	    	}},
-	    	"arbitrum": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 42161,
-	    	        "name": "Arbitrum One",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://arbiscan.io",
-	    	    }},
-	    	    "goerli": {{
-	    	        "chain_id": 421613,
-	    	        "name": "Arbitrum Goerli",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://goerli.arbiscan.io",
-	    	    }},
-	    	}},
-	    	"avalanche": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 43114,
-	    	        "name": "Avalanche C-Chain",
-	    	        "symbol": "AVAX",
-	    	        "explorer": "https://snowtrace.io",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 43113,
-	    	        "name": "Avalanche Fuji Testnet",
-	    	        "symbol": "AVAX",
-	    	        "explorer": "https://testnet.snowtrace.io",
-	    	    }},
-	    	}},
-	    	"base": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 8453,
-	    	        "name": "Base Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://basescan.org",
-	    	    }},
-	    	    "sepolia": {{
-	    	        "chain_id": 84532,
-	    	        "name": "Base Sepolia Testnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://sepolia.basescan.org",
-	    	    }},
-	    	}},
-	    	"blast": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 81457,
-	    	        "name": "Blast Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://blastscan.io",
-	    	    }},
-	    	}},
-	    	"bsc": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 56,
-	    	        "name": "Binance Smart Chain",
-	    	        "symbol": "BNB",
-	    	        "explorer": "https://bscscan.com",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 97,
-	    	        "name": "BSC Testnet",
-	    	        "symbol": "BNB",
-	    	        "explorer": "https://testnet.bscscan.com",
-	    	    }},
-	    	}},
-	    	"celo": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 42220,
-	    	        "name": "Celo Mainnet",
-	    	        "symbol": "CELO",
-	    	        "explorer": "https://explorer.celo.org",
-	    	    }},
-	    	    "alfajores": {{
-	    	        "chain_id": 44787,
-	    	        "name": "Celo Alfajores Testnet",
-	    	        "symbol": "CELO",
-	    	        "explorer": "https://alfajores-blockscout.celo-testnet.org",
-	    	    }},
-	    	}},
-	    	"linea": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 59144,
-	    	        "name": "Linea Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://lineascan.build",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 59140,
-	    	        "name": "Linea Goerli Testnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://goerli.lineascan.build",
-	    	    }},
-	    	}},
-	    	"mantle": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 5000,
-	    	        "name": "Mantle Mainnet",
-	    	        "symbol": "MNT",
-	    	        "explorer": "https://explorer.mantle.xyz",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 5001,
-	    	        "name": "Mantle Testnet",
-	    	        "symbol": "MNT",
-	    	        "explorer": "https://explorer.testnet.mantle.xyz",
-	    	    }},
-	    	}},
-	    	"opbnb": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 204,
-	    	        "name": "opBNB Mainnet",
-	    	        "symbol": "BNB",
-	    	        "explorer": "https://opbnbscan.com",
-	    	    }},
-	    	}},
-	    	"palm": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 11297108109,
-	    	        "name": "Palm Mainnet",
-	    	        "symbol": "PALM",
-	    	        "explorer": "https://explorer.palm.io",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 11297108099,
-	    	        "name": "Palm Testnet",
-	    	        "symbol": "PALM",
-	    	        "explorer": "https://testnet.explorer.palm.io",
-	    	    }},
-	    	}},
-	    	"polygon_pos": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 137,
-	    	        "name": "Polygon POS Mainnet",
-	    	        "symbol": "MATIC",
-	    	        "explorer": "https://polygonscan.com",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 80001,
-	    	        "name": "Mumbai Testnet",
-	    	        "symbol": "MATIC",
-	    	        "explorer": "https://mumbai.polygonscan.com",
-	    	    }},
-	    	}},
-	    	"scroll": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 534352,
-	    	        "name": "Scroll Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://scrollscan.com",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 534351,
-	    	        "name": "Scroll Sepolia Testnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://sepolia.scrollscan.com",
-	    	    }},
-	    	}},
-	    	"starknet": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 9,
-	    	        "name": "StarkNet Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://voyager.online",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 1,
-	    	        "name": "StarkNet Goerli Testnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://goerli.voyager.online",
-	    	    }},
-	    	}},
-	    	"swellchain": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 30000,
-	    	        "name": "Swell Chain Mainnet",
-	    	        "symbol": "SWELL",
-	    	        "explorer": "https://explorer.swellchain.io",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 30001,
-	    	        "name": "Swell Chain Testnet",
-	    	        "symbol": "SWELL",
-	    	        "explorer": "https://testnet.explorer.swellchain.io",
-	    	    }},
-	    	}},
-	    	"unichain": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 29,
-	    	        "name": "UniChain Mainnet",
-	    	        "symbol": "UNI",
-	    	        "explorer": "https://explorer.unichain.network",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 30,
-	    	        "name": "UniChain Testnet",
-	    	        "symbol": "UNI",
-	    	        "explorer": "https://testnet.explorer.unichain.network",
-	    	    }},
-	    	}},
-	    	"zksync": {{
-	    	    "mainnet": {{
-	    	        "chain_id": 324,
-	    	        "name": "ZKsync Era Mainnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://explorer.zksync.io",
-	    	    }},
-	    	    "testnet": {{
-	    	        "chain_id": 280,
-	    	        "name": "ZKsync Era Testnet",
-	    	        "symbol": "ETH",
-	    	        "explorer": "https://goerli.explorer.zksync.io",
-	    	    }},
-	    	}}
-	}}
+            "ethereum": {{
+                "mainnet": {{
+                    "chain_id": 1,
+                    "name": "Ethereum Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://etherscan.io",
+                }},
+                "goerli": {{
+                    "chain_id": 5,
+                    "name": "Goerli Testnet",
+                    "symbol": "ETH",
+                    "explorer": "https://goerli.etherscan.io",
+                }},
+                "sepolia": {{
+                    "chain_id": 11155111,
+                    "name": "Sepolia Testnet",
+                    "symbol": "ETH",
+                    "explorer": "https://sepolia.etherscan.io",
+                }},
+            }},
+            "polygon": {{
+                "mainnet": {{
+                    "chain_id": 137,
+                    "name": "Polygon Mainnet",
+                    "symbol": "MATIC",
+                    "explorer": "https://polygonscan.com",
+                }},
+                "mumbai": {{
+                    "chain_id": 80001,
+                    "name": "Mumbai Testnet",
+                    "symbol": "MATIC",
+                    "explorer": "https://mumbai.polygonscan.com",
+                }},
+            }},
+            "optimism": {{
+                "mainnet": {{
+                    "chain_id": 10,
+                    "name": "Optimism Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://optimistic.etherscan.io",
+                }},
+                "goerli": {{
+                    "chain_id": 420,
+                    "name": "Optimism Goerli",
+                    "symbol": "ETH",
+                    "explorer": "https://goerli-optimism.etherscan.io",
+                }},
+            }},
+            "arbitrum": {{
+                "mainnet": {{
+                    "chain_id": 42161,
+                    "name": "Arbitrum One",
+                    "symbol": "ETH",
+                    "explorer": "https://arbiscan.io",
+                }},
+                "goerli": {{
+                    "chain_id": 421613,
+                    "name": "Arbitrum Goerli",
+                    "symbol": "ETH",
+                    "explorer": "https://goerli.arbiscan.io",
+                }},
+            }},
+            "avalanche": {{
+                "mainnet": {{
+                    "chain_id": 43114,
+                    "name": "Avalanche C-Chain",
+                    "symbol": "AVAX",
+                    "explorer": "https://snowtrace.io",
+                }},
+                "testnet": {{
+                    "chain_id": 43113,
+                    "name": "Avalanche Fuji Testnet",
+                    "symbol": "AVAX",
+                    "explorer": "https://testnet.snowtrace.io",
+                }},
+            }},
+            "base": {{
+                "mainnet": {{
+                    "chain_id": 8453,
+                    "name": "Base Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://basescan.org",
+                }},
+                "sepolia": {{
+                    "chain_id": 84532,
+                    "name": "Base Sepolia Testnet",
+                    "symbol": "ETH",
+                    "explorer": "https://sepolia.basescan.org",
+                }},
+            }},
+            "blast": {{
+                "mainnet": {{
+                    "chain_id": 81457,
+                    "name": "Blast Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://blastscan.io",
+                }},
+            }},
+            "bsc": {{
+                "mainnet": {{
+                    "chain_id": 56,
+                    "name": "Binance Smart Chain",
+                    "symbol": "BNB",
+                    "explorer": "https://bscscan.com",
+                }},
+                "testnet": {{
+                    "chain_id": 97,
+                    "name": "BSC Testnet",
+                    "symbol": "BNB",
+                    "explorer": "https://testnet.bscscan.com",
+                }},
+            }},
+            "celo": {{
+                "mainnet": {{
+                    "chain_id": 42220,
+                    "name": "Celo Mainnet",
+                    "symbol": "CELO",
+                    "explorer": "https://explorer.celo.org",
+                }},
+                "alfajores": {{
+                    "chain_id": 44787,
+                    "name": "Celo Alfajores Testnet",
+                    "symbol": "CELO",
+                    "explorer": "https://alfajores-blockscout.celo-testnet.org",
+                }},
+            }},
+            "linea": {{
+                "mainnet": {{
+                    "chain_id": 59144,
+                    "name": "Linea Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://lineascan.build",
+                }},
+                "testnet": {{
+                    "chain_id": 59140,
+                    "name": "Linea Goerli Testnet",
+                    "symbol": "ETH",
+                    "explorer": "https://goerli.lineascan.build",
+                }},
+            }},
+            "mantle": {{
+                "mainnet": {{
+                    "chain_id": 5000,
+                    "name": "Mantle Mainnet",
+                    "symbol": "MNT",
+                    "explorer": "https://explorer.mantle.xyz",
+                }},
+                "testnet": {{
+                    "chain_id": 5001,
+                    "name": "Mantle Testnet",
+                    "symbol": "MNT",
+                    "explorer": "https://explorer.testnet.mantle.xyz",
+                }},
+            }},
+            "opbnb": {{
+                "mainnet": {{
+                    "chain_id": 204,
+                    "name": "opBNB Mainnet",
+                    "symbol": "BNB",
+                    "explorer": "https://opbnbscan.com",
+                }},
+            }},
+            "palm": {{
+                "mainnet": {{
+                    "chain_id": 11297108109,
+                    "name": "Palm Mainnet",
+                    "symbol": "PALM",
+                    "explorer": "https://explorer.palm.io",
+                }},
+                "testnet": {{
+                    "chain_id": 11297108099,
+                    "name": "Palm Testnet",
+                    "symbol": "PALM",
+                    "explorer": "https://testnet.explorer.palm.io",
+                }},
+            }},
+            "polygon_pos": {{
+                "mainnet": {{
+                    "chain_id": 137,
+                    "name": "Polygon POS Mainnet",
+                    "symbol": "MATIC",
+                    "explorer": "https://polygonscan.com",
+                }},
+                "testnet": {{
+                    "chain_id": 80001,
+                    "name": "Mumbai Testnet",
+                    "symbol": "MATIC",
+                    "explorer": "https://mumbai.polygonscan.com",
+                }},
+            }},
+            "scroll": {{
+                "mainnet": {{
+                    "chain_id": 534352,
+                    "name": "Scroll Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://scrollscan.com",
+                }},
+                "testnet": {{
+                    "chain_id": 534351,
+                    "name": "Scroll Sepolia Testnet",
+                    "symbol": "ETH",
+                    "explorer": "https://sepolia.scrollscan.com",
+                }},
+            }},
+            "starknet": {{
+                "mainnet": {{
+                    "chain_id": 9,
+                    "name": "StarkNet Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://voyager.online",
+                }},
+                "testnet": {{
+                    "chain_id": 1,
+                    "name": "StarkNet Goerli Testnet",
+                    "symbol": "ETH",
+                    "explorer": "https://goerli.voyager.online",
+                }},
+            }},
+            "swellchain": {{
+                "mainnet": {{
+                    "chain_id": 30000,
+                    "name": "Swell Chain Mainnet",
+                    "symbol": "SWELL",
+                    "explorer": "https://explorer.swellchain.io",
+                }},
+                "testnet": {{
+                    "chain_id": 30001,
+                    "name": "Swell Chain Testnet",
+                    "symbol": "SWELL",
+                    "explorer": "https://testnet.explorer.swellchain.io",
+                }},
+            }},
+            "unichain": {{
+                "mainnet": {{
+                    "chain_id": 29,
+                    "name": "UniChain Mainnet",
+                    "symbol": "UNI",
+                    "explorer": "https://explorer.unichain.network",
+                }},
+                "testnet": {{
+                    "chain_id": 30,
+                    "name": "UniChain Testnet",
+                    "symbol": "UNI",
+                    "explorer": "https://testnet.explorer.unichain.network",
+                }},
+            }},
+            "zksync": {{
+                "mainnet": {{
+                    "chain_id": 324,
+                    "name": "ZKsync Era Mainnet",
+                    "symbol": "ETH",
+                    "explorer": "https://explorer.zksync.io",
+                }},
+                "testnet": {{
+                    "chain_id": 280,
+                    "name": "ZKsync Era Testnet",
+                    "symbol": "ETH",
+                    "explorer": "https://goerli.explorer.zksync.io",
+                }},
+            }}
+    }}
     ```
     """
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)
@@ -334,11 +337,10 @@ async def acall_model_infura(state: State, config: RunnableConfig) -> State:
     response = cast(
         AIMessage, await llm_with_tools.ainvoke(format_messages(state), config)
     )
-
     return {"messages": [response]}
 
 
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode 
 
 tool_node = ToolNode(tools=tools + generate_routing_tools(), name="node_tools_infura")
 
@@ -354,7 +356,14 @@ graph_builder.add_conditional_edges(
     tools_condition,
     {"tools": tool_node.get_name(), END: END},
 )
-graph_builder.add_edge(tool_node.get_name(), node_llm.get_name())
+def node_router(state: State):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
+        return Command(goto=END, update=state)
+    else:
+        return Command(goto=node_llm.get_name(), update=state)
+graph_builder.add_node(node_router)
+graph_builder.add_edge(tool_node.get_name(), node_router.__name__)
 graph_builder.add_edge(START, node_llm.get_name())
 graph = graph_builder.compile()
 graph.name = "graph_infura"

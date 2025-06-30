@@ -47,7 +47,7 @@ def generate_routing_tools():
 
         # 使用闭包创建唯一的函数
         def create_route_function(current_agent_id, current_config):
-            tool_name = f"route_to_{current_agent_id}_agent"
+            tool_name = f"route_to_{current_agent_id}"
 
             @tool(name_or_callable=tool_name, description=desc)
             def route_func(query=None):

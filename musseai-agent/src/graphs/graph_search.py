@@ -1,7 +1,9 @@
 import json
 import logging
 from typing import Annotated, List, Literal, cast
+from agent_config import ROUTE_MAPPING, tools_condition
 from typing_extensions import TypedDict
+from langgraph.types import Command
 
 from langchain_anthropic import ChatAnthropic
 
@@ -86,7 +88,6 @@ async def acall_model(state: State, config: RunnableConfig) -> State:
         AIMessage,
         await llm_with_tools.ainvoke(system_message + state["messages"], config),
     )
-
     return {"messages": [response]}
 
 
@@ -369,7 +370,7 @@ node_llm = RunnableCallable(call_model, acall_model, name="node_llm_search")
 
 graph_builder.add_node(node_llm)
 
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 
 tool_node = ToolNode(tools=tools + generate_routing_tools(), name="node_tools_search")
 graph_builder.add_node(tool_node.get_name(), tool_node)
@@ -387,8 +388,24 @@ graph_builder.add_conditional_edges(
     tools_condition,
     {"tools": tool_node.get_name(), END: END},
 )
+
+
+def node_router(state: State):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
+        return Command(goto=END, update=state)
+    else:
+        return Command(goto=node_start_read_link.__name__, update=state)
+
+
+def node_start_read_link(state: State):
+    return state
+
+graph_builder.add_node(node_start_read_link)
+graph_builder.add_node(node_router)
+graph_builder.add_edge(tool_node.get_name(), node_router.__name__)
 graph_builder.add_conditional_edges(
-    tool_node.get_name(),
+    node_start_read_link.__name__,
     edge_get_links_read_content,
     {
         node_llm.get_name(): node_llm.get_name(),

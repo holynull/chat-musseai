@@ -44,7 +44,7 @@ export const useSendEVMTransaction = () => useAssistantToolUI({
 const EVMTransactionComponent = ({ input }: { input: any }) => {
 	const [isLoading, setLoading] = useState<boolean>(false);
 	const toast = useToast();
-	const { txData, name, orderInfo, tx_detail } = input.args;
+	const { swap_data, name, orderInfo, tx_detail } = input.args;
 	const [copySuccess, setCopySuccess] = useState(false);
 	const [showRawData, setShowRawData] = useState(false);
 	// 新增状态用于移动端的详情展开/折叠
@@ -71,7 +71,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 
 			// Get addresses
 			const fromAddress = txDetailObj?.from_address || wcCtx.account.address || "";
-			const toAddress = txDetailObj?.to_address || txData?.to || "";
+			const toAddress = txDetailObj?.to_address || swap_data.txData?.to || "";
 
 			// Get network information
 			const networkName = networks.find(n => n.id === wcCtx.network.chainId)?.name || "Unknown Network";
@@ -106,7 +106,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 				fromAmount: 0,
 				toAmount: 0,
 				fromAddress: wcCtx.account.address || "",
-				toAddress: txData?.to || "",
+				toAddress: swap_data.txData?.to || "",
 				networkName: networks.find(n => n.id === wcCtx.network.chainId)?.name || "Unknown Network",
 				networkIcon: null,
 				slippage: "0.5",
@@ -181,19 +181,16 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 
 		try {
 			// Switch to correct network
-			if (wcCtx.network.chainId) {
+			if (wcCtx.network.chainId && wcCtx.network.chainId != swap_data.chain_id) {
 				// 直接判断当前网络是否匹配
-				const currentNetwork = networks.find(network => network.id === wcCtx.network.chainId);
+				const currentNetwork = networks.find(network => network.id == swap_data.chain_id);
 				if (!currentNetwork) {
 					showToast(toast, "Network Error", "The required network is not supported.", "error");
 					setLoading(false);
 					return;
+				} else {
+					wcCtx.network.switchNetwork(currentNetwork)
 				}
-			} else {
-				// 没有chainId时显示错误
-				showToast(toast, "Network Error", "No network selected.", "error");
-				setLoading(false);
-				return;
 			}
 
 			// Setup provider and signer
@@ -201,15 +198,15 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 			const signer = provider.getSigner(wcCtx.account.address)
 
 			// Prepare transaction data
-			let _v = txData.value.indexOf('0x') === 0 ? txData.value : '0x' + txData.value
-			let _d = txData.data.indexOf('0x') === 0 ? txData.data : '0x' + txData.data
+			let _v = swap_data.txData.value.indexOf('0x') === 0 ? swap_data.txData.value : '0x' + swap_data.txData.value
+			let _d = swap_data.txData.data.indexOf('0x') === 0 ? swap_data.txData.data : '0x' + swap_data.txData.data
 			const transaction = {
 				from: wcCtx.account.address,
-				to: txData.to,
+				to: swap_data.txData.to,
 				data: _d,
 				value: _v,
-				gasLimit: txData.gasLimit,
-				gasPrice: txData.gasPrice,
+				gasLimit: swap_data.gasLimit,
+				gasPrice: swap_data.gasPrice,
 				chainId: wcCtx.network.chainId as number,
 			};
 
@@ -296,7 +293,7 @@ const EVMTransactionComponent = ({ input }: { input: any }) => {
 		setShowDetails(!showDetails);
 	};
 
-	return txData && (
+	return swap_data.txData && (
 		<div className="flex flex-col space-y-3 p-2 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white w-full max-w-full sm:max-w-3xl mx-auto">
 			{/* Header */}
 			<div className="p-3 sm:p-4 border-b border-gray-700 bg-gray-900 rounded-t-lg">

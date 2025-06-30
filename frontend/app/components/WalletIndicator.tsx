@@ -95,7 +95,7 @@ export const WalletIndicator: FC<{}> = () => {
 	const handleClick = async () => {
 		setIsSelected(true);
 		try {
-			if (status === 'connected') {
+			if (walletStatus === 'connected') {
 				await walletconnectCtx.open({ view: "Account" });
 			} else {
 				await connectWallet();
