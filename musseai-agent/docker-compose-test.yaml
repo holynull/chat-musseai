@@ -22,7 +22,7 @@ services:
             retries: 5
             interval: 5s
         networks:
-            - bridge
+            - musseai_network
     
     langgraph-api:
         image: musseai-agent
@@ -47,4 +47,8 @@ services:
         cap_add:
             - SYS_ADMIN
         networks:
-            - bridge
+            - musseai_network
+    networks:
+        musseai_network:
+            external: true
+            name: bridge
