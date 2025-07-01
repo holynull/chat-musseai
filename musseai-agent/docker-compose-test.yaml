@@ -1,20 +1,10 @@
 volumes:
     langgraph-data:
         driver: local
-    mysql_data:
-        driver: local
     langgraph_api_data:
         driver: local
 
 services:
-    langgraph-redis:
-        image: redis:6
-        healthcheck:
-            test: redis-cli ping
-            interval: 5s
-            timeout: 1s
-            retries: 5
-    
     langgraph-postgres:
         image: postgres:16
         ports:
@@ -37,8 +27,6 @@ services:
         ports:
             - "8123:8000"
         depends_on:
-            langgraph-redis:
-                condition: service_healthy
             langgraph-postgres:
                 condition: service_healthy
         env_file:
@@ -56,24 +44,6 @@ services:
         shm_size: 2gb
         cap_add:
             - SYS_ADMIN
-        
-    mysql:
-        image: mysql:8.0
-        container_name: musseai-mysql
-        restart: always
-        ports:
-          - "3307:3306"
-        volumes:
-          - mysql_data:/var/lib/mysql
-          - ./src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
-          - ./src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
-          - ./src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
-        environment:
-          - MYSQL_ROOT_PASSWORD=root
-          - MYSQL_DATABASE=crypto_portfolio
-          - MYSQL_USER=asset_agent
-          - MYSQL_PASSWORD=asset_agent_123456
-
 networks:
   default:
     driver: bridge
