@@ -50,4 +50,4 @@ services:
             - musseai_network
 networks:
     musseai_network:
-        driver: bridge
+        external: true
