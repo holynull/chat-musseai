@@ -21,6 +21,8 @@ services:
             timeout: 1s
             retries: 5
             interval: 5s
+        networks:
+            - bridge
     
     langgraph-api:
         image: musseai-agent
@@ -44,6 +46,5 @@ services:
         shm_size: 2gb
         cap_add:
             - SYS_ADMIN
-networks:
-  default:
-    driver: bridge
+        networks:
+            - bridge
