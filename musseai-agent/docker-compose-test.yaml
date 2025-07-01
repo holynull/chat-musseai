@@ -48,7 +48,7 @@ services:
             - SYS_ADMIN
         networks:
             - musseai_network
-    networks:
-        musseai_network:
-            external: true
-            name: bridge
+networks:
+    musseai_network:
+        external: true
+        name: bridge
