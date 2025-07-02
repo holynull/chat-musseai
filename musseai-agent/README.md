@@ -6,7 +6,19 @@
 sudo docker network create musseai_network
 ```
 
-### Add redis-ml and mysql to custom network
+### Add container's of redis and mysql to custom network
+
+Find out the container name of mysql and redis.
+
+```shell
+sudo docker ps
+
+CONTAINER ID   IMAGE           COMMAND                  CREATED          STATUS                    PORTS                                                  NAMES
+050f30824fcf   php:5.6-fpm     "docker-php-entrypoi…"   3 months ago     Up 3 months               0.0.0.0:9099->9000/tcp, [::]:9099->9000/tcp            php5.6-fpm
+d0c24f5527cb   redis           "docker-entrypoint.s…"   13 months ago    Up 3 months               0.0.0.0:6389->6379/tcp, [::]:6389->6379/tcp            redis-ml
+ffd9adc61ce2   mysql:8.0       "docker-entrypoint.s…"   17 months ago    Up 5 months               0.0.0.0:3306->3306/tcp, :::3306->3306/tcp, 33060/tcp   mysql
+4ec122aeda86   qdrant/qdrant   "./entrypoint.sh"        18 months ago    Up 5 months               0.0.0.0:6333->6333/tcp, :::6333->6333/tcp, 6334/tcp    qdrant_container
+```
 
 ```shell
 sudo docker network connect redis-ml musseai_network
@@ -74,18 +86,6 @@ networks:
 
 ### Init database
 
-Find out mysql's container name.
-
-```shell
-sudo docker ps
-
-CONTAINER ID   IMAGE           COMMAND                  CREATED          STATUS                    PORTS                                                  NAMES
-050f30824fcf   php:5.6-fpm     "docker-php-entrypoi…"   3 months ago     Up 3 months               0.0.0.0:9099->9000/tcp, [::]:9099->9000/tcp            php5.6-fpm
-d0c24f5527cb   redis           "docker-entrypoint.s…"   13 months ago    Up 3 months               0.0.0.0:6389->6379/tcp, [::]:6389->6379/tcp            redis-ml
-ffd9adc61ce2   mysql:8.0       "docker-entrypoint.s…"   17 months ago    Up 5 months               0.0.0.0:3306->3306/tcp, :::3306->3306/tcp, 33060/tcp   mysql
-4ec122aeda86   qdrant/qdrant   "./entrypoint.sh"        18 months ago    Up 5 months               0.0.0.0:6333->6333/tcp, :::6333->6333/tcp, 6334/tcp    qdrant_container
-```
-
 Copy sql file to mysql container
 
 ```shell
@@ -117,24 +117,13 @@ source /tmp/insert_assets_cp.sql
 
 ### Use the container name to connect redis or mysql in `.env`
 
-Find out the container name of mysql and redis.
-
-```shell
-sudo docker ps
-
-CONTAINER ID   IMAGE           COMMAND                  CREATED          STATUS                    PORTS                                                  NAMES
-050f30824fcf   php:5.6-fpm     "docker-php-entrypoi…"   3 months ago     Up 3 months               0.0.0.0:9099->9000/tcp, [::]:9099->9000/tcp            php5.6-fpm
-d0c24f5527cb   redis           "docker-entrypoint.s…"   13 months ago    Up 3 months               0.0.0.0:6389->6379/tcp, [::]:6389->6379/tcp            redis-ml
-ffd9adc61ce2   mysql:8.0       "docker-entrypoint.s…"   17 months ago    Up 5 months               0.0.0.0:3306->3306/tcp, :::3306->3306/tcp, 33060/tcp   mysql
-4ec122aeda86   qdrant/qdrant   "./entrypoint.sh"        18 months ago    Up 5 months               0.0.0.0:6333->6333/tcp, :::6333->6333/tcp, 6334/tcp    qdrant_container
-```
 
 Set `REDIS_URI` and `DATABASE_URL` in `.env`
 
 ```
 REDIS_URI=redis://:[password]@redis-ml:6379/2
 
-DATABASE_URL=mysql+pymysql://[user_name]:[password]@mysql:3307/crypto_portfolio
+DATABASE_URL=mysql+pymysql://[user_name]:[password]@mysql:3306/crypto_portfolio
 ```
 
 ### Build agent image
