@@ -152,3 +152,17 @@ sudo docker-compose -f docker-compose-test.yaml down
 ```shell
 sudo docker-compose logs -f
 ```
+
+### Test
+
+You can test if the application is healthy by running:
+
+```shell
+curl --request GET --url 0.0.0.0:8123/ok
+```
+
+Assuming everything is running correctly, you should see a response like:
+
+```json
+{"ok":true}
+```
