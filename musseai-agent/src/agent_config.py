@@ -20,6 +20,7 @@ class AgentConfig:
     description: str  # 专家描述
     capabilities: List[str]  # 专家具备的能力
     graph_module: str  # 对应的图模块路径
+    graph_name: str  # 对应子图名称
     graph_variable: str = "graph"  # 图变量名称（默认为"graph"）
     required_env_vars: List[str] = None  # 所需的环境变量
     dependencies: List[str] = None  # 依赖的其他专家或服务
@@ -37,6 +38,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Get detailed information about a specific transaction using the Bridgers API",
         ],
         graph_module="graphs.graph_swap",
+        graph_name="graph_swap",
         required_env_vars=["BRIDGERS_API_KEY"],
         dependencies=["wallet"],
     ),
@@ -48,6 +50,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Notify the front end to change the connected network to the target network in wallet",
         ],
         graph_module="graphs.graph_wallet",
+        graph_name="graph_wallet",
         required_env_vars=["WEB3_PROVIDER_URI", "SOLANA_RPC_URL", "TRON_GRID_API_KEY"],
     ),
     "search": AgentConfig(
@@ -62,6 +65,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Extract relevant information from search results",
         ],
         graph_module="graphs.graph_search",
+        graph_name="graph_search",
         required_env_vars=["GOOGLE_API_KEY", "GOOGLE_CSE_ID"],
     ),
     "quote": AgentConfig(
@@ -76,6 +80,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Provides market analysis and trading insights",
         ],
         graph_module="graphs.graph_quote",
+        graph_name="graph_quote",
         required_env_vars=["COINMARKETCAP_API_KEY", "TRADINGVIEW_API_KEY"],
     ),
     "image": AgentConfig(
@@ -89,6 +94,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Handle multiple image generation requests in sequence",
         ],
         graph_module="graphs.graph_image",
+        graph_name="graph_image",
         required_env_vars=["STABLE_DIFFUSION_API_KEY"],
     ),
     "infura": AgentConfig(
@@ -110,6 +116,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Getting transaction counts and network status information",
         ],
         graph_module="graphs.graph_infura",
+        graph_name="graph_infura",
         required_env_vars=["INFURA_API_KEY", "ETHERSCAN_API_KEY"],
     ),
     "solana": AgentConfig(
@@ -126,6 +133,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Interacting with Solana smart contracts and programs",
         ],
         graph_module="graphs.graph_solana",
+        graph_name="graph_solana",
         required_env_vars=["SOLANA_RPC_URL"],
     ),
     "crypto_portfolios": AgentConfig(
@@ -146,6 +154,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Cross-reference with real-time blockchain data for accurate position validation",
         ],
         graph_module="graphs.graph_crypto_portfolios",
+        graph_name="graph_crypto_portfolios",
         required_env_vars=["DATABASE_URL"],  # 添加数据库连接需求
         dependencies=["infura", "solana"],  # 添加依赖的区块链数据专家
     ),
@@ -219,14 +228,8 @@ def get_agent_capabilities(agent_id: str) -> List[str]:
 
 # 路由映射表
 ROUTE_MAPPING = {
-    "route_to_swap": "graph_swap",
-    "route_to_wallet": "graph_wallet",
-    "route_to_search": "graph_search",
-    "route_to_quote": "graph_quote",
-    "route_to_image": "graph_image",
-    "route_to_infura": "graph_infura",
-    "route_to_solana": "graph_solana",
-    "route_to_crypto_portfolios": "graph_crypto_portfolios",
+    f"route_to_{config.graph_name}": config.graph_name
+    for agent_id, config in AGENT_CONFIGS.items()
 }
 
 
@@ -349,8 +352,5 @@ def tools_condition(
     else:
         raise ValueError(f"No messages found in input state to tool_edge: {state}")
     if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
-        if has_end_command(ai_message):
-            print("aaaaaaa")
-        # else:
         return "tools"
     return "__end__"
