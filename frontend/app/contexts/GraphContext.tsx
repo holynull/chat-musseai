@@ -205,6 +205,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				configurable: {
 					model_name: selectedModel,
 				},
+				recursion_limit: 50
 			},
 		});
 
