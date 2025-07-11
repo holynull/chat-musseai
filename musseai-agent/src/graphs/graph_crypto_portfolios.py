@@ -89,7 +89,7 @@ def format_messages(state: State) -> list[BaseMessage]:
     
     3. THEN: Manage positions within those sources:
        - get_source_positions() to view positions for a source
-       - update_position() to add/modify positions
+       - update_position() to add/modify positions (prices in USD)
        - get_position_history() to track changes
     
     KEY CAPABILITIES:
@@ -98,13 +98,20 @@ def format_messages(state: State) -> list[BaseMessage]:
     ✓ Position history and transaction recording
     ✓ Portfolio analysis and performance tracking
     ✓ Real-time balance queries for supported chains
-    ✓ Cost basis and P&L calculations
+     ✓ Cost basis and P&L calculations (all values in USD)
+
+    CURRENCY AND PRICING:
+    ✓ All asset prices are denominated in US Dollars (USD)
+    ✓ Portfolio values, P&L calculations, and cost basis are expressed in USD
+    ✓ Real-time price data is fetched in USD from market data providers
+    ✓ Historical price tracking and analysis use USD as the base currency
+    ✓ When displaying monetary values, always clarify they are in USD
     
     IMPORTANT DISTINCTIONS:
     - Asset sources are user-defined portfolio components
     - Connected wallet is just for authentication/interaction
     - Each asset source maintains its own set of positions
-    - Portfolio analysis aggregates across all sources
+    - Portfolio analysis aggregates across all sources (values in USD)
     - Users can track assets they don't directly control (e.g., exchange balances)
     
     Always clarify the difference between connected wallet and managed portfolio sources when users seem confused about adding assets or positions.

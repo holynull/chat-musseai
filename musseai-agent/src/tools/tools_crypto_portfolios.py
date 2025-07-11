@@ -983,47 +983,46 @@ def get_user_portfolio_summary(user_id: str) -> Dict:
                             }
                         )
 
-                    # Sort allocation by value
-                    allocation.sort(key=lambda x: x["value"], reverse=True)
+                # Sort allocation by value
+                allocation.sort(key=lambda x: x["value"], reverse=True)
 
-                # Convert dictionaries to lists
-                positions_by_source_list = list(positions_by_source.values())
-                positions_by_asset_list = []
+            # Convert dictionaries to lists
+            positions_by_source_list = list(positions_by_source.values())
+            positions_by_asset_list = []
 
-                for asset_key, asset_data in positions_by_asset.items():
-                    pnl = asset_data["total_value"] - asset_data["total_cost"]
-                    pnl_percentage = (
-                        (pnl / asset_data["total_cost"] * 100)
-                        if asset_data["total_cost"] > 0
-                        else 0
-                    )
+            for asset_key, asset_data in positions_by_asset.items():
+                pnl = asset_data["total_value"] - asset_data["total_cost"]
+                pnl_percentage = (
+                    (pnl / asset_data["total_cost"] * 100)
+                    if asset_data["total_cost"] > 0
+                    else 0
+                )
 
-                    positions_by_asset_list.append(
-                        {
-                            "symbol": asset_data["symbol"],
-                            "name": asset_data["name"],
-                            "chain": asset_data["chain"],
-                            "total_quantity": asset_data["total_quantity"],
-                            "total_value": asset_data["total_value"],
-                            "total_cost": asset_data["total_cost"],
-                            "pnl": pnl,
-                            "pnl_percentage": pnl_percentage,
-                            "sources": list(set(asset_data["sources"])),
-                        }
-                    )
+                positions_by_asset_list.append(
+                    {
+                        "symbol": asset_data["symbol"],
+                        "name": asset_data["name"],
+                        "chain": asset_data["chain"],
+                        "total_quantity": asset_data["total_quantity"],
+                        "total_value": asset_data["total_value"],
+                        "total_cost": asset_data["total_cost"],
+                        "pnl": pnl,
+                        "pnl_percentage": pnl_percentage,
+                        "sources": list(set(asset_data["sources"])),
+                    }
+                )
 
-                return {
-                    "total_value": total_value,
-                    "total_cost": total_cost,
-                    "total_pnl": total_pnl,
-                    "total_pnl_percentage": total_pnl_percentage,
-                    "source_count": len(sources),
-                    "asset_count": len(positions_by_asset),
-                    "positions_by_source": positions_by_source_list,
-                    "positions_by_asset": positions_by_asset_list,
-                    "allocation": allocation,
-                }
-
+            return {
+                "total_value": total_value,
+                "total_cost": total_cost,
+                "total_pnl": total_pnl,
+                "total_pnl_percentage": total_pnl_percentage,
+                "source_count": len(sources),
+                "asset_count": len(positions_by_asset),
+                "positions_by_source": positions_by_source_list,
+                "positions_by_asset": positions_by_asset_list,
+                "allocation": allocation,
+            }
     except Exception as e:
         logger.error(f"Exception:{e}\n{traceback.format_exc()}")
         return {"error": f"Failed to get portfolio summary: {str(e)}"}

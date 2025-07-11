@@ -285,7 +285,8 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 						"node_llm_wallet",
 						"node_llm_infura",
 						"node_llm_pumpfun",
-						"node_llm_crypto_portfolios"
+						"node_llm_crypto_portfolios",
+						"node_llm_portfolio_analysis"
 					]
 						.includes(chunk.data.metadata.langgraph_node)) {
 					const message = chunk.data.data.chunk;
