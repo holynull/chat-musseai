@@ -1,26 +1,16 @@
-import requests
-import json
-from typing import List, Dict, Optional, Any, Union, Tuple
-from decimal import Decimal
-from datetime import datetime, timedelta
 import numpy as np
-import pandas as pd
+from typing import List, Dict
+from datetime import datetime, timedelta
 from langchain.agents import tool
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, desc, asc
 from mysql.db import get_db
 from mysql.model import (
     PortfolioSourceModel,
-    AssetModel,
     PositionModel,
     TransactionModel,
-    PriceSnapshotModel,
-    SourceType,
     TransactionType,
 )
 from loggers import logger
 import traceback
-
 
 # ========================================
 # Portfolio Overview Tools
@@ -441,7 +431,7 @@ def analyze_portfolio_performance(
     Args:
         user_id (str): User identifier
         start_date (str): Start date (ISO format)
-        end_date (str, optional): End date (default: now)
+        end_date (str, optional): End date (ISO format, default: now)
         benchmark (str): Benchmark asset for comparison (default: BTC)
 
     Returns:
@@ -2449,9 +2439,7 @@ def generate_portfolio_report(
         return {"error": f"Failed to generate portfolio report: {str(e)}"}
 
 
-# Export all tools
-tools = [
-    # Portfolio Overview
+tools = [  # Portfolio Overview
     analyze_portfolio_overview,
     portfolio_health_check,
     get_portfolio_metrics,

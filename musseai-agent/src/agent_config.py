@@ -137,101 +137,32 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         required_env_vars=["SOLANA_RPC_URL"],
     ),
     "crypto_portfolios": AgentConfig(
-        name="Cryptocurrency Portfolio Management Expert",
-        description="Professional cryptocurrency portfolio management specialist focusing on multi-source asset tracking, position management, and investment analysis across wallets, exchanges, and DeFi protocols",
+        name="Cryptocurrency Portfolio Management & Analysis Expert",
+        description="Comprehensive cryptocurrency portfolio management and institutional-quality investment analysis specialist",
         capabilities=[
-            # Asset Source Management
-            "Retrieve and manage user's asset sources (wallets, exchanges, DeFi protocols) with detailed configuration",
-            "Add wallet addresses as asset sources with multi-chain support (ETH, BSC, SOL, POLYGON, etc.)",
-            "Add centralized exchange accounts as asset sources with API key integration",
-            "Add DeFi protocol positions as asset sources with protocol-specific tracking",
-            "Update and delete asset sources with data integrity validation",
-            # Asset Management
-            "Search and manage supported assets across multiple blockchains",
-            "Add custom assets for tracking unlisted tokens",
-            "Maintain comprehensive asset metadata including contract addresses and decimals",
-            # Position Management
+            # === 原有的投资组合管理功能 ===
+            "Retrieve and manage user's asset sources (wallets, exchanges, DeFi protocols)",
             "Track real-time positions across all asset sources with cost basis calculations",
-            "Update position quantities with automatic transaction recording",
-            "Generate comprehensive portfolio summaries with cross-source aggregation",
-            "Provide detailed position history and change tracking",
-            # Transaction Management
-            "Record and categorize transactions (BUY, SELL, DEPOSIT, WITHDRAW, TRANSFER)",
-            "Import transaction history from CSV files with validation",
-            "Maintain detailed transaction records with fee tracking",
-            "Export transaction data for tax reporting and analysis",
-            # Price and Valuation
+            "Record and categorize transactions with comprehensive history management",
             "Update asset prices with historical price tracking",
-            "Calculate real-time portfolio valuations across all sources",
-            "Provide price history analysis for supported assets",
-            "Track latest market prices with timestamp recording",
-            # Portfolio Analysis
-            "Calculate comprehensive portfolio performance metrics",
-            "Analyze portfolio allocation by asset, chain, and source type",
-            "Perform risk assessment with concentration and diversification analysis",
-            "Generate detailed portfolio reports in multiple formats",
-            # Integration and Synchronization
-            "Sync wallet balances with blockchain data integration",
-            "Validate portfolio data integrity with issue detection",
-            "Support multi-chain asset balance queries through integrated tools",
-            "Provide automated portfolio synchronization capabilities",
-            # Advanced Features
-            "Cross-reference with real-time blockchain data for position validation",
-            "Generate tax-ready reports with realized/unrealized P&L calculations",
-            "Provide investment recommendations based on risk analysis",
-            "Support bulk operations for portfolio management efficiency",
+            # === 整合的高级分析功能 ===
+            "Comprehensive portfolio analysis with key metrics and risk indicators",
+            "Advanced performance analysis with time-weighted and money-weighted returns",
+            "Risk assessment including VaR, CVaR, and volatility analysis",
+            "Portfolio stress testing under various market scenarios",
+            "Asset correlation analysis for diversification insights",
+            "Intelligent rebalancing recommendations based on target allocations",
+            "Investment opportunity identification and market condition analysis",
+            "Tax optimization strategies and implications analysis",
+            "Customizable portfolio alerts and monitoring system",
+            "Comprehensive portfolio reports in multiple formats",
+            # === 市场智能功能 ===
+            "Real-time market condition analysis and trend identification",
+            "Market opportunity scanning for strategic positioning",
+            "Sentiment analysis and market timing indicators",
         ],
         graph_module="graphs.graph_crypto_portfolios",
         graph_name="graph_crypto_portfolios",
-    ),
-    "portfolio_analysis": AgentConfig(
-        name="Portfolio Analysis Expert",
-        description="Advanced cryptocurrency portfolio analyst specializing in performance evaluation, risk assessment, market analysis, and strategic investment recommendations",
-        capabilities=[
-            # Portfolio Overview
-            "Comprehensive portfolio analysis with key metrics and insights",
-            "Portfolio health scoring with actionable recommendations",
-            "Real-time portfolio metrics calculation including returns and risk indicators",
-            # Performance Analysis
-            "Detailed performance analysis with time-weighted and money-weighted returns",
-            "Multi-benchmark comparison and relative performance evaluation",
-            "Historical performance tracking and trend analysis",
-            # Risk Assessment
-            "Advanced risk metrics including VaR, CVaR, and volatility analysis",
-            "Portfolio stress testing under various market scenarios",
-            "Asset correlation analysis for diversification insights",
-            # Strategic Recommendations
-            "Intelligent rebalancing recommendations based on target allocations",
-            "Investment opportunity identification based on market conditions",
-            "Tax optimization strategies and implications analysis",
-            # Market Intelligence
-            "Real-time market condition analysis and trend identification",
-            "Market opportunity scanning for dip buying and profit taking",
-            "Sentiment analysis and market timing indicators",
-            # Alerts and Monitoring
-            "Customizable portfolio alerts for price, value, risk, and performance",
-            "Portfolio change tracking and significant movement detection",
-            "Automated monitoring and notification system",
-            # Reporting
-            "Comprehensive portfolio reports in multiple formats",
-            "Executive summaries with key insights and recommendations",
-            "Tax reports and performance documentation",
-        ],
-        graph_module="graphs.graph_portfolio_analysis",
-        graph_name="graph_portfolio_analysis",
-        required_env_vars=[
-            "DATABASE_URL",
-            "MYSQL_HOST",
-            "MYSQL_PORT",
-            "MYSQL_USER",
-            "MYSQL_PASSWORD",
-            "MYSQL_DATABASE",
-        ],
-        dependencies=[
-            "crypto_portfolios",  # For portfolio data access
-            "quote",  # For market data and pricing
-            "infura",  # For blockchain data verification
-        ],
     ),
 }
 

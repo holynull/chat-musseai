@@ -1,11 +1,8 @@
-import requests
-import json
-from typing import List, Dict, Optional, Any, Union
+from typing import List, Dict
 from decimal import Decimal
 from datetime import datetime, timedelta
 from langchain.agents import tool
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, desc, asc
+from sqlalchemy import and_, func
 from mysql.db import get_db
 from mysql.model import (
     PortfolioSourceModel,
@@ -18,6 +15,7 @@ from mysql.model import (
 )
 from loggers import logger
 import traceback
+from .tools_crypto_portfolios_analysis import tools as tools_analysis
 
 
 # ========================================
@@ -1679,6 +1677,98 @@ def get_latest_prices(asset_ids: List[int] = None) -> Dict:
         logger.error(f"Exception:{e}\n{traceback.format_exc()}")
         return {"error": f"Failed to get latest prices: {str(e)}"}
 
+def fetch_price_from_api(symbol: str, chain: str = None) -> float:
+    """
+    从外部API获取加密货币价格
+    
+    Args:
+        symbol (str): 加密货币符号
+        chain (str, optional): 区块链名称（暂时未使用）
+    
+    Returns:
+        float: 价格（美元），如果获取失败返回 None
+    """
+    try:
+        # 导入 getLatestQuote 函数
+        from .tools_quote import getLatestQuote
+        import json
+        
+        # 调用 getLatestQuote 获取价格数据
+        quote_data = getLatestQuote(symbol)
+        
+        # 如果返回的是字符串，解析 JSON
+        if isinstance(quote_data, str):
+            data = json.loads(quote_data)
+            
+            # 从 CoinMarketCap API 响应中提取价格
+            if 'data' in data and symbol.upper() in data['data']:
+                token_data = data['data'][symbol.upper()][0]  # 取第一个匹配项
+                price = token_data['quote']['USD']['price']
+                return float(price)
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"获取 {symbol} 价格失败: {e}")
+        return None
+
+@tool
+def refresh_all_portfolio_asset_prices(user_id: str) -> Dict:
+    """
+    自动刷新用户投资组合中所有资产的最新价格
+
+    Args:
+        user_id (str): 用户标识符
+
+    Returns:
+        Dict: 价格更新结果
+    """
+    try:
+        with get_db() as db:
+            # 获取用户所有活跃资产
+            user_assets = (
+                db.query(AssetModel)
+                .join(PositionModel)
+                .join(PortfolioSourceModel)
+                .filter(
+                    PortfolioSourceModel.user_id == user_id,
+                    PortfolioSourceModel.is_active == True,
+                    PositionModel.quantity > 0,
+                )
+                .distinct()
+                .all()
+            )
+
+            price_updates = []
+
+            # 这里需要集成实际的价格数据源
+            for asset in user_assets:
+                # 示例：从外部 API 获取价格
+                current_price = fetch_price_from_api(asset.symbol, asset.chain)
+                if current_price:
+                    price_updates.append(
+                        {
+                            "symbol": asset.symbol,
+                            "chain": asset.chain,
+                            "price": current_price,
+                        }
+                    )
+
+            # 批量更新价格
+            if price_updates:
+                result = update_asset_prices.invoke({"price_updates": price_updates})
+                return {
+                    "success": True,
+                    "message": f"Updated prices for {len(price_updates)} assets",
+                    "updated_assets": price_updates,
+                    "update_result": result,
+                }
+            else:
+                return {"success": False, "message": "No assets found to update"}
+
+    except Exception as e:
+        logger.error(f"Exception:{e}\\n{traceback.format_exc()}")
+        return {"success": False, "message": f"Failed to refresh prices: {str(e)}"}
 
 # ========================================
 # Portfolio Analysis Tools
@@ -1909,123 +1999,6 @@ def get_portfolio_allocation(user_id: str, group_by: str = "asset") -> List[Dict
     except Exception as e:
         logger.error(f"Exception:{e}\n{traceback.format_exc()}")
         return f"Failed to get portfolio allocation: {str(e)}"
-
-
-@tool
-def analyze_portfolio_risk(user_id: str) -> Dict:
-    """
-    Analyze portfolio risk metrics and provide recommendations.
-
-    Args:
-        user_id (str): User identifier
-
-    Returns:
-        Dict: Risk analysis including:
-            - concentration_risk: Asset concentration metrics
-            - chain_exposure: Blockchain exposure analysis
-            - recommendations: Risk management recommendations
-    """
-    try:
-        # Get portfolio allocation
-        allocation = get_portfolio_allocation.invoke(
-            {"user_id": user_id, "group_by": "asset"}
-        )
-        chain_allocation = get_portfolio_allocation.invoke(
-            {"user_id": user_id, "group_by": "chain"}
-        )
-
-        if isinstance(allocation, str) or isinstance(chain_allocation, str):
-            return {"error": "Failed to get allocation data"}
-
-        # Analyze concentration risk
-        concentration_risk = {
-            "high_concentration_assets": [],
-            "concentration_score": 0,  # 0-100, higher is riskier
-        }
-
-        # Check for assets with >25% allocation
-        for asset in allocation:
-            if asset["percentage"] > 25:
-                concentration_risk["high_concentration_assets"].append(
-                    {"asset": asset["group"], "percentage": asset["percentage"]}
-                )
-
-        # Calculate concentration score (Herfindahl Index)
-        herfindahl = sum(asset["percentage"] ** 2 for asset in allocation) / 100
-        concentration_risk["concentration_score"] = int(herfindahl * 100)
-
-        # Analyze chain exposure
-        chain_exposure = {"dominant_chains": [], "single_chain_risk": False}
-
-        for chain in chain_allocation:
-            if chain["percentage"] > 50:
-                chain_exposure["dominant_chains"].append(
-                    {"chain": chain["group"], "percentage": chain["percentage"]}
-                )
-                chain_exposure["single_chain_risk"] = True
-
-        # Generate recommendations
-        recommendations = []
-
-        if concentration_risk["high_concentration_assets"]:
-            recommendations.append(
-                {
-                    "type": "DIVERSIFICATION",
-                    "priority": "HIGH",
-                    "message": f"Consider diversifying. You have {len(concentration_risk['high_concentration_assets'])} assets with >25% allocation",
-                }
-            )
-
-        if chain_exposure["single_chain_risk"]:
-            recommendations.append(
-                {
-                    "type": "CHAIN_DIVERSIFICATION",
-                    "priority": "MEDIUM",
-                    "message": "Consider spreading assets across multiple blockchains to reduce chain-specific risks",
-                }
-            )
-
-        if concentration_risk["concentration_score"] > 50:
-            recommendations.append(
-                {
-                    "type": "REBALANCING",
-                    "priority": "MEDIUM",
-                    "message": "Your portfolio is highly concentrated. Consider rebalancing to reduce risk",
-                }
-            )
-
-        # Check for stablecoin allocation
-        stablecoin_allocation = 0
-        for asset in allocation:
-            if any(
-                stable in asset["group"].upper()
-                for stable in ["USDT", "USDC", "DAI", "BUSD"]
-            ):
-                stablecoin_allocation += asset["percentage"]
-
-        if stablecoin_allocation < 10:
-            recommendations.append(
-                {
-                    "type": "STABLECOIN_ALLOCATION",
-                    "priority": "LOW",
-                    "message": "Consider holding 10-20% in stablecoins for stability and liquidity",
-                }
-            )
-
-        return {
-            "concentration_risk": concentration_risk,
-            "chain_exposure": chain_exposure,
-            "stablecoin_allocation": stablecoin_allocation,
-            "recommendations": recommendations,
-            "risk_score": concentration_risk[
-                "concentration_score"
-            ],  # Overall risk score
-            "analysis_date": datetime.utcnow().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to analyze portfolio risk: {str(e)}"}
 
 
 # ========================================
@@ -2438,14 +2411,14 @@ tools = [
     update_asset_prices,
     get_asset_price_history,
     get_latest_prices,
+	refresh_all_portfolio_asset_prices,
     # Portfolio Analysis
     calculate_portfolio_performance,
     get_portfolio_allocation,
-    analyze_portfolio_risk,
     # Integration and Sync
     sync_wallet_balances,
     import_transactions_csv,
     export_portfolio_report,
     # Helper Tools
     validate_portfolio_data,
-]
+] + tools_analysis

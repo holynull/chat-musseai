@@ -35,7 +35,7 @@ services:
     langgraph-api:
         image: musseai-agent
         ports:
-            - "8123:8000"
+            - "8080:8000"
         depends_on:
             langgraph-redis:
                 condition: service_healthy

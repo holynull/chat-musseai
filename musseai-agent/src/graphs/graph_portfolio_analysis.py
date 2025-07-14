@@ -90,7 +90,24 @@ CURRENT USER CONTEXT:
 {f"- Connected Chain ID: {state.get('chain_id')}" if state.get('chain_id') else ""}
 {f"- Connected Wallet Address: {state.get('wallet_address')}" if state.get('wallet_address') else ""}
 
-ANALYSIS WORKFLOW:
+ANALYSIS WORKFLOW
+
+🔄 PRICE SYNCHRONIZATION WORKFLOW:
+
+**Before Analysis:**
+1. Route to Cryptocurrency Portfolio Management Expert, refresh all portfolio asset prices, then update positons.
+2. Ensure price data is current (within last 15 minutes)
+3. Validate price updates completed successfully
+
+**After Adding Positions:**
+1. Immediately sync prices for newly added assets
+2. Update position values with latest market data
+3. Recalculate portfolio metrics with fresh prices
+
+**Price Update Priority:**
+- High frequency for active trading assets
+- Standard frequency for long-term holdings
+- On-demand for manual position updates
 
 📊 PORTFOLIO OVERVIEW:
 1. Use analyze_portfolio_overview() for comprehensive summary

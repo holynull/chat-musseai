@@ -12,13 +12,12 @@ export const useLangSmithLinkToolUI = () =>
         <TooltipIconButton
           tooltip="View run in LangSmith"
           variant="ghost"
-          className="transition-colors w-4 h-3 ml-3 mt-2 mb-[-8px]"
+          size="sm"
+          className="inline-flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-accent/50 transition-all duration-200"
           onClick={() => window.open(input.args.sharedRunURL, "_blank")}
         >
-          <span className="flex flex-row items-center gap-1 w-11 h-7">
-            <ExternalLink />
-            <LangSmithSVG className="text-[#CA632B] hover:text-[#CA632B]/95" />
-          </span>
+          <ExternalLink className="w-3 h-3 text-muted-foreground" />
+          <LangSmithSVG className="w-4 h-4 text-orange-600 hover:text-orange-700 transition-colors" />
         </TooltipIconButton>
       );
     }, []),

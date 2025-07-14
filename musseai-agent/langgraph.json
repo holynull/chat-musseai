@@ -3,7 +3,6 @@
 		"."
 	],
 	"graphs": {
-		"musseai": "./src/graphs/graph_chatbot.py:graph",
 		"network": "./src/graphs/graph_network.py:graph"
 	},
 	"env": ".env",

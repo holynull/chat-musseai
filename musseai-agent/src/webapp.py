@@ -11,11 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import uuid
 from loggers import logger
+import traceback
+import asyncio
 
 logger.info("Musse AI Agent starting.")
 
-# from langsmith import Client
-# lsclient = Client(api_key=os.getenv("LANGCHAIN_API_KEY"))
+from langsmith import Client
+
+# lsclient = Client(api_key=os.waetenv("LANGCHAIN_API_KEY"))
+lsclient = Client()
 
 app = FastAPI()
 
@@ -130,9 +134,10 @@ app.add_middleware(
 async def runs_share(request: Request) -> dict:
     try:
         body = await request.json()
-        sharedRunURL = lsclient.share_run(run_id=body["runId"])
+        sharedRunURL = await asyncio.to_thread(lsclient.share_run, body["runId"])
         return {"success": True, "sharedRunURL": sharedRunURL, "code": 200}
     except Exception as e:
+        logger.error(traceback.format_exc())
         return {"success": False, "message": e, "code": 400}
 
 

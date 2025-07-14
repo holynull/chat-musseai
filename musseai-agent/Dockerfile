@@ -10,7 +10,7 @@ ADD . /deps/musseai-agent
 RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e /deps/*
 # -- End of local dependencies install --
 ENV LANGGRAPH_HTTP='{"app": "/deps/musseai-agent/src/webapp.py:app"}'
-ENV LANGSERVE_GRAPHS='{"musseai": "/deps/musseai-agent/src/graphs/graph_chatbot.py:graph", "network": "/deps/musseai-agent/src/graphs/graph_network.py:graph"}'
+ENV LANGSERVE_GRAPHS='{"network": "/deps/musseai-agent/src/graphs/graph_network.py:graph"}'
 
 
 
