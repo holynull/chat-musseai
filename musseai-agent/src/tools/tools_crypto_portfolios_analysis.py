@@ -1,3 +1,4 @@
+from decimal import Decimal
 import numpy as np
 from typing import List, Dict
 from datetime import datetime, timedelta
@@ -12,1095 +13,13 @@ from mysql.model import (
 from loggers import logger
 import traceback
 
-# ========================================
-# Portfolio Overview Tools
-# ========================================
-
-
-@tool
-def analyze_portfolio_overview(user_id: str) -> Dict:
-    """
-    Get a comprehensive portfolio analysis overview including key metrics,
-    performance, and risk indicators.
-
-    Args:
-        user_id (str): User identifier
-
-    Returns:
-        Dict: Comprehensive portfolio analysis including:
-            - Portfolio value and composition
-            - Performance metrics
-            - Risk indicators
-            - Key insights and alerts
-    """
-    try:
-        with get_db() as db:
-            # Get basic portfolio data
-
-            from tools.tools_crypto_portfolios import get_user_portfolio_summary
-
-            portfolio_summary = get_user_portfolio_summary.invoke({"user_id": user_id})
-
-            if (
-                portfolio_summary is None
-                or isinstance(portfolio_summary, str)
-                or (
-                    isinstance(portfolio_summary, dict) and "error" in portfolio_summary
-                )
-            ):
-                return {"error": "Failed to retrieve portfolio data"}
-
-            # Calculate additional metrics
-            total_value = portfolio_summary.get("total_value", 0)
-            total_cost = portfolio_summary.get("total_cost", 0)
-            total_pnl = portfolio_summary.get("total_pnl", 0)
-
-            # Calculate volatility (simplified)
-            positions = portfolio_summary.get("positions_by_asset", [])
-
-            # Risk metrics
-            concentration_score = 0
-            if positions and total_value > 0:
-                # Calculate Herfindahl Index
-                for position in positions:
-                    weight = position["total_value"] / total_value
-                    concentration_score += weight**2
-
-            # Performance metrics
-            roi = (total_pnl / total_cost * 100) if total_cost > 0 else 0
-
-            # Identify top performers and losers
-            top_performers = sorted(
-                [p for p in positions if p.get("pnl_percentage", 0) > 0],
-                key=lambda x: x.get("pnl_percentage", 0),
-                reverse=True,
-            )[:3]
-
-            top_losers = sorted(
-                [p for p in positions if p.get("pnl_percentage", 0) < 0],
-                key=lambda x: x.get("pnl_percentage", 0),
-            )[:3]
-
-            # Generate insights
-            insights = []
-
-            if concentration_score > 0.5:
-                insights.append(
-                    {
-                        "type": "WARNING",
-                        "message": "High concentration risk detected. Portfolio is heavily concentrated in few assets.",
-                    }
-                )
-
-            if roi > 50:
-                insights.append(
-                    {
-                        "type": "SUCCESS",
-                        "message": f"Excellent performance! Portfolio has gained {roi:.1f}% overall.",
-                    }
-                )
-            elif roi < -20:
-                insights.append(
-                    {
-                        "type": "ALERT",
-                        "message": f"Portfolio is down {abs(roi):.1f}%. Consider reviewing your strategy.",
-                    }
-                )
-
-            # Check for stablecoin allocation
-            stablecoin_value = sum(
-                p["total_value"]
-                for p in positions
-                if any(
-                    stable in p["symbol"].upper()
-                    for stable in ["USDT", "USDC", "DAI", "BUSD"]
-                )
-            )
-            stablecoin_percentage = (
-                (stablecoin_value / total_value * 100) if total_value > 0 else 0
-            )
-
-            if stablecoin_percentage < 5:
-                insights.append(
-                    {
-                        "type": "INFO",
-                        "message": "Low stablecoin allocation. Consider holding some for stability.",
-                    }
-                )
-
-            return {
-                "overview": {
-                    "total_value": total_value,
-                    "total_cost": total_cost,
-                    "total_pnl": total_pnl,
-                    "roi_percentage": roi,
-                    "asset_count": len(positions),
-                    "source_count": portfolio_summary.get("source_count", 0),
-                },
-                "risk_metrics": {
-                    "concentration_score": concentration_score,
-                    "risk_level": (
-                        "High"
-                        if concentration_score > 0.5
-                        else "Medium" if concentration_score > 0.3 else "Low"
-                    ),
-                    "stablecoin_percentage": stablecoin_percentage,
-                },
-                "top_performers": top_performers,
-                "top_losers": top_losers,
-                "insights": insights,
-                "last_updated": datetime.utcnow().isoformat(),
-            }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to analyze portfolio overview: {str(e)}"}
-
-
-@tool
-def portfolio_health_check(user_id: str) -> Dict:
-    """
-    Perform a quick health check on the portfolio and provide a score with recommendations.
-
-    Args:
-        user_id (str): User identifier
-
-    Returns:
-        Dict: Health check results including:
-            - Overall health score (0-100)
-            - Category scores
-            - Specific issues found
-            - Recommendations
-    """
-    try:
-        # Get portfolio data
-        overview = analyze_portfolio_overview.invoke({"user_id": user_id})
-        if "error" in overview:
-            return overview
-
-        # Initialize scores
-        scores = {
-            "diversification": 0,
-            "performance": 0,
-            "risk_management": 0,
-            "liquidity": 0,
-            "overall": 0,
-        }
-
-        issues = []
-        recommendations = []
-
-        # Diversification score
-        concentration_score = overview["risk_metrics"]["concentration_score"]
-        if concentration_score < 0.2:
-            scores["diversification"] = 90
-        elif concentration_score < 0.3:
-            scores["diversification"] = 70
-        elif concentration_score < 0.5:
-            scores["diversification"] = 50
-        else:
-            scores["diversification"] = 30
-            issues.append("Poor diversification - too concentrated")
-            recommendations.append("Diversify holdings across more assets")
-
-        # Performance score
-        roi = overview["overview"]["roi_percentage"]
-        if roi > 20:
-            scores["performance"] = 90
-        elif roi > 0:
-            scores["performance"] = 70
-        elif roi > -10:
-            scores["performance"] = 50
-        else:
-            scores["performance"] = 30
-            issues.append("Poor performance - significant losses")
-            recommendations.append("Review and adjust investment strategy")
-
-        # Risk management score
-        stablecoin_pct = overview["risk_metrics"]["stablecoin_percentage"]
-        if 10 <= stablecoin_pct <= 30:
-            scores["risk_management"] = 90
-        elif 5 <= stablecoin_pct <= 40:
-            scores["risk_management"] = 70
-        else:
-            scores["risk_management"] = 50
-            issues.append("Suboptimal stablecoin allocation")
-            recommendations.append(
-                "Adjust stablecoin allocation for better risk management"
-            )
-
-        # Liquidity score (simplified)
-        scores["liquidity"] = (
-            70  # Default, would need more data for accurate assessment
-        )
-
-        # Calculate overall score
-        scores["overall"] = sum(scores.values()) / (
-            len(scores) - 1
-        )  # Exclude overall itself
-
-        # Determine health status
-        if scores["overall"] >= 80:
-            health_status = "EXCELLENT"
-        elif scores["overall"] >= 60:
-            health_status = "GOOD"
-        elif scores["overall"] >= 40:
-            health_status = "FAIR"
-        else:
-            health_status = "POOR"
-
-        return {
-            "health_score": scores["overall"],
-            "health_status": health_status,
-            "category_scores": scores,
-            "issues_found": issues,
-            "recommendations": recommendations,
-            "check_date": datetime.utcnow().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to perform health check: {str(e)}"}
-
-
-@tool
-def get_portfolio_metrics(user_id: str, period_days: int = 30) -> Dict:
-    """
-    Calculate key portfolio metrics for the specified period.
-
-    Args:
-        user_id (str): User identifier
-        period_days (int): Number of days to analyze (default: 30)
-
-    Returns:
-        Dict: Portfolio metrics including:
-            - Returns (absolute and percentage)
-            - Volatility
-            - Sharpe ratio
-            - Maximum drawdown
-            - Win/loss ratio
-    """
-    try:
-        with get_db() as db:
-            # Get user's source IDs
-            sources = (
-                db.query(PortfolioSourceModel)
-                .filter(
-                    PortfolioSourceModel.user_id == user_id,
-                    PortfolioSourceModel.is_active == True,
-                )
-                .all()
-            )
-
-            if not sources:
-                return {"error": "No active portfolio sources found"}
-
-            source_ids = [s.source_id for s in sources]
-
-            # Calculate date range
-            end_date = datetime.utcnow()
-            start_date = end_date - timedelta(days=period_days)
-
-            # Get transactions in period
-            transactions = (
-                db.query(TransactionModel)
-                .filter(
-                    TransactionModel.source_id.in_(source_ids),
-                    TransactionModel.transaction_time >= start_date,
-                    TransactionModel.transaction_time <= end_date,
-                )
-                .all()
-            )
-
-            # Get current positions
-            positions = (
-                db.query(PositionModel)
-                .filter(
-                    PositionModel.source_id.in_(source_ids), PositionModel.quantity > 0
-                )
-                .all()
-            )
-
-            # Calculate metrics
-            total_value = sum(
-                float(p.quantity * p.last_price) for p in positions if p.last_price
-            )
-
-            # Calculate returns
-            total_invested = sum(
-                float(t.quantity * t.price)
-                for t in transactions
-                if t.transaction_type == TransactionType.BUY and t.price
-            )
-
-            total_sold = sum(
-                float(t.quantity * t.price)
-                for t in transactions
-                if t.transaction_type == TransactionType.SELL and t.price
-            )
-
-            unrealized_pnl = sum(
-                float(p.quantity * (p.last_price - p.avg_cost))
-                for p in positions
-                if p.last_price and p.avg_cost
-            )
-
-            realized_pnl = total_sold - total_invested
-            total_pnl = realized_pnl + unrealized_pnl
-
-            # Calculate win/loss ratio
-            winning_trades = len(
-                [
-                    t
-                    for t in transactions
-                    if t.transaction_type == TransactionType.SELL
-                    and t.price
-                    and t.price > 0
-                ]
-            )
-
-            total_trades = len(
-                [
-                    t
-                    for t in transactions
-                    if t.transaction_type in [TransactionType.BUY, TransactionType.SELL]
-                ]
-            )
-
-            win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-
-            # Simplified volatility calculation (would need daily price data for accurate calculation)
-            volatility = 0  # Placeholder
-
-            # Risk-free rate (assumed 2% annually)
-            risk_free_rate = 0.02 / 365 * period_days
-
-            # Sharpe ratio (simplified)
-            returns_pct = (
-                (total_pnl / total_invested * 100) if total_invested > 0 else 0
-            )
-            sharpe_ratio = (
-                (returns_pct - risk_free_rate) / (volatility + 1)
-                if volatility > 0
-                else 0
-            )
-
-            return {
-                "period": {
-                    "start": start_date.isoformat(),
-                    "end": end_date.isoformat(),
-                    "days": period_days,
-                },
-                "returns": {
-                    "total_pnl": total_pnl,
-                    "realized_pnl": realized_pnl,
-                    "unrealized_pnl": unrealized_pnl,
-                    "return_percentage": returns_pct,
-                },
-                "risk_metrics": {
-                    "volatility": volatility,
-                    "sharpe_ratio": sharpe_ratio,
-                    "max_drawdown": 0,  # Would need historical data
-                },
-                "trading_metrics": {
-                    "total_trades": total_trades,
-                    "win_rate": win_rate,
-                    "average_win": 0,  # Would need more calculation
-                    "average_loss": 0,
-                },
-                "current_value": total_value,
-            }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to calculate portfolio metrics: {str(e)}"}
-
-
-# ========================================
-# Performance Analysis Tools
-# ========================================
-
-
-@tool
-def analyze_portfolio_performance(
-    user_id: str, start_date: str, end_date: str = None, benchmark: str = "BTC"
-) -> Dict:
-    """
-    Analyze portfolio performance over a specified period with detailed metrics.
-
-    Args:
-        user_id (str): User identifier
-        start_date (str): Start date (ISO format)
-        end_date (str, optional): End date (ISO format, default: now)
-        benchmark (str): Benchmark asset for comparison (default: BTC)
-
-    Returns:
-        Dict: Performance analysis including:
-            - Absolute and relative returns
-            - Risk-adjusted metrics
-            - Benchmark comparison
-            - Performance attribution
-    """
-    try:
-        from tools.tools_crypto_portfolios import calculate_portfolio_performance
-
-        # Get basic performance data
-        performance = calculate_portfolio_performance.invoke(
-            {"user_id": user_id, "start_date": start_date, "end_date": end_date}
-        )
-
-        if isinstance(performance, dict) and "error" in performance:
-            return performance
-
-        # Calculate additional metrics
-        period_days = performance["period"]["days"]
-        total_return = performance["total_return"]
-
-        # Annualized return
-        annualized_return = 0
-        if period_days > 0:
-            annualized_return = (1 + total_return / 100) ** (365 / period_days) - 1
-            annualized_return *= 100
-
-        # Time-weighted return (simplified)
-        twr = total_return  # Would need daily values for accurate calculation
-
-        # Money-weighted return
-        mwr = total_return  # Simplified, would need cash flow data
-
-        # Performance attribution
-        attribution = {
-            "selection_effect": 0,  # Would need sector/asset data
-            "allocation_effect": 0,
-            "interaction_effect": 0,
-        }
-
-        # Risk metrics
-        risk_metrics = {
-            "volatility": 0,  # Would need daily returns
-            "beta": 0,  # Would need benchmark correlation
-            "alpha": 0,  # Would need regression analysis
-            "information_ratio": 0,
-        }
-
-        return {
-            "period": performance["period"],
-            "returns": {
-                "total_return": total_return,
-                "annualized_return": annualized_return,
-                "time_weighted_return": twr,
-                "money_weighted_return": mwr,
-            },
-            "value_changes": {
-                "starting_value": performance["starting_value"],
-                "ending_value": performance["ending_value"],
-                "net_deposits": performance["net_deposits"],
-            },
-            "pnl_breakdown": {
-                "realized_pnl": performance["realized_pnl"],
-                "unrealized_pnl": performance["unrealized_pnl"],
-                "total_pnl": performance["total_pnl"],
-            },
-            "risk_adjusted_metrics": risk_metrics,
-            "performance_attribution": attribution,
-            "benchmark_comparison": {
-                "benchmark": benchmark,
-                "benchmark_return": 0,  # Would need benchmark data
-                "excess_return": 0,
-            },
-        }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to analyze portfolio performance: {str(e)}"}
-
-
-@tool
-def compare_to_benchmarks(
-    user_id: str, benchmarks: List[str] = ["BTC", "ETH", "SP500"]
-) -> Dict:
-    """
-    Compare portfolio performance against multiple benchmarks.
-
-    Args:
-        user_id (str): User identifier
-        benchmarks (List[str]): List of benchmark symbols to compare against
-
-    Returns:
-        Dict: Comparison results including:
-            - Performance vs each benchmark
-            - Correlation analysis
-            - Risk-adjusted comparisons
-    """
-    try:
-        # Get portfolio metrics
-        portfolio_metrics = get_portfolio_metrics.invoke(
-            {"user_id": user_id, "period_days": 365}
-        )
-
-        if "error" in portfolio_metrics:
-            return portfolio_metrics
-
-        portfolio_return = portfolio_metrics["returns"]["return_percentage"]
-
-        comparisons = []
-
-        # For each benchmark (simplified - would need actual price data)
-        benchmark_returns = {
-            "BTC": 45.0,  # Placeholder
-            "ETH": 38.0,  # Placeholder
-            "SP500": 12.0,  # Placeholder
-        }
-
-        for benchmark in benchmarks:
-            benchmark_return = benchmark_returns.get(benchmark, 0)
-
-            comparison = {
-                "benchmark": benchmark,
-                "portfolio_return": portfolio_return,
-                "benchmark_return": benchmark_return,
-                "excess_return": portfolio_return - benchmark_return,
-                "outperformed": portfolio_return > benchmark_return,
-                "correlation": 0.65,  # Placeholder - would need actual calculation
-                "beta": 0.8,  # Placeholder
-                "tracking_error": 5.2,  # Placeholder
-            }
-
-            comparisons.append(comparison)
-
-        # Summary statistics
-        avg_excess_return = sum(c["excess_return"] for c in comparisons) / len(
-            comparisons
-        )
-        outperformance_rate = (
-            sum(1 for c in comparisons if c["outperformed"]) / len(comparisons) * 100
-        )
-
-        return {
-            "comparisons": comparisons,
-            "summary": {
-                "average_excess_return": avg_excess_return,
-                "outperformance_rate": outperformance_rate,
-                "best_relative_performance": max(
-                    comparisons, key=lambda x: x["excess_return"]
-                )["benchmark"],
-                "worst_relative_performance": min(
-                    comparisons, key=lambda x: x["excess_return"]
-                )["benchmark"],
-            },
-            "analysis_date": datetime.utcnow().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to compare to benchmarks: {str(e)}"}
-
-
-@tool
-def get_historical_performance(user_id: str, interval: str = "monthly") -> List[Dict]:
-    """
-    Get historical performance data at specified intervals.
-
-    Args:
-        user_id (str): User identifier
-        interval (str): Time interval ('daily', 'weekly', 'monthly', 'quarterly')
-
-    Returns:
-        List[Dict]: Historical performance data points
-    """
-    try:
-        with get_db() as db:
-            # Get user's sources
-            sources = (
-                db.query(PortfolioSourceModel)
-                .filter(
-                    PortfolioSourceModel.user_id == user_id,
-                    PortfolioSourceModel.is_active == True,
-                )
-                .all()
-            )
-
-            if not sources:
-                return []
-
-            source_ids = [s.source_id for s in sources]
-
-            # Determine interval days
-            interval_days = {
-                "daily": 1,
-                "weekly": 7,
-                "monthly": 30,
-                "quarterly": 90,
-            }.get(interval, 30)
-
-            # Generate historical data points (simplified)
-            performance_history = []
-            current_date = datetime.utcnow()
-
-            for i in range(12):  # Last 12 periods
-                period_end = current_date - timedelta(days=i * interval_days)
-                period_start = period_end - timedelta(days=interval_days)
-
-                # Would need actual historical data
-                # This is a placeholder calculation
-                period_return = np.random.normal(5, 15)  # Random for demo
-
-                performance_history.append(
-                    {
-                        "period_start": period_start.isoformat(),
-                        "period_end": period_end.isoformat(),
-                        "return_percentage": period_return,
-                        "portfolio_value": 10000
-                        * (1 + period_return / 100),  # Placeholder
-                        "net_deposits": 0,
-                    }
-                )
-
-            return performance_history
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return []
-
-
-# ========================================
-# Risk Analysis Tools
-# ========================================
-
-
-@tool
-def analyze_portfolio_risk(user_id: str) -> Dict:
-    """
-    Comprehensive portfolio risk analysis including various risk metrics.
-
-    Args:
-        user_id (str): User identifier
-
-    Returns:
-        Dict: Risk analysis including:
-            - Volatility metrics
-            - Value at Risk (VaR)
-            - Concentration risk
-            - Correlation analysis
-            - Risk recommendations
-    """
-    try:
-        from tools.tools_crypto_portfolios import (
-            analyze_portfolio_risk as base_risk_analysis,
-        )
-
-        # Get basic risk analysis
-        basic_risk = base_risk_analysis.invoke({"user_id": user_id})
-
-        if isinstance(basic_risk, str) or "error" in basic_risk:
-            return {"error": "Failed to analyze portfolio risk"}
-
-        # Calculate additional risk metrics
-        with get_db() as db:
-            # Get portfolio data
-            sources = (
-                db.query(PortfolioSourceModel)
-                .filter(
-                    PortfolioSourceModel.user_id == user_id,
-                    PortfolioSourceModel.is_active == True,
-                )
-                .all()
-            )
-
-            source_ids = [s.source_id for s in sources]
-
-            positions = (
-                db.query(PositionModel)
-                .filter(
-                    PositionModel.source_id.in_(source_ids), PositionModel.quantity > 0
-                )
-                .all()
-            )
-
-            # Calculate total portfolio value
-            total_value = sum(
-                float(p.quantity * p.last_price) for p in positions if p.last_price
-            )
-
-            # Advanced risk metrics
-            # Value at Risk (95% confidence, simplified)
-            portfolio_volatility = 0.25  # 25% annualized volatility (placeholder)
-            var_95 = total_value * 1.645 * portfolio_volatility / np.sqrt(365)
-
-            # Conditional VaR (CVaR)
-            cvar_95 = var_95 * 1.2  # Simplified approximation
-
-            # Maximum position risk
-            max_position_value = max(
-                (float(p.quantity * p.last_price) for p in positions if p.last_price),
-                default=0,
-            )
-            max_position_risk = (
-                (max_position_value / total_value * 100) if total_value > 0 else 0
-            )
-
-            # Liquidity risk (simplified)
-            liquidity_score = 70  # Would need market depth data
-
-            # Systematic risk
-            beta = 1.2  # Portfolio beta vs crypto market (placeholder)
-
-            return {
-                "risk_summary": {
-                    "overall_risk_level": basic_risk["risk_score"],
-                    "risk_rating": (
-                        "High"
-                        if basic_risk["risk_score"] > 70
-                        else "Medium" if basic_risk["risk_score"] > 40 else "Low"
-                    ),
-                    "portfolio_value": total_value,
-                },
-                "volatility_metrics": {
-                    "annualized_volatility": portfolio_volatility * 100,
-                    "daily_volatility": portfolio_volatility / np.sqrt(365) * 100,
-                    "beta": beta,
-                    "correlation_with_market": 0.75,  # Placeholder
-                },
-                "value_at_risk": {
-                    "var_95_1day": var_95,
-                    "var_95_1day_percentage": (
-                        (var_95 / total_value * 100) if total_value > 0 else 0
-                    ),
-                    "cvar_95_1day": cvar_95,
-                    "var_99_1day": total_value
-                    * 2.326
-                    * portfolio_volatility
-                    / np.sqrt(365),
-                },
-                "concentration_risk": {
-                    "herfindahl_index": basic_risk["concentration_risk"][
-                        "concentration_score"
-                    ]
-                    / 100,
-                    "top_position_weight": max_position_risk,
-                    "number_of_positions": len(positions),
-                    "effective_number_of_positions": (
-                        1
-                        / (
-                            basic_risk["concentration_risk"]["concentration_score"]
-                            / 10000
-                        )
-                        if basic_risk["concentration_risk"]["concentration_score"] > 0
-                        else 0
-                    ),
-                },
-                "liquidity_risk": {
-                    "liquidity_score": liquidity_score,
-                    "illiquid_percentage": 100 - liquidity_score,
-                    "estimated_liquidation_days": 2,  # Placeholder
-                },
-                "recommendations": basic_risk["recommendations"],
-                "risk_factors": [
-                    {
-                        "factor": "Market Risk",
-                        "impact": "High",
-                        "description": "Exposure to overall crypto market movements",
-                    },
-                    {
-                        "factor": "Concentration Risk",
-                        "impact": (
-                            "High"
-                            if basic_risk["concentration_risk"]["concentration_score"]
-                            > 50
-                            else "Medium"
-                        ),
-                        "description": "Risk from concentrated positions",
-                    },
-                    {
-                        "factor": "Liquidity Risk",
-                        "impact": "Low" if liquidity_score > 80 else "Medium",
-                        "description": "Risk of not being able to exit positions quickly",
-                    },
-                ],
-            }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to analyze portfolio risk: {str(e)}"}
-
-
-@tool
-def portfolio_stress_test(user_id: str, scenarios: List[Dict] = None) -> Dict:
-    """
-    Run stress tests on the portfolio under various market scenarios.
-
-    Args:
-        user_id (str): User identifier
-        scenarios (List[Dict], optional): Custom scenarios to test
-
-    Returns:
-        Dict: Stress test results showing portfolio impact under each scenario
-    """
-    try:
-        # Get current portfolio value
-        from tools.tools_crypto_portfolios import get_user_portfolio_summary
-
-        portfolio = get_user_portfolio_summary.invoke({"user_id": user_id})
-
-        if (
-            portfolio is None
-            or isinstance(portfolio, str)
-            or (isinstance(portfolio, dict) and "error" in portfolio)
-        ):
-            return {"error": "Failed to retrieve portfolio data"}
-
-        current_value = portfolio["total_value"]
-        positions = portfolio["positions_by_asset"]
-
-        # Default scenarios if none provided
-        if not scenarios:
-            scenarios = [
-                {
-                    "name": "Market Crash",
-                    "description": "Severe market downturn",
-                    "market_change": -40,
-                    "btc_change": -35,
-                    "altcoin_change": -50,
-                    "stablecoin_change": 0,
-                },
-                {
-                    "name": "Bull Run",
-                    "description": "Strong market rally",
-                    "market_change": 50,
-                    "btc_change": 40,
-                    "altcoin_change": 80,
-                    "stablecoin_change": 0,
-                },
-                {
-                    "name": "Flash Crash",
-                    "description": "Sudden temporary drop",
-                    "market_change": -25,
-                    "btc_change": -20,
-                    "altcoin_change": -30,
-                    "stablecoin_change": 0,
-                },
-                {
-                    "name": "Regulatory Shock",
-                    "description": "Major regulatory changes",
-                    "market_change": -30,
-                    "btc_change": -25,
-                    "altcoin_change": -40,
-                    "stablecoin_change": -5,
-                },
-            ]
-
-        results = []
-
-        for scenario in scenarios:
-            # Calculate impact on each position
-            scenario_value = 0
-            impacted_positions = []
-
-            for position in positions:
-                symbol = position["symbol"].upper()
-                current_pos_value = position["total_value"]
-
-                # Determine impact based on asset type
-                if symbol in ["USDT", "USDC", "DAI", "BUSD"]:
-                    change = scenario.get("stablecoin_change", 0)
-                elif symbol == "BTC":
-                    change = scenario.get("btc_change", scenario["market_change"])
-                elif symbol == "ETH":
-                    change = scenario.get("eth_change", scenario["market_change"] * 0.9)
-                else:
-                    change = scenario.get("altcoin_change", scenario["market_change"])
-
-                new_value = current_pos_value * (1 + change / 100)
-                impact = new_value - current_pos_value
-
-                scenario_value += new_value
-
-                impacted_positions.append(
-                    {
-                        "asset": f"{position['symbol']} ({position['chain']})",
-                        "current_value": current_pos_value,
-                        "scenario_value": new_value,
-                        "change_amount": impact,
-                        "change_percentage": change,
-                    }
-                )
-
-            # Sort by impact
-            impacted_positions.sort(key=lambda x: x["change_amount"])
-
-            total_impact = scenario_value - current_value
-            impact_percentage = (
-                (total_impact / current_value * 100) if current_value > 0 else 0
-            )
-
-            results.append(
-                {
-                    "scenario": scenario["name"],
-                    "description": scenario["description"],
-                    "portfolio_impact": {
-                        "current_value": current_value,
-                        "scenario_value": scenario_value,
-                        "change_amount": total_impact,
-                        "change_percentage": impact_percentage,
-                    },
-                    "most_impacted": impacted_positions[:5],  # Top 5 most impacted
-                    "risk_level": (
-                        "SEVERE"
-                        if impact_percentage < -30
-                        else (
-                            "HIGH"
-                            if impact_percentage < -20
-                            else "MODERATE" if impact_percentage < -10 else "LOW"
-                        )
-                    ),
-                }
-            )
-
-        # Summary
-        worst_case = min(
-            results, key=lambda x: x["portfolio_impact"]["change_percentage"]
-        )
-        best_case = max(
-            results, key=lambda x: x["portfolio_impact"]["change_percentage"]
-        )
-
-        return {
-            "stress_test_results": results,
-            "summary": {
-                "worst_case_scenario": worst_case["scenario"],
-                "worst_case_loss": worst_case["portfolio_impact"]["change_percentage"],
-                "best_case_scenario": best_case["scenario"],
-                "best_case_gain": best_case["portfolio_impact"]["change_percentage"],
-                "average_downside": (
-                    sum(
-                        r["portfolio_impact"]["change_percentage"]
-                        for r in results
-                        if r["portfolio_impact"]["change_percentage"] < 0
-                    )
-                    / len(
-                        [
-                            r
-                            for r in results
-                            if r["portfolio_impact"]["change_percentage"] < 0
-                        ]
-                    )
-                    if any(
-                        r["portfolio_impact"]["change_percentage"] < 0 for r in results
-                    )
-                    else 0
-                ),
-            },
-            "test_date": datetime.utcnow().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to run stress test: {str(e)}"}
-
-
-@tool
-def analyze_asset_correlations(user_id: str, period_days: int = 90) -> Dict:
-    """
-    Analyze correlations between assets in the portfolio.
-
-    Args:
-        user_id (str): User identifier
-        period_days (int): Period for correlation calculation
-
-    Returns:
-        Dict: Correlation matrix and analysis
-    """
-    try:
-        # Get portfolio positions
-        from tools.tools_crypto_portfolios import get_user_portfolio_summary
-
-        portfolio = get_user_portfolio_summary.invoke({"user_id": user_id})
-
-        if (
-            portfolio is None
-            or isinstance(portfolio, str)
-            or (isinstance(portfolio, dict) and "error" in portfolio)
-        ):
-            return {"error": "Failed to retrieve portfolio data"}
-
-        positions = portfolio["positions_by_asset"]
-
-        # Create correlation matrix (simplified - would need actual price data)
-        assets = [p["symbol"] for p in positions[:10]]  # Limit to top 10
-        n_assets = len(assets)
-
-        # Generate synthetic correlation matrix
-        correlation_matrix = np.random.rand(n_assets, n_assets)
-        correlation_matrix = (correlation_matrix + correlation_matrix.T) / 2
-        np.fill_diagonal(correlation_matrix, 1.0)
-
-        # Ensure correlations are in valid range
-        correlation_matrix = np.clip(correlation_matrix, -1, 1)
-
-        # Convert to list format for JSON serialization
-        correlations = []
-        for i in range(n_assets):
-            for j in range(i + 1, n_assets):
-                correlations.append(
-                    {
-                        "asset1": assets[i],
-                        "asset2": assets[j],
-                        "correlation": float(correlation_matrix[i, j]),
-                        "relationship": (
-                            "Strong Positive"
-                            if correlation_matrix[i, j] > 0.7
-                            else (
-                                "Moderate Positive"
-                                if correlation_matrix[i, j] > 0.3
-                                else (
-                                    "Weak"
-                                    if correlation_matrix[i, j] > -0.3
-                                    else (
-                                        "Moderate Negative"
-                                        if correlation_matrix[i, j] > -0.7
-                                        else "Strong Negative"
-                                    )
-                                )
-                            )
-                        ),
-                    }
-                )
-
-        # Sort by absolute correlation
-        correlations.sort(key=lambda x: abs(x["correlation"]), reverse=True)
-
-        # Analysis
-        high_correlations = [c for c in correlations if abs(c["correlation"]) > 0.7]
-        avg_correlation = np.mean([abs(c["correlation"]) for c in correlations])
-
-        return {
-            "correlation_analysis": {
-                "period_days": period_days,
-                "number_of_assets": n_assets,
-                "average_correlation": avg_correlation,
-                "high_correlation_pairs": len(high_correlations),
-            },
-            "top_correlations": correlations[:10],
-            "diversification_score": max(0, 100 - avg_correlation * 100),
-            "insights": [
-                (
-                    {
-                        "type": "WARNING" if len(high_correlations) > 3 else "INFO",
-                        "message": f"Found {len(high_correlations)} highly correlated asset pairs. Consider diversifying.",
-                    }
-                    if high_correlations
-                    else {
-                        "type": "SUCCESS",
-                        "message": "Portfolio shows good diversification with low asset correlations.",
-                    }
-                )
-            ],
-            "analysis_date": datetime.utcnow().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to analyze correlations: {str(e)}"}
+from tools.portfolio_analysis.portfolio_overview import (
+    tools as tools_portfolio_overview,
+)
+from tools.portfolio_analysis.performance_analysis import (
+    tools as tools_performance_analysis,
+)
+from tools.portfolio_analysis.risk_analysis import tools as tools_risk_analysis
 
 
 # ========================================
@@ -2439,18 +1358,236 @@ def generate_portfolio_report(
         return {"error": f"Failed to generate portfolio report: {str(e)}"}
 
 
-tools = [  # Portfolio Overview
-    analyze_portfolio_overview,
-    portfolio_health_check,
-    get_portfolio_metrics,
-    # Performance Analysis
-    analyze_portfolio_performance,
-    compare_to_benchmarks,
-    get_historical_performance,
-    # Risk Analysis
-    analyze_portfolio_risk,
-    portfolio_stress_test,
-    analyze_asset_correlations,
+@tool
+def calculate_portfolio_performance(
+    user_id: str, start_date: str, end_date: str = None, source_id: int = None
+) -> Dict:
+    """
+    Calculate portfolio performance metrics over a time period.
+
+    Args:
+        user_id (str): User identifier
+        start_date (str): Start date for calculation (ISO format)
+        end_date (str, optional): End date (default: now)
+        source_id (int, optional): Specific source to analyze
+
+    Returns:
+        Dict: Performance metrics including:
+            - starting_value: Portfolio value at start
+            - ending_value: Portfolio value at end
+            - net_deposits: Net deposits/withdrawals
+            - realized_pnl: Realized profit/loss from sells
+            - unrealized_pnl: Unrealized profit/loss
+            - total_return: Total return percentage
+            - time_weighted_return: Time-weighted return
+    """
+    try:
+        with get_db() as db:
+            # Parse dates
+            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            end_dt = datetime.utcnow()
+            if end_date:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+
+            # Get user sources
+            query = db.query(PortfolioSourceModel).filter(
+                PortfolioSourceModel.user_id == user_id,
+                PortfolioSourceModel.is_active == True,
+            )
+
+            if source_id:
+                query = query.filter(PortfolioSourceModel.source_id == source_id)
+
+            sources = query.all()
+            source_ids = [s.source_id for s in sources]
+
+            if not source_ids:
+                return {"error": "No active sources found"}
+
+            # Get transactions in period
+            transactions = (
+                db.query(TransactionModel)
+                .filter(
+                    TransactionModel.source_id.in_(source_ids),
+                    TransactionModel.transaction_time >= start_dt,
+                    TransactionModel.transaction_time <= end_dt,
+                )
+                .order_by(TransactionModel.transaction_time)
+                .all()
+            )
+
+            # Calculate metrics
+            net_deposits = Decimal("0")
+            realized_pnl = Decimal("0")
+
+            for tx in transactions:
+                if tx.transaction_type in [TransactionType.DEPOSIT]:
+                    net_deposits += tx.quantity * (tx.price or Decimal("0"))
+                elif tx.transaction_type in [TransactionType.WITHDRAW]:
+                    net_deposits -= tx.quantity * (tx.price or Decimal("0"))
+                elif tx.transaction_type == TransactionType.SELL and tx.price:
+                    # Calculate realized P&L (simplified - would need cost basis tracking)
+                    realized_pnl += tx.quantity * tx.price
+
+            # Get current positions and values
+            positions = (
+                db.query(PositionModel)
+                .filter(PositionModel.source_id.in_(source_ids))
+                .all()
+            )
+
+            ending_value = Decimal("0")
+            unrealized_pnl = Decimal("0")
+
+            for position in positions:
+                if position.last_price and position.quantity > 0:
+                    position_value = position.quantity * position.last_price
+                    ending_value += position_value
+
+                    if position.avg_cost:
+                        cost_basis = position.quantity * position.avg_cost
+                        unrealized_pnl += position_value - cost_basis
+
+            # Simplified starting value calculation
+            # In production, would need historical position snapshots
+            starting_value = ending_value - net_deposits - realized_pnl - unrealized_pnl
+
+            # Calculate returns
+            total_return = Decimal("0")
+            if starting_value > 0:
+                total_return = (
+                    (ending_value - starting_value - net_deposits) / starting_value
+                ) * 100
+
+            return {
+                "period": {
+                    "start": start_dt.isoformat(),
+                    "end": end_dt.isoformat(),
+                    "days": (end_dt - start_dt).days,
+                },
+                "starting_value": float(starting_value),
+                "ending_value": float(ending_value),
+                "net_deposits": float(net_deposits),
+                "realized_pnl": float(realized_pnl),
+                "unrealized_pnl": float(unrealized_pnl),
+                "total_pnl": float(realized_pnl + unrealized_pnl),
+                "total_return": float(total_return),
+                "source_count": len(sources),
+            }
+
+    except Exception as e:
+        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
+        return {"error": f"Failed to calculate performance: {str(e)}"}
+
+
+@tool
+def get_portfolio_allocation(user_id: str, group_by: str = "asset") -> List[Dict]:
+    """
+    Get portfolio allocation breakdown.
+
+    Args:
+        user_id (str): User identifier
+        group_by (str): Grouping method ('asset', 'chain', 'source_type')
+
+    Returns:
+        List[Dict]: Allocation breakdown with percentages
+    """
+    try:
+        with get_db() as db:
+            # Get user's active sources
+            sources = (
+                db.query(PortfolioSourceModel)
+                .filter(
+                    PortfolioSourceModel.user_id == user_id,
+                    PortfolioSourceModel.is_active == True,
+                )
+                .all()
+            )
+
+            source_ids = [s.source_id for s in sources]
+
+            if not source_ids:
+                return []
+
+            # Get all positions with values
+            positions = (
+                db.query(PositionModel)
+                .filter(
+                    PositionModel.source_id.in_(source_ids), PositionModel.quantity > 0
+                )
+                .all()
+            )
+
+            # Calculate allocations based on grouping
+            allocations = {}
+            total_value = Decimal("0")
+
+            for position in positions:
+                if not position.last_price:
+                    continue
+
+                value = position.quantity * position.last_price
+                total_value += value
+
+                # Determine grouping key
+                if group_by == "asset":
+                    key = f"{position.asset.symbol} ({position.asset.chain})"
+                    metadata = {
+                        "symbol": position.asset.symbol,
+                        "chain": position.asset.chain,
+                        "name": position.asset.name,
+                    }
+                elif group_by == "chain":
+                    key = position.asset.chain
+                    metadata = {"chain": position.asset.chain}
+                elif group_by == "source_type":
+                    source = next(
+                        s for s in sources if s.source_id == position.source_id
+                    )
+                    key = source.source_type.value
+                    metadata = {"source_type": source.source_type.value}
+                else:
+                    key = "Unknown"
+                    metadata = {}
+
+                if key not in allocations:
+                    allocations[key] = {
+                        "key": key,
+                        "value": Decimal("0"),
+                        "quantity": Decimal("0"),
+                        "metadata": metadata,
+                    }
+
+                allocations[key]["value"] += value
+                allocations[key]["quantity"] += position.quantity
+
+            # Convert to list with percentages
+            result = []
+            if total_value > 0:
+                for key, data in allocations.items():
+                    result.append(
+                        {
+                            "group": key,
+                            "value": float(data["value"]),
+                            "percentage": float((data["value"] / total_value) * 100),
+                            "metadata": data["metadata"],
+                        }
+                    )
+
+            # Sort by value descending
+            result.sort(key=lambda x: x["value"], reverse=True)
+
+            return result
+
+    except Exception as e:
+        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
+        return f"Failed to get portfolio allocation: {str(e)}"
+
+
+tools = tools_portfolio_overview  # Portfolio Overview
++tools_performance_analysis  # Performance Analysis
++tools_risk_analysis  # Risk Analysis
++[
     # Recommendations
     get_rebalancing_recommendations,
     find_investment_opportunities,
@@ -2464,4 +1601,7 @@ tools = [  # Portfolio Overview
     get_market_opportunities,
     # Reporting
     generate_portfolio_report,
+    # o
+    calculate_portfolio_performance,
+    get_portfolio_allocation,
 ]

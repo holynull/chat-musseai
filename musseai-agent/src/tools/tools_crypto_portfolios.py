@@ -1677,14 +1677,15 @@ def get_latest_prices(asset_ids: List[int] = None) -> Dict:
         logger.error(f"Exception:{e}\n{traceback.format_exc()}")
         return {"error": f"Failed to get latest prices: {str(e)}"}
 
+
 def fetch_price_from_api(symbol: str, chain: str = None) -> float:
     """
     从外部API获取加密货币价格
-    
+
     Args:
         symbol (str): 加密货币符号
         chain (str, optional): 区块链名称（暂时未使用）
-    
+
     Returns:
         float: 价格（美元），如果获取失败返回 None
     """
@@ -1692,25 +1693,26 @@ def fetch_price_from_api(symbol: str, chain: str = None) -> float:
         # 导入 getLatestQuote 函数
         from .tools_quote import getLatestQuote
         import json
-        
+
         # 调用 getLatestQuote 获取价格数据
-        quote_data = getLatestQuote(symbol)
-        
+        quote_data = getLatestQuote.invoke({"symbol": symbol})
+
         # 如果返回的是字符串，解析 JSON
         if isinstance(quote_data, str):
             data = json.loads(quote_data)
-            
+
             # 从 CoinMarketCap API 响应中提取价格
-            if 'data' in data and symbol.upper() in data['data']:
-                token_data = data['data'][symbol.upper()][0]  # 取第一个匹配项
-                price = token_data['quote']['USD']['price']
+            if "data" in data and symbol.upper() in data["data"]:
+                token_data = data["data"][symbol.upper()][0]  # 取第一个匹配项
+                price = token_data["quote"]["USD"]["price"]
                 return float(price)
-        
+
         return None
-        
+
     except Exception as e:
         logger.error(f"获取 {symbol} 价格失败: {e}")
         return None
+
 
 @tool
 def refresh_all_portfolio_asset_prices(user_id: str) -> Dict:
@@ -1769,237 +1771,6 @@ def refresh_all_portfolio_asset_prices(user_id: str) -> Dict:
     except Exception as e:
         logger.error(f"Exception:{e}\\n{traceback.format_exc()}")
         return {"success": False, "message": f"Failed to refresh prices: {str(e)}"}
-
-# ========================================
-# Portfolio Analysis Tools
-# ========================================
-
-
-@tool
-def calculate_portfolio_performance(
-    user_id: str, start_date: str, end_date: str = None, source_id: int = None
-) -> Dict:
-    """
-    Calculate portfolio performance metrics over a time period.
-
-    Args:
-        user_id (str): User identifier
-        start_date (str): Start date for calculation (ISO format)
-        end_date (str, optional): End date (default: now)
-        source_id (int, optional): Specific source to analyze
-
-    Returns:
-        Dict: Performance metrics including:
-            - starting_value: Portfolio value at start
-            - ending_value: Portfolio value at end
-            - net_deposits: Net deposits/withdrawals
-            - realized_pnl: Realized profit/loss from sells
-            - unrealized_pnl: Unrealized profit/loss
-            - total_return: Total return percentage
-            - time_weighted_return: Time-weighted return
-    """
-    try:
-        with get_db() as db:
-            # Parse dates
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            end_dt = datetime.utcnow()
-            if end_date:
-                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-
-            # Get user sources
-            query = db.query(PortfolioSourceModel).filter(
-                PortfolioSourceModel.user_id == user_id,
-                PortfolioSourceModel.is_active == True,
-            )
-
-            if source_id:
-                query = query.filter(PortfolioSourceModel.source_id == source_id)
-
-            sources = query.all()
-            source_ids = [s.source_id for s in sources]
-
-            if not source_ids:
-                return {"error": "No active sources found"}
-
-            # Get transactions in period
-            transactions = (
-                db.query(TransactionModel)
-                .filter(
-                    TransactionModel.source_id.in_(source_ids),
-                    TransactionModel.transaction_time >= start_dt,
-                    TransactionModel.transaction_time <= end_dt,
-                )
-                .order_by(TransactionModel.transaction_time)
-                .all()
-            )
-
-            # Calculate metrics
-            net_deposits = Decimal("0")
-            realized_pnl = Decimal("0")
-
-            for tx in transactions:
-                if tx.transaction_type in [TransactionType.DEPOSIT]:
-                    net_deposits += tx.quantity * (tx.price or Decimal("0"))
-                elif tx.transaction_type in [TransactionType.WITHDRAW]:
-                    net_deposits -= tx.quantity * (tx.price or Decimal("0"))
-                elif tx.transaction_type == TransactionType.SELL and tx.price:
-                    # Calculate realized P&L (simplified - would need cost basis tracking)
-                    realized_pnl += tx.quantity * tx.price
-
-            # Get current positions and values
-            positions = (
-                db.query(PositionModel)
-                .filter(PositionModel.source_id.in_(source_ids))
-                .all()
-            )
-
-            ending_value = Decimal("0")
-            unrealized_pnl = Decimal("0")
-
-            for position in positions:
-                if position.last_price and position.quantity > 0:
-                    position_value = position.quantity * position.last_price
-                    ending_value += position_value
-
-                    if position.avg_cost:
-                        cost_basis = position.quantity * position.avg_cost
-                        unrealized_pnl += position_value - cost_basis
-
-            # Simplified starting value calculation
-            # In production, would need historical position snapshots
-            starting_value = ending_value - net_deposits - realized_pnl - unrealized_pnl
-
-            # Calculate returns
-            total_return = Decimal("0")
-            if starting_value > 0:
-                total_return = (
-                    (ending_value - starting_value - net_deposits) / starting_value
-                ) * 100
-
-            return {
-                "period": {
-                    "start": start_dt.isoformat(),
-                    "end": end_dt.isoformat(),
-                    "days": (end_dt - start_dt).days,
-                },
-                "starting_value": float(starting_value),
-                "ending_value": float(ending_value),
-                "net_deposits": float(net_deposits),
-                "realized_pnl": float(realized_pnl),
-                "unrealized_pnl": float(unrealized_pnl),
-                "total_pnl": float(realized_pnl + unrealized_pnl),
-                "total_return": float(total_return),
-                "source_count": len(sources),
-            }
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to calculate performance: {str(e)}"}
-
-
-@tool
-def get_portfolio_allocation(user_id: str, group_by: str = "asset") -> List[Dict]:
-    """
-    Get portfolio allocation breakdown.
-
-    Args:
-        user_id (str): User identifier
-        group_by (str): Grouping method ('asset', 'chain', 'source_type')
-
-    Returns:
-        List[Dict]: Allocation breakdown with percentages
-    """
-    try:
-        with get_db() as db:
-            # Get user's active sources
-            sources = (
-                db.query(PortfolioSourceModel)
-                .filter(
-                    PortfolioSourceModel.user_id == user_id,
-                    PortfolioSourceModel.is_active == True,
-                )
-                .all()
-            )
-
-            source_ids = [s.source_id for s in sources]
-
-            if not source_ids:
-                return []
-
-            # Get all positions with values
-            positions = (
-                db.query(PositionModel)
-                .filter(
-                    PositionModel.source_id.in_(source_ids), PositionModel.quantity > 0
-                )
-                .all()
-            )
-
-            # Calculate allocations based on grouping
-            allocations = {}
-            total_value = Decimal("0")
-
-            for position in positions:
-                if not position.last_price:
-                    continue
-
-                value = position.quantity * position.last_price
-                total_value += value
-
-                # Determine grouping key
-                if group_by == "asset":
-                    key = f"{position.asset.symbol} ({position.asset.chain})"
-                    metadata = {
-                        "symbol": position.asset.symbol,
-                        "chain": position.asset.chain,
-                        "name": position.asset.name,
-                    }
-                elif group_by == "chain":
-                    key = position.asset.chain
-                    metadata = {"chain": position.asset.chain}
-                elif group_by == "source_type":
-                    source = next(
-                        s for s in sources if s.source_id == position.source_id
-                    )
-                    key = source.source_type.value
-                    metadata = {"source_type": source.source_type.value}
-                else:
-                    key = "Unknown"
-                    metadata = {}
-
-                if key not in allocations:
-                    allocations[key] = {
-                        "key": key,
-                        "value": Decimal("0"),
-                        "quantity": Decimal("0"),
-                        "metadata": metadata,
-                    }
-
-                allocations[key]["value"] += value
-                allocations[key]["quantity"] += position.quantity
-
-            # Convert to list with percentages
-            result = []
-            if total_value > 0:
-                for key, data in allocations.items():
-                    result.append(
-                        {
-                            "group": key,
-                            "value": float(data["value"]),
-                            "percentage": float((data["value"] / total_value) * 100),
-                            "metadata": data["metadata"],
-                        }
-                    )
-
-            # Sort by value descending
-            result.sort(key=lambda x: x["value"], reverse=True)
-
-            return result
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return f"Failed to get portfolio allocation: {str(e)}"
-
 
 # ========================================
 # Integration and Sync Tools
@@ -2411,10 +2182,7 @@ tools = [
     update_asset_prices,
     get_asset_price_history,
     get_latest_prices,
-	refresh_all_portfolio_asset_prices,
-    # Portfolio Analysis
-    calculate_portfolio_performance,
-    get_portfolio_allocation,
+    refresh_all_portfolio_asset_prices,
     # Integration and Sync
     sync_wallet_balances,
     import_transactions_csv,

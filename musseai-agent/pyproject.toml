@@ -58,6 +58,7 @@ packages = ["graphs","prompts","tools","mysql"]
 "prompts" = "src/prompts"
 "tools" = "src/tools"
 "mysql" = "src/mysql"
+"utils" = "src/utils"
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
