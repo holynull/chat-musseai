@@ -1,4 +1,5 @@
 from decimal import Decimal
+import time
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Optional, Tuple
@@ -21,6 +22,9 @@ from utils.api_decorators import (
     retry_on_429,
 )
 import traceback
+
+
+from utils.api_manager import api_manager
 
 # ========================================
 # Configuration and Constants
@@ -58,54 +62,133 @@ COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY")  # Optional for higher rate l
 
 
 @api_call_with_cache_and_rate_limit(
-    cache_duration=300,  # 5 minutes cache
-    rate_limit_interval=1.2,  # CoinGecko free tier limit
+    cache_duration=600,  # 增加到10分钟缓存
+    rate_limit_interval=0.5,  # 减少等待时间
     max_retries=3,
 )
-def fetch_historical_prices(coin_id: str, days: int = 90) -> Optional[Dict]:
+def fetch_historical_prices(symbol: str, days: int = 90) -> Optional[Dict]:
     """
-    Fetch historical price data from CoinGecko API.
-
-    Args:
-        coin_id (str): CoinGecko coin ID
-        days (int): Number of days of historical data
-
-    Returns:
-        Dict: Historical price data or None if failed
+    使用多API源获取历史价格数据，自动故障转移
     """
     try:
-        headers = {}
-        if COINGECKO_API_KEY:
-            headers["X-CG-API-KEY"] = COINGECKO_API_KEY
+        # 使用多API管理器
+        result = api_manager.fetch_with_fallback(symbol, days)
 
-        url = f"{COINGECKO_BASE_URL}/coins/{coin_id}/market_chart"
-        params = {"vs_currency": "usd", "days": days, "interval": "daily"}
+        if result:
+            logger.info(
+                f"Successfully fetched {len(result.get('prices', []))} days of data for {symbol}"
+            )
+            return result
+        else:
+            logger.warning(f"No data available for {symbol}")
+            return None
 
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+    except Exception as e:
+        logger.error(f"Failed to fetch historical prices for {symbol}: {e}")
+        return None
+
+
+@api_call_with_cache_and_rate_limit(
+    cache_duration=300,
+    rate_limit_interval=0.2,
+    max_retries=2,
+)
+def fetch_multiple_historical_prices(
+    symbols: List[str], days: int = 90
+) -> Dict[str, Dict]:
+    """
+    批量获取多个资产的历史价格数据
+    """
+    results = {}
+    failed_symbols = []
+
+    for symbol in symbols:
+        try:
+            result = api_manager.fetch_with_fallback(symbol, days)
+            if result:
+                results[symbol] = result
+            else:
+                failed_symbols.append(symbol)
+
+            # 添加小延迟避免API限制
+            time.sleep(0.1)
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch data for {symbol}: {e}")
+            failed_symbols.append(symbol)
+
+    if failed_symbols:
+        logger.warning(f"Failed to fetch data for symbols: {failed_symbols}")
+
+    return results
+
+
+# 改进的市场数据获取函数
+def fetch_current_market_data_improved(symbols: List[str]) -> Dict:
+    """
+    改进的市场数据获取，使用多API源
+    """
+    results = {}
+
+    # 尝试从CoinGecko获取
+    try:
+        coingecko_data = fetch_current_market_data(symbols)
+        results.update(coingecko_data)
+    except Exception as e:
+        logger.warning(f"CoinGecko market data failed: {e}")
+
+    # 对于失败的符号，尝试其他API
+    missing_symbols = [s for s in symbols if s not in results]
+
+    if missing_symbols:
+        # 尝试从Binance获取价格数据
+        try:
+            binance_data = fetch_binance_market_data(missing_symbols)
+            results.update(binance_data)
+        except Exception as e:
+            logger.warning(f"Binance market data failed: {e}")
+
+    return results
+
+
+def fetch_binance_market_data(symbols: List[str]) -> Dict:
+    """
+    从Binance获取市场数据
+    """
+    results = {}
+
+    try:
+        api_manager._wait_for_rate_limit("binance")
+
+        # Binance 24hr ticker API
+        url = f"{api_manager.apis['binance']['base_url']}/ticker/24hr"
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
 
         data = response.json()
 
-        # Convert to more usable format
-        prices = data.get("prices", [])
-        if not prices:
-            return None
-
-        df = pd.DataFrame(prices, columns=["timestamp", "price"])
-        df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
-        df["returns"] = df["price"].pct_change().dropna()
-
-        return {
-            "prices": df["price"].tolist(),
-            "returns": df["returns"].tolist(),
-            "dates": df["date"].dt.strftime("%Y-%m-%d").tolist(),
-            "volatility": df["returns"].std() * np.sqrt(365),  # Annualized
-            "mean_return": df["returns"].mean() * 365,  # Annualized
-        }
+        # 创建符号映射
+        for item in data:
+            symbol = item["symbol"]
+            if symbol.endswith("USDT"):
+                base_symbol = symbol[:-4]  # 移除USDT
+                if base_symbol in symbols:
+                    results[base_symbol] = {
+                        "id": base_symbol.lower(),
+                        "symbol": base_symbol.lower(),
+                        "current_price": float(item["lastPrice"]),
+                        "market_cap": None,  # Binance不提供市值
+                        "total_volume": float(item["volume"])
+                        * float(item["lastPrice"]),
+                        "price_change_percentage_24h": float(
+                            item["priceChangePercent"]
+                        ),
+                    }
 
     except Exception as e:
-        logger.error(f"Failed to fetch historical prices for {coin_id}: {e}")
-        return None
+        logger.error(f"Binance market data fetch failed: {e}")
+
+    return results
 
 
 @api_call_with_cache_and_rate_limit(cache_duration=300)
@@ -484,19 +567,14 @@ def assess_liquidity_risk(positions: List[Dict], market_data: Dict) -> Dict:
 # ========================================
 
 
+# 在 risk_analysis.py 中更新 analyze_portfolio_risk 函数
 @tool
 def analyze_portfolio_risk(user_id: str) -> Dict:
     """
-    Comprehensive portfolio risk analysis using real market data.
-
-    Args:
-        user_id (str): User identifier
-
-    Returns:
-        Dict: Comprehensive risk analysis
+    改进的投资组合风险分析，使用多API源和优化的数据获取
     """
     try:
-        # Get portfolio data
+        # 获取投资组合数据（保持原有逻辑）
         with get_db() as db:
             sources = (
                 db.query(PortfolioSourceModel)
@@ -511,7 +589,6 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
                 return {"error": "No active portfolio sources found"}
 
             source_ids = [s.source_id for s in sources]
-
             positions = (
                 db.query(PositionModel)
                 .filter(
@@ -523,253 +600,317 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
             if not positions:
                 return {"error": "No positions found"}
 
-        # Convert to analysis format
-        position_data = []
-        total_value = 0
+            # 转换为分析格式
+            position_data = []
+            total_value = 0
 
-        for pos in positions:
-            if pos.last_price and pos.quantity:
-                pos_value = float(pos.quantity * pos.last_price)
-                total_value += pos_value
-                position_data.append(
-                    {
-                        "symbol": pos.symbol,
-                        "quantity": float(pos.quantity),
-                        "price": float(pos.last_price),
-                        "total_value": pos_value,
-                        "chain": getattr(pos, "chain", "unknown"),
-                    }
+            for pos in positions:
+                if pos.last_price and pos.quantity:
+                    pos_value = float(pos.quantity * pos.last_price)
+                    total_value += pos_value
+                    position_data.append(
+                        {
+                            "symbol": pos.symbol,
+                            "quantity": float(pos.quantity),
+                            "price": float(pos.last_price),
+                            "total_value": pos_value,
+                            "chain": getattr(pos, "chain", "unknown"),
+                        }
+                    )
+
+            if total_value <= 0:
+                return {"error": "Portfolio has no value"}
+
+            # 按价值排序（最大的在前）
+            position_data.sort(key=lambda x: x["total_value"], reverse=True)
+
+            # 使用改进的批量数据获取
+            symbols = [pos["symbol"].upper() for pos in position_data[:15]]  # 限制前15个
+
+            # 批量获取历史数据
+            logger.info(f"Fetching historical data for {len(symbols)} symbols")
+            historical_data = fetch_multiple_historical_prices(symbols, days=90)
+
+            # 获取当前市场数据
+            logger.info("Fetching current market data")
+            market_data = fetch_current_market_data_improved(symbols)
+
+            # 计算风险指标（保持原有逻辑）
+            portfolio_volatility = calculate_portfolio_volatility(
+                position_data, historical_data
+            )
+            correlation_matrix, correlation_assets = calculate_correlation_matrix(
+                position_data, historical_data
+            )
+            liquidity_assessment = assess_liquidity_risk(position_data, market_data)
+
+            # 计算VaR指标
+            var_95 = calculate_var_monte_carlo(total_value, portfolio_volatility, 0.95)
+            var_99 = calculate_var_monte_carlo(total_value, portfolio_volatility, 0.99)
+            cvar_95 = var_95 * 1.3
+
+            # 集中度风险分析
+            max_position_value = max(pos["total_value"] for pos in position_data)
+            max_position_percentage = max_position_value / total_value * 100
+
+            # Herfindahl指数计算
+            weights = [pos["total_value"] / total_value for pos in position_data]
+            herfindahl_index = sum(w**2 for w in weights)
+            effective_positions = 1 / herfindahl_index if herfindahl_index > 0 else 1
+
+            # 资产类别多样化分析
+            category_exposure = {}
+            for pos in position_data:
+                category = classify_asset(pos["symbol"])
+                category_exposure[category] = (
+                    category_exposure.get(category, 0) + pos["total_value"]
                 )
 
-        if total_value <= 0:
-            return {"error": "Portfolio has no value"}
+            category_percentages = {
+                cat: (value / total_value * 100) for cat, value in category_exposure.items()
+            }
 
-        # Sort by value (largest first)
-        position_data.sort(key=lambda x: x["total_value"], reverse=True)
+            # 风险评分
+            concentration_score = min(100, herfindahl_index * 10000)
+            volatility_score = min(100, portfolio_volatility * 200)
+            liquidity_score = 100 - liquidity_assessment["overall_liquidity_score"]
 
-        # Get coin mapping and fetch market data
-        coin_mapping = get_coin_id_mapping()
-        symbols = [pos["symbol"].upper() for pos in position_data]
-        coin_ids = [
-            coin_mapping.get(symbol) for symbol in symbols if coin_mapping.get(symbol)
-        ]
-
-        # Fetch current market data
-        market_data = fetch_current_market_data(coin_ids) if coin_ids else {}
-
-        # Fetch historical data for volatility and correlation analysis
-        historical_data = {}
-        for symbol in symbols[:10]:  # Limit to top 10 positions for API efficiency
-            coin_id = coin_mapping.get(symbol)
-            if coin_id:
-                hist_data = fetch_historical_prices(coin_id, days=90)
-                if hist_data:
-                    historical_data[symbol] = hist_data
-
-        # Calculate risk metrics
-        portfolio_volatility = calculate_portfolio_volatility(
-            position_data, historical_data
-        )
-        correlation_matrix, correlation_assets = calculate_correlation_matrix(
-            position_data, historical_data
-        )
-        liquidity_assessment = assess_liquidity_risk(position_data, market_data)
-
-        # Calculate VaR metrics
-        var_95 = calculate_var_monte_carlo(total_value, portfolio_volatility, 0.95)
-        var_99 = calculate_var_monte_carlo(total_value, portfolio_volatility, 0.99)
-        cvar_95 = var_95 * 1.3  # Expected shortfall approximation
-
-        # Concentration risk analysis
-        max_position_value = max(pos["total_value"] for pos in position_data)
-        max_position_percentage = max_position_value / total_value * 100
-
-        # Calculate Herfindahl index
-        weights = [pos["total_value"] / total_value for pos in position_data]
-        herfindahl_index = sum(w**2 for w in weights)
-        effective_positions = 1 / herfindahl_index if herfindahl_index > 0 else 1
-
-        # Asset category diversification
-        category_exposure = {}
-        for pos in position_data:
-            category = classify_asset(pos["symbol"])
-            category_exposure[category] = (
-                category_exposure.get(category, 0) + pos["total_value"]
+            overall_risk_score = (
+                concentration_score * 0.3 + volatility_score * 0.4 + liquidity_score * 0.3
             )
 
-        category_percentages = {
-            cat: (value / total_value * 100) for cat, value in category_exposure.items()
-        }
-
-        # Risk scoring
-        concentration_score = min(100, herfindahl_index * 10000)
-        volatility_score = min(100, portfolio_volatility * 200)
-        liquidity_score = 100 - liquidity_assessment["overall_liquidity_score"]
-
-        overall_risk_score = (
-            concentration_score * 0.3 + volatility_score * 0.4 + liquidity_score * 0.3
-        )
-
-        # Risk rating
-        if overall_risk_score > RISK_CONFIG["high_risk_threshold"]:
-            risk_rating = "High"
-        elif overall_risk_score > RISK_CONFIG["medium_risk_threshold"]:
-            risk_rating = "Medium"
-        else:
-            risk_rating = "Low"
-
-        # Generate recommendations
-        recommendations = []
-
-        if max_position_percentage > RISK_CONFIG["max_position_risk_threshold"]:
-            recommendations.append(
-                f"Consider reducing exposure to {position_data[0]['symbol']} "
-                f"({max_position_percentage:.1f}% of portfolio)"
-            )
-
-        if portfolio_volatility > 0.5:  # >50% volatility
-            recommendations.append(
-                "Portfolio shows high volatility. Consider adding stable assets."
-            )
-
-        if liquidity_assessment["illiquid_percentage"] > 30:
-            recommendations.append(
-                f"High illiquid exposure ({liquidity_assessment['illiquid_percentage']:.1f}%). "
-                "Consider improving liquidity buffer."
-            )
-
-        if len([c for c in category_percentages.values() if c > 40]) > 0:
-            dominant_category = max(category_percentages.items(), key=lambda x: x[1])
-            recommendations.append(
-                f"Over-concentrated in {dominant_category[0]} ({dominant_category[1]:.1f}%). "
-                "Consider diversifying across asset categories."
-            )
-
-        if effective_positions < 5:
-            recommendations.append(
-                f"Portfolio has low effective diversification ({effective_positions:.1f} effective positions). "
-                "Consider adding more uncorrelated assets."
-            )
-
-        # Correlation insights
-        correlation_insights = []
-        if len(correlation_assets) > 1:
-            high_correlations = []
-            n_assets = len(correlation_assets)
-
-            for i in range(n_assets):
-                for j in range(i + 1, n_assets):
-                    corr_value = correlation_matrix[i, j]
-                    if abs(corr_value) > RISK_CONFIG["correlation_threshold"]:
-                        high_correlations.append(
-                            {
-                                "asset1": correlation_assets[i],
-                                "asset2": correlation_assets[j],
-                                "correlation": float(corr_value),
-                            }
-                        )
-
-            if high_correlations:
-                correlation_insights.append(
-                    f"Found {len(high_correlations)} highly correlated asset pairs. "
-                    "This reduces effective diversification."
-                )
+            # 风险等级
+            if overall_risk_score > RISK_CONFIG["high_risk_threshold"]:
+                risk_rating = "High"
+            elif overall_risk_score > RISK_CONFIG["medium_risk_threshold"]:
+                risk_rating = "Medium"
             else:
-                correlation_insights.append(
-                    "Good diversification with low asset correlations."
+                risk_rating = "Low"
+
+            # 生成建议
+            recommendations = generate_risk_recommendations(
+                position_data,
+                max_position_percentage,
+                portfolio_volatility,
+                liquidity_assessment,
+                category_percentages,
+                effective_positions,
+            )
+
+            # 相关性洞察
+            correlation_insights = generate_correlation_insights(
+                correlation_matrix, correlation_assets
+            )
+
+            # 数据质量报告
+            data_quality = {
+                "total_symbols_requested": len(symbols),
+                "historical_data_available": len(historical_data),
+                "market_data_available": len(market_data),
+                "data_coverage_percentage": round(
+                    (len(historical_data) / len(symbols)) * 100, 1
+                ),
+                "apis_used": list(
+                    set(["coingecko", "coincap", "binance", "cryptocompare"])
+                ),
+                "analysis_limitations": [],
+            }
+
+            # 添加分析限制说明
+            if len(historical_data) < len(symbols) * 0.8:
+                data_quality["analysis_limitations"].append(
+                    f"Limited historical data for {len(symbols) - len(historical_data)} assets"
                 )
 
-        return {
-            "risk_summary": {
-                "overall_risk_score": round(overall_risk_score, 1),
-                "risk_rating": risk_rating,
-                "portfolio_value": total_value,
-                "number_of_positions": len(position_data),
-                "effective_positions": round(effective_positions, 1),
-            },
-            "volatility_metrics": {
-                "annualized_volatility": round(portfolio_volatility * 100, 2),
-                "daily_volatility": round(portfolio_volatility / np.sqrt(365) * 100, 2),
-                "volatility_score": round(volatility_score, 1),
-            },
-            "value_at_risk": {
-                "var_95_1day": round(var_95, 2),
-                "var_95_1day_percentage": round((var_95 / total_value * 100), 2),
-                "var_99_1day": round(var_99, 2),
-                "var_99_1day_percentage": round((var_99 / total_value * 100), 2),
-                "cvar_95_1day": round(cvar_95, 2),
-                "cvar_95_1day_percentage": round((cvar_95 / total_value * 100), 2),
-            },
-            "concentration_risk": {
-                "herfindahl_index": round(herfindahl_index, 4),
-                "concentration_score": round(concentration_score, 1),
-                "top_position_weight": round(max_position_percentage, 1),
-                "top_position_asset": position_data[0]["symbol"],
-                "effective_number_of_positions": round(effective_positions, 1),
-            },
-            "liquidity_risk": liquidity_assessment,
-            "diversification_analysis": {
-                "category_exposure": {
-                    k: round(v, 1) for k, v in category_percentages.items()
+            return {
+                "risk_summary": {
+                    "overall_risk_score": round(overall_risk_score, 1),
+                    "risk_rating": risk_rating,
+                    "portfolio_value": total_value,
+                    "number_of_positions": len(position_data),
+                    "effective_positions": round(effective_positions, 1),
                 },
-                "diversification_score": round(100 - concentration_score, 1),
-                "correlation_insights": correlation_insights,
-            },
-            "recommendations": recommendations,
-            "risk_factors": [
-                {
-                    "factor": "Market Risk",
-                    "impact": (
-                        "High"
-                        if portfolio_volatility > 0.4
-                        else "Medium" if portfolio_volatility > 0.2 else "Low"
-                    ),
-                    "description": f"Portfolio volatility: {portfolio_volatility*100:.1f}%",
+                "volatility_metrics": {
+                    "annualized_volatility": round(portfolio_volatility * 100, 2),
+                    "daily_volatility": round(portfolio_volatility / np.sqrt(365) * 100, 2),
+                    "volatility_score": round(volatility_score, 1),
                 },
-                {
-                    "factor": "Concentration Risk",
-                    "impact": (
-                        "High"
-                        if concentration_score > 50
-                        else "Medium" if concentration_score > 25 else "Low"
-                    ),
-                    "description": f"Portfolio concentration score: {concentration_score:.1f}",
+                "value_at_risk": {
+                    "var_95_1day": round(var_95, 2),
+                    "var_95_1day_percentage": round((var_95 / total_value * 100), 2),
+                    "var_99_1day": round(var_99, 2),
+                    "var_99_1day_percentage": round((var_99 / total_value * 100), 2),
+                    "cvar_95_1day": round(cvar_95, 2),
+                    "cvar_95_1day_percentage": round((cvar_95 / total_value * 100), 2),
                 },
-                {
-                    "factor": "Liquidity Risk",
-                    "impact": (
-                        "High"
-                        if liquidity_assessment["overall_liquidity_score"] < 50
-                        else (
-                            "Medium"
-                            if liquidity_assessment["overall_liquidity_score"] < 75
-                            else "Low"
-                        )
-                    ),
-                    "description": f"Liquidity score: {liquidity_assessment['overall_liquidity_score']:.1f}",
+                "concentration_risk": {
+                    "herfindahl_index": round(herfindahl_index, 4),
+                    "concentration_score": round(concentration_score, 1),
+                    "top_position_weight": round(max_position_percentage, 1),
+                    "top_position_asset": position_data[0]["symbol"],
+                    "effective_number_of_positions": round(effective_positions, 1),
                 },
-                {
-                    "factor": "Category Concentration",
-                    "impact": (
-                        "High"
-                        if max(category_percentages.values()) > 60
-                        else (
-                            "Medium"
-                            if max(category_percentages.values()) > 40
-                            else "Low"
-                        )
-                    ),
-                    "description": f"Largest category exposure: {max(category_percentages.values()):.1f}%",
+                "liquidity_risk": liquidity_assessment,
+                "diversification_analysis": {
+                    "category_exposure": {
+                        k: round(v, 1) for k, v in category_percentages.items()
+                    },
+                    "diversification_score": round(100 - concentration_score, 1),
+                    "correlation_insights": correlation_insights,
                 },
-            ],
-            "analysis_timestamp": datetime.utcnow().isoformat(),
-        }
+                "recommendations": recommendations,
+                "risk_factors": generate_risk_factors(
+                    portfolio_volatility,
+                    concentration_score,
+                    liquidity_assessment,
+                    category_percentages,
+                ),
+                "data_quality": data_quality,
+                "analysis_timestamp": datetime.utcnow().isoformat(),
+                "methodology": "Multi-API enhanced risk analysis with real-time market data",
+            }
 
     except Exception as e:
         logger.error(
             f"Exception in analyze_portfolio_risk: {e}\n{traceback.format_exc()}"
         )
         return {"error": f"Failed to analyze portfolio risk: {str(e)}"}
+
+
+def generate_risk_recommendations(
+    position_data,
+    max_position_percentage,
+    portfolio_volatility,
+    liquidity_assessment,
+    category_percentages,
+    effective_positions,
+):
+    """生成风险建议"""
+    recommendations = []
+
+    if max_position_percentage > RISK_CONFIG["max_position_risk_threshold"]:
+        recommendations.append(
+            f"🔴 Consider reducing exposure to {position_data[0]['symbol']} "
+            f"({max_position_percentage:.1f}% of portfolio)"
+        )
+
+    if portfolio_volatility > 0.5:
+        recommendations.append(
+            "🟡 Portfolio shows high volatility. Consider adding stable assets."
+        )
+
+    if liquidity_assessment["illiquid_percentage"] > 30:
+        recommendations.append(
+            f"🔴 High illiquid exposure ({liquidity_assessment['illiquid_percentage']:.1f}%). "
+            "Consider improving liquidity buffer."
+        )
+
+    if len([c for c in category_percentages.values() if c > 40]) > 0:
+        dominant_category = max(category_percentages.items(), key=lambda x: x[1])
+        recommendations.append(
+            f"🟡 Over-concentrated in {dominant_category[0]} ({dominant_category[1]:.1f}%). "
+            "Consider diversifying across asset categories."
+        )
+
+    if effective_positions < 5:
+        recommendations.append(
+            f"🔴 Low effective diversification ({effective_positions:.1f} effective positions). "
+            "Consider adding more uncorrelated assets."
+        )
+
+    # 添加积极建议
+    if not recommendations:
+        recommendations.append("✅ Portfolio risk profile appears well-balanced")
+
+    return recommendations
+
+
+def generate_correlation_insights(correlation_matrix, correlation_assets):
+    """生成相关性洞察"""
+    correlation_insights = []
+
+    if len(correlation_assets) > 1:
+        high_correlations = []
+        n_assets = len(correlation_assets)
+
+        for i in range(n_assets):
+            for j in range(i + 1, n_assets):
+                corr_value = correlation_matrix[i, j]
+                if abs(corr_value) > RISK_CONFIG["correlation_threshold"]:
+                    high_correlations.append(
+                        {
+                            "asset1": correlation_assets[i],
+                            "asset2": correlation_assets[j],
+                            "correlation": float(corr_value),
+                        }
+                    )
+
+        if high_correlations:
+            correlation_insights.append(
+                f"⚠️ Found {len(high_correlations)} highly correlated asset pairs. "
+                "This reduces effective diversification."
+            )
+        else:
+            correlation_insights.append(
+                "✅ Good diversification with low asset correlations."
+            )
+
+    return correlation_insights
+
+
+def generate_risk_factors(
+    portfolio_volatility,
+    concentration_score,
+    liquidity_assessment,
+    category_percentages,
+):
+    """生成风险因子分析"""
+    return [
+        {
+            "factor": "Market Risk",
+            "impact": (
+                "High"
+                if portfolio_volatility > 0.4
+                else "Medium" if portfolio_volatility > 0.2 else "Low"
+            ),
+            "description": f"Portfolio volatility: {portfolio_volatility*100:.1f}%",
+            "mitigation": "Consider adding stable assets or hedging positions",
+        },
+        {
+            "factor": "Concentration Risk",
+            "impact": (
+                "High"
+                if concentration_score > 50
+                else "Medium" if concentration_score > 25 else "Low"
+            ),
+            "description": f"Portfolio concentration score: {concentration_score:.1f}",
+            "mitigation": "Diversify holdings across more assets",
+        },
+        {
+            "factor": "Liquidity Risk",
+            "impact": (
+                "High"
+                if liquidity_assessment["overall_liquidity_score"] < 50
+                else (
+                    "Medium"
+                    if liquidity_assessment["overall_liquidity_score"] < 75
+                    else "Low"
+                )
+            ),
+            "description": f"Liquidity score: {liquidity_assessment['overall_liquidity_score']:.1f}",
+            "mitigation": "Maintain liquid assets for emergency exits",
+        },
+        {
+            "factor": "Category Concentration",
+            "impact": (
+                "High"
+                if max(category_percentages.values()) > 60
+                else "Medium" if max(category_percentages.values()) > 40 else "Low"
+            ),
+            "description": f"Largest category exposure: {max(category_percentages.values()):.1f}%",
+            "mitigation": "Diversify across different asset categories",
+        },
+    ]
 
 
 @tool

@@ -771,7 +771,7 @@ def compare_to_benchmarks(
             return {"error": "User ID is required", "error_code": "INVALID_INPUT"}
 
         # Get portfolio metrics for the last year
-        from tools.portfolio_overview import get_portfolio_metrics
+        from tools.portfolio_analysis.portfolio_overview import get_portfolio_metrics
 
         portfolio_metrics = get_portfolio_metrics.invoke(
             {"user_id": user_id, "period_days": 365}
