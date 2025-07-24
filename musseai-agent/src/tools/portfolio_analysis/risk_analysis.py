@@ -9,6 +9,7 @@ import os
 from langchain.agents import tool
 from mysql.db import get_db
 from mysql.model import (
+    AssetModel,
     PortfolioSourceModel,
     PositionModel,
     TransactionModel,
@@ -62,65 +63,62 @@ COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY")  # Optional for higher rate l
 
 
 @api_call_with_cache_and_rate_limit(
-    cache_duration=600,  # 增加到10分钟缓存
-    rate_limit_interval=0.5,  # 减少等待时间
+    cache_duration=600,  # 10 minutes cache
+    rate_limit_interval=0.5,
     max_retries=3,
 )
-def fetch_historical_prices(symbol: str, days: int = 90) -> Optional[Dict]:
+def fetch_historical_prices(symbols, days: int = 90) -> Dict:
     """
-    使用多API源获取历史价格数据，自动故障转移
+    Fetch historical price data for multiple symbols with automatic fallback
+
+    Args:
+        symbols: Single symbol (str) or list of symbols (List[str])
+        days: Number of days of historical data to fetch
+
+    Returns:
+        Dict: Historical data for all symbols
     """
     try:
-        # 使用多API管理器
-        result = api_manager.fetch_with_fallback(symbol, days)
-
-        if result:
-            logger.info(
-                f"Successfully fetched {len(result.get('prices', []))} days of data for {symbol}"
-            )
-            return result
+        # Handle both single symbol and list of symbols
+        if isinstance(symbols, str):
+            symbol_list = [symbols]
+            single_symbol = True
         else:
-            logger.warning(f"No data available for {symbol}")
+            symbol_list = symbols
+            single_symbol = False
+
+        results = {}
+
+        # Fetch data for each symbol
+        for symbol in symbol_list:
+            try:
+                # Use multi-API manager for each symbol
+                result = api_manager.fetch_with_fallback(symbol, days)
+
+                if result:
+                    results[symbol.upper()] = result
+                    logger.info(
+                        f"Successfully fetched {len(result.get('prices', []))} days of data for {symbol}"
+                    )
+                else:
+                    logger.warning(f"No data available for {symbol}")
+
+            except Exception as e:
+                logger.error(f"Failed to fetch data for {symbol}: {e}")
+                continue
+
+        # Return single result if single symbol was requested
+        if single_symbol and symbol_list[0].upper() in results:
+            return results[symbol_list[0].upper()]
+        elif single_symbol:
             return None
 
+        return results
+
     except Exception as e:
-        logger.error(f"Failed to fetch historical prices for {symbol}: {e}")
-        return None
-
-
-@api_call_with_cache_and_rate_limit(
-    cache_duration=300,
-    rate_limit_interval=0.2,
-    max_retries=2,
-)
-def fetch_multiple_historical_prices(
-    symbols: List[str], days: int = 90
-) -> Dict[str, Dict]:
-    """
-    批量获取多个资产的历史价格数据
-    """
-    results = {}
-    failed_symbols = []
-
-    for symbol in symbols:
-        try:
-            result = api_manager.fetch_with_fallback(symbol, days)
-            if result:
-                results[symbol] = result
-            else:
-                failed_symbols.append(symbol)
-
-            # 添加小延迟避免API限制
-            time.sleep(0.1)
-
-        except Exception as e:
-            logger.warning(f"Failed to fetch data for {symbol}: {e}")
-            failed_symbols.append(symbol)
-
-    if failed_symbols:
-        logger.warning(f"Failed to fetch data for symbols: {failed_symbols}")
-
-    return results
+        logger.error(f"Failed to fetch historical prices: {e}")
+        traceback.print_exc()
+        return {} if not isinstance(symbols, str) else None
 
 
 # 改进的市场数据获取函数
@@ -135,6 +133,7 @@ def fetch_current_market_data_improved(symbols: List[str]) -> Dict:
         coingecko_data = fetch_current_market_data(symbols)
         results.update(coingecko_data)
     except Exception as e:
+        traceback.format_exc()
         logger.warning(f"CoinGecko market data failed: {e}")
 
     # 对于失败的符号，尝试其他API
@@ -146,6 +145,7 @@ def fetch_current_market_data_improved(symbols: List[str]) -> Dict:
             binance_data = fetch_binance_market_data(missing_symbols)
             results.update(binance_data)
         except Exception as e:
+            traceback.format_exc()
             logger.warning(f"Binance market data failed: {e}")
 
     return results
@@ -186,6 +186,7 @@ def fetch_binance_market_data(symbols: List[str]) -> Dict:
                     }
 
     except Exception as e:
+        traceback.format_exc()
         logger.error(f"Binance market data fetch failed: {e}")
 
     return results
@@ -235,6 +236,7 @@ def fetch_current_market_data(coin_ids: List[str]) -> Dict:
         return all_data
 
     except Exception as e:
+        traceback.format_exc()
         logger.error(f"Failed to fetch market data: {e}")
         return {}
 
@@ -268,6 +270,7 @@ def get_coin_id_mapping() -> Dict[str, str]:
         return mapping
 
     except Exception as e:
+        traceback.format_exc()
         logger.error(f"Failed to fetch coin mapping: {e}")
         return {}
 
@@ -355,6 +358,7 @@ def calculate_portfolio_volatility(
             return 0.25
 
     except Exception as e:
+        traceback.format_exc()
         logger.error(f"Error calculating portfolio volatility: {e}")
         return 0.25
 
@@ -406,6 +410,7 @@ def calculate_correlation_matrix(
         return correlation_matrix, valid_assets
 
     except Exception as e:
+        traceback.format_exc()
         logger.error(f"Error calculating correlation matrix: {e}")
         # Return default correlation matrix
         n = min(len(positions), 10)
@@ -452,6 +457,7 @@ def calculate_var_monte_carlo(
 
     except Exception as e:
         logger.error(f"Error calculating VaR: {e}")
+        traceback.format_exc()
         # Fallback to parametric VaR
         from scipy import stats
 
@@ -554,6 +560,7 @@ def assess_liquidity_risk(positions: List[Dict], market_data: Dict) -> Dict:
 
     except Exception as e:
         logger.error(f"Error assessing liquidity risk: {e}")
+        traceback.format_exc()
         return {
             "overall_liquidity_score": 70,
             "illiquid_percentage": 30,
@@ -591,6 +598,7 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
             source_ids = [s.source_id for s in sources]
             positions = (
                 db.query(PositionModel)
+                .join(AssetModel)
                 .filter(
                     PositionModel.source_id.in_(source_ids), PositionModel.quantity > 0
                 )
@@ -610,11 +618,11 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
                     total_value += pos_value
                     position_data.append(
                         {
-                            "symbol": pos.symbol,
+                            "symbol": pos.asset.symbol,
                             "quantity": float(pos.quantity),
                             "price": float(pos.last_price),
                             "total_value": pos_value,
-                            "chain": getattr(pos, "chain", "unknown"),
+                            "chain": getattr(pos.asset, "chain", "unknown"),
                         }
                     )
 
@@ -625,11 +633,13 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
             position_data.sort(key=lambda x: x["total_value"], reverse=True)
 
             # 使用改进的批量数据获取
-            symbols = [pos["symbol"].upper() for pos in position_data[:15]]  # 限制前15个
+            symbols = [
+                pos["symbol"].upper() for pos in position_data[:15]
+            ]  # 限制前15个
 
             # 批量获取历史数据
             logger.info(f"Fetching historical data for {len(symbols)} symbols")
-            historical_data = fetch_multiple_historical_prices(symbols, days=90)
+            historical_data = fetch_historical_prices(symbols, days=90)
 
             # 获取当前市场数据
             logger.info("Fetching current market data")
@@ -667,7 +677,8 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
                 )
 
             category_percentages = {
-                cat: (value / total_value * 100) for cat, value in category_exposure.items()
+                cat: (value / total_value * 100)
+                for cat, value in category_exposure.items()
             }
 
             # 风险评分
@@ -676,7 +687,9 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
             liquidity_score = 100 - liquidity_assessment["overall_liquidity_score"]
 
             overall_risk_score = (
-                concentration_score * 0.3 + volatility_score * 0.4 + liquidity_score * 0.3
+                concentration_score * 0.3
+                + volatility_score * 0.4
+                + liquidity_score * 0.3
             )
 
             # 风险等级
@@ -732,7 +745,9 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
                 },
                 "volatility_metrics": {
                     "annualized_volatility": round(portfolio_volatility * 100, 2),
-                    "daily_volatility": round(portfolio_volatility / np.sqrt(365) * 100, 2),
+                    "daily_volatility": round(
+                        portfolio_volatility / np.sqrt(365) * 100, 2
+                    ),
                     "volatility_score": round(volatility_score, 1),
                 },
                 "value_at_risk": {
@@ -774,6 +789,7 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
         logger.error(
             f"Exception in analyze_portfolio_risk: {e}\n{traceback.format_exc()}"
         )
+        traceback.format_exc()
         return {"error": f"Failed to analyze portfolio risk: {str(e)}"}
 
 
@@ -1210,6 +1226,7 @@ def portfolio_stress_test(user_id: str, scenarios: List[Dict] = None) -> Dict:
         logger.error(
             f"Exception in portfolio_stress_test: {e}\n{traceback.format_exc()}"
         )
+        traceback.format_exc()
         return {"error": f"Failed to run stress test: {str(e)}"}
 
 

@@ -1958,76 +1958,6 @@ def import_transactions_csv(
         return {"success": False, "message": f"Failed to import transactions: {str(e)}"}
 
 
-@tool
-def export_portfolio_report(
-    user_id: str,
-    format: str = "summary",
-    include_transactions: bool = False,
-    include_performance: bool = False,
-) -> Dict:
-    """
-    Export portfolio report in various formats.
-
-    Args:
-        user_id (str): User identifier
-        format (str): Report format ('summary', 'detailed', 'tax')
-        include_transactions (bool): Include transaction history
-        include_performance (bool): Include performance metrics
-
-    Returns:
-        Dict: Portfolio report data
-    """
-    try:
-        report = {
-            "user_id": user_id,
-            "generated_at": datetime.utcnow().isoformat(),
-            "format": format,
-        }
-
-        # Get portfolio summary
-        summary = get_user_portfolio_summary.invoke({"user_id": user_id})
-        if not isinstance(summary, dict) or "error" in summary:
-            return {"error": "Failed to generate portfolio summary"}
-
-        report["summary"] = summary
-
-        # Add performance metrics if requested
-        if include_performance:
-            # Calculate YTD performance
-            year_start = datetime(datetime.utcnow().year, 1, 1).isoformat()
-            performance = calculate_portfolio_performance.invoke(
-                {"user_id": user_id, "start_date": year_start}
-            )
-
-            if isinstance(performance, dict) and "error" not in performance:
-                report["performance"] = performance
-
-        # Add transactions if requested
-        if include_transactions:
-            transactions = get_transactions.invoke(
-                {"user_id": user_id, "limit": 1000}  # Reasonable limit for export
-            )
-
-            if isinstance(transactions, dict) and "error" not in transactions:
-                report["transactions"] = transactions["transactions"]
-
-        # Add format-specific data
-        if format == "tax":
-            # Add tax-specific calculations
-            report["tax_summary"] = {
-                "realized_gains": 0,  # Would need proper calculation
-                "realized_losses": 0,
-                "net_gain_loss": 0,
-                "note": "Consult a tax professional for accurate tax reporting",
-            }
-
-        return report
-
-    except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        return {"error": f"Failed to export portfolio report: {str(e)}"}
-
-
 # ========================================
 # Helper Tools
 # ========================================
@@ -2186,7 +2116,6 @@ tools = [
     # Integration and Sync
     sync_wallet_balances,
     import_transactions_csv,
-    export_portfolio_report,
     # Helper Tools
     validate_portfolio_data,
 ] + tools_analysis

@@ -79,6 +79,7 @@ def get_fear_greed_index():
         logger.warning(
             f"Failed to get Fear & Greed Index: {e}\n{traceback.format_exc()}"
         )
+        traceback.format_exc()
         return None, None, None, None
 
 
@@ -112,6 +113,7 @@ def get_market_metrics():
         }
     except Exception as e:
         logger.warning(f"Failed to get market metrics: {e}")
+        traceback.format_exc()
         return None
 
 
@@ -198,6 +200,7 @@ def analyze_btc_trend(days=30):
 
     except Exception as e:
         logger.warning(f"Failed to analyze BTC trend: {e}")
+        traceback.format_exc()
         return None
 
 
@@ -402,6 +405,7 @@ def calculate_actual_holding_period(positions):
 
     except Exception as e:
         logger.warning(f"Failed to calculate holding period: {e}")
+        traceback.format_exc()
         return 6
 
 
@@ -599,6 +603,7 @@ def estimate_market_condition(positions):
         logger.warning(
             f"Failed to get market condition from API, falling back to portfolio analysis: {e}"
         )
+        traceback.format_exc()
         # Fallback to original logic if API fails
         if not positions:
             return "sideways"
@@ -1482,6 +1487,7 @@ def calculate_portfolio_daily_returns(
         
     except Exception as e:
         logger.error(f"Error calculating portfolio daily returns: {e}")
+        traceback.format_exc()
         return []
 
 def calculate_returns_from_price_snapshots(positions: List[PositionModel], period_days: int) -> List[float]:
@@ -1567,6 +1573,7 @@ def calculate_returns_from_price_snapshots(positions: List[PositionModel], perio
             
     except Exception as e:
         logger.error(f"Error calculating returns from price snapshots: {e}")
+        traceback.format_exc()
         return []
 
 def calculate_returns_from_transactions(positions: List[PositionModel], period_days: int) -> List[float]:
@@ -1656,6 +1663,7 @@ def calculate_returns_from_transactions(positions: List[PositionModel], period_d
             
     except Exception as e:
         logger.warning(f"Failed to calculate returns from transactions: {e}")
+        traceback.format_exc()
         return []
 
 def calculate_returns_from_positions(positions: List[PositionModel], period_days: int) -> List[float]:
@@ -1734,6 +1742,7 @@ def calculate_returns_from_positions(positions: List[PositionModel], period_days
         
     except Exception as e:
         logger.warning(f"Failed to calculate returns from positions: {e}")
+        traceback.format_exc()
         return []
 
 def get_asset_volatility_factor(symbol: str) -> float:
@@ -1821,6 +1830,7 @@ def calculate_returns_from_market_data(positions: List[PositionModel], period_da
         
     except Exception as e:
         logger.warning(f"Failed to calculate returns from market data: {e}")
+        traceback.format_exc()
         return []
 
 def estimate_portfolio_beta(positions: List[PositionModel], market_condition: str) -> float:
@@ -1900,6 +1910,7 @@ def estimate_portfolio_beta(positions: List[PositionModel], market_condition: st
     
     except Exception as e:
         logger.warning(f"Error calculating portfolio beta: {e}")
+        traceback.format_exc()
         return 1.0
     
     return max(0.1, min(3.0, weighted_beta))  # Clamp between 0.1 and 3.0
@@ -1929,6 +1940,7 @@ def get_asset_symbol(db, asset_id: int) -> str:
             
     except Exception as e:
         logger.error(f"Error querying asset symbol for asset_id {asset_id}: {e}")
+        traceback.format_exc()
         return 'UNKNOWN'
 
 def get_asset_info(db, asset_id: int) -> dict:
@@ -1968,6 +1980,7 @@ def get_asset_info(db, asset_id: int) -> dict:
             
     except Exception as e:
         logger.error(f"Error querying asset info for asset_id {asset_id}: {e}")
+        traceback.format_exc()
         return {
             'asset_id': asset_id,
             'symbol': 'UNKNOWN',
@@ -2055,6 +2068,7 @@ def calculate_returns_from_transactions(positions: List[PositionModel], period_d
             
     except Exception as e:
         logger.warning(f"Failed to calculate returns from transactions: {e}")
+        traceback.format_exc()
         return []
 
 def calculate_returns_from_positions(positions: List[PositionModel], period_days: int) -> List[float]:
@@ -2099,6 +2113,7 @@ def calculate_returns_from_positions(positions: List[PositionModel], period_days
         
     except Exception as e:
         logger.warning(f"Failed to calculate returns from positions: {e}")
+        traceback.format_exc()
         return []
 
 def calculate_returns_from_market_data(positions: List[PositionModel], period_days: int) -> List[float]:
@@ -2139,6 +2154,7 @@ def calculate_returns_from_market_data(positions: List[PositionModel], period_da
         
     except Exception as e:
         logger.warning(f"Failed to calculate returns from market data: {e}")
+        traceback.format_exc()
         return []
 
 def estimate_portfolio_beta(positions: List[PositionModel], market_condition: str) -> float:
@@ -2226,6 +2242,7 @@ def estimate_portfolio_beta(positions: List[PositionModel], market_condition: st
     
     except Exception as e:
         logger.warning(f"Error calculating portfolio beta: {e}")
+        traceback.format_exc()
         return 1.0
     
     return max(0.1, min(3.0, weighted_beta))  # Clamp between 0.1 and 3.0
@@ -2255,6 +2272,7 @@ def get_asset_symbol(db, asset_id: int) -> str:
             
     except Exception as e:
         logger.error(f"Error querying asset symbol for asset_id {asset_id}: {e}")
+        traceback.format_exc()
         return 'UNKNOWN'
 
 def get_asset_info(db, asset_id: int) -> dict:
@@ -2294,6 +2312,7 @@ def get_asset_info(db, asset_id: int) -> dict:
             
     except Exception as e:
         logger.error(f"Error querying asset info for asset_id {asset_id}: {e}")
+        traceback.format_exc()
         return {
             'asset_id': asset_id,
             'symbol': 'UNKNOWN',
@@ -2349,6 +2368,7 @@ def calculate_returns_with_external_api(positions: List[PositionModel], period_d
         
     except Exception as e:
         logger.warning(f"Error calculating returns with external API: {e}")
+        traceback.format_exc()
         return []
 
 

@@ -13,6 +13,7 @@ import json
 from langchain.agents import tool
 from mysql.db import get_db
 from mysql.model import (
+    AssetModel,
     PortfolioSourceModel,
     PositionModel,
     TransactionModel,
@@ -22,184 +23,13 @@ from loggers import logger
 from utils.api_decorators import api_call_with_cache_and_rate_limit, cache_result
 import traceback
 
-# ========================================
-# Configuration and Constants
-# ========================================
+from utils.api_manager import (
+    api_manager,
+    get_crypto_historical_data,
+    get_benchmark_price_data_global,
+)
 
-# API Endpoints and Keys
-COINGECKO_API_BASE = "https://api.coingecko.com/api/v3"
-YAHOO_FINANCE_API_BASE = "https://query1.finance.yahoo.com/v8/finance/chart"
-TWELVE_DATA_API_BASE = "https://api.twelvedata.com"
-
-# Benchmark mapping for different asset types
-BENCHMARK_MAPPING = {
-    "BTC": "bitcoin",
-    "ETH": "ethereum",
-    "SP500": "^GSPC",
-    "NASDAQ": "^IXIC",
-    "GOLD": "GC=F",
-    "USD": "DX-Y.NYB",
-}
-
-# Risk-free rate sources (using 10-year Treasury as proxy)
-RISK_FREE_RATE_SYMBOL = "^TNX"
-
-# ========================================
-# Data Fetching Functions
-# ========================================
-
-
-@api_call_with_cache_and_rate_limit(cache_duration=600, rate_limit_interval=1.5)
-def fetch_coingecko_price_data(
-    coin_id: str, vs_currency: str = "usd", days: int = 365
-) -> Dict:
-    """
-    Fetch historical price data from CoinGecko API
-
-    Args:
-        coin_id: CoinGecko coin identifier
-        vs_currency: Base currency for prices
-        days: Number of days of historical data
-
-    Returns:
-        Dict containing price history data
-    """
-    try:
-        url = f"{COINGECKO_API_BASE}/coins/{coin_id}/market_chart"
-        params = {
-            "vs_currency": vs_currency,
-            "days": days,
-            "interval": "daily" if days > 90 else "hourly",
-        }
-
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-
-        data = response.json()
-
-        # Convert to more usable format
-        prices = []
-        for timestamp, price in data.get("prices", []):
-            prices.append(
-                {
-                    "timestamp": timestamp,
-                    "date": datetime.fromtimestamp(timestamp / 1000),
-                    "price": price,
-                }
-            )
-
-        return {
-            "success": True,
-            "coin_id": coin_id,
-            "prices": prices,
-            "market_caps": data.get("market_caps", []),
-            "total_volumes": data.get("total_volumes", []),
-        }
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"CoinGecko API request failed for {coin_id}: {e}")
-        return {"success": False, "error": str(e)}
-    except Exception as e:
-        logger.error(f"Unexpected error fetching CoinGecko data: {e}")
-        return {"success": False, "error": str(e)}
-
-
-@api_call_with_cache_and_rate_limit(cache_duration=900, rate_limit_interval=2.0)
-def fetch_yahoo_finance_data(symbol: str, period: str = "1y") -> Dict:
-    """
-    Fetch stock/index data from Yahoo Finance
-
-    Args:
-        symbol: Yahoo Finance symbol
-        period: Time period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
-
-    Returns:
-        Dict containing price history
-    """
-    try:
-        url = f"{YAHOO_FINANCE_API_BASE}/{symbol}"
-        params = {
-            "period1": int((datetime.now() - timedelta(days=365)).timestamp()),
-            "period2": int(datetime.now().timestamp()),
-            "interval": "1d",
-            "includePrePost": "false",
-        }
-
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-
-        data = response.json()
-        chart_data = data["chart"]["result"][0]
-
-        timestamps = chart_data["timestamp"]
-        indicators = chart_data["indicators"]["quote"][0]
-
-        prices = []
-        for i, timestamp in enumerate(timestamps):
-            if indicators["close"][i] is not None:
-                prices.append(
-                    {
-                        "timestamp": timestamp * 1000,  # Convert to milliseconds
-                        "date": datetime.fromtimestamp(timestamp),
-                        "price": indicators["close"][i],
-                        "open": indicators["open"][i],
-                        "high": indicators["high"][i],
-                        "low": indicators["low"][i],
-                        "volume": (
-                            indicators["volume"][i] if indicators["volume"][i] else 0
-                        ),
-                    }
-                )
-
-        return {"success": True, "symbol": symbol, "prices": prices}
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Yahoo Finance API request failed for {symbol}: {e}")
-        return {"success": False, "error": str(e)}
-    except Exception as e:
-        logger.error(f"Unexpected error fetching Yahoo Finance data: {e}")
-        return {"success": False, "error": str(e)}
-
-
-@cache_result(duration=3600)
-def get_risk_free_rate() -> float:
-    """
-    Get current risk-free rate from 10-year Treasury yield
-
-    Returns:
-        Risk-free rate as decimal (e.g., 0.045 for 4.5%)
-    """
-    try:
-        data = fetch_yahoo_finance_data(RISK_FREE_RATE_SYMBOL, "5d")
-        if data["success"] and data["prices"]:
-            latest_yield = data["prices"][-1]["price"]
-            return latest_yield / 100  # Convert percentage to decimal
-        return 0.045  # Default fallback
-    except Exception as e:
-        logger.error(f"Failed to fetch risk-free rate: {e}")
-        return 0.045
-
-
-def get_benchmark_price_data(benchmark: str, days: int = 365) -> Dict:
-    """
-    Get price data for benchmark asset
-
-    Args:
-        benchmark: Benchmark symbol
-        days: Number of days of data
-
-    Returns:
-        Price data dictionary
-    """
-    if benchmark in ["BTC", "ETH"]:
-        coin_id = BENCHMARK_MAPPING.get(benchmark)
-        if coin_id:
-            return fetch_coingecko_price_data(coin_id, days=days)
-    else:
-        symbol = BENCHMARK_MAPPING.get(benchmark, benchmark)
-        return fetch_yahoo_finance_data(symbol)
-
-    return {"success": False, "error": f"Unknown benchmark: {benchmark}"}
+get_benchmark_price_data = get_benchmark_price_data_global
 
 
 # ========================================
@@ -220,27 +50,31 @@ def calculate_portfolio_value_at_date(user_id: str, target_date: datetime) -> fl
     """
     try:
         with get_db() as db:
-            # Get positions at the target date
-            positions = (
-                db.query(PositionModel)
+            # Get positions at the target date with asset information
+            positions_with_assets = (
+                db.query(PositionModel, AssetModel)
+                .join(
+                    PortfolioSourceModel,
+                    PositionModel.source_id == PortfolioSourceModel.source_id,
+                )
+                .join(AssetModel, PositionModel.asset_id == AssetModel.asset_id)
                 .filter(
-                    PositionModel.user_id == user_id,
-                    PositionModel.created_at <= target_date,
+                    PortfolioSourceModel.user_id == user_id,
+                    PortfolioSourceModel.is_active == True,
+                    PositionModel.updated_at <= target_date,
                     PositionModel.quantity > 0,
                 )
                 .all()
             )
 
-            if not positions:
+            if not positions_with_assets:
                 return 0.0
 
             total_value = 0.0
 
-            for position in positions:
+            for position, asset in positions_with_assets:
                 # Get historical price for this asset at target date
-                asset_price = get_asset_price_at_date(
-                    position.asset_symbol, target_date
-                )
+                asset_price = get_asset_price_at_date(asset.symbol, target_date)
                 if asset_price > 0:
                     total_value += float(position.quantity) * asset_price
 
@@ -248,12 +82,13 @@ def calculate_portfolio_value_at_date(user_id: str, target_date: datetime) -> fl
 
     except Exception as e:
         logger.error(f"Error calculating portfolio value at date: {e}")
+        traceback.print_exc()
         return 0.0
 
 
 def get_asset_price_at_date(symbol: str, target_date: datetime) -> float:
     """
-    Get asset price at specific date
+    Get asset price at specific date using unified API manager
 
     Args:
         symbol: Asset symbol
@@ -262,37 +97,7 @@ def get_asset_price_at_date(symbol: str, target_date: datetime) -> float:
     Returns:
         Price at the date
     """
-    try:
-        # Determine if it's crypto or traditional asset
-        crypto_symbols = ["BTC", "ETH", "ADA", "DOT", "LINK", "UNI", "AAVE", "SOL"]
-
-        if symbol.upper() in crypto_symbols:
-            coin_id = BENCHMARK_MAPPING.get(symbol.upper(), symbol.lower())
-            data = fetch_coingecko_price_data(coin_id, days=30)
-        else:
-            data = fetch_yahoo_finance_data(symbol, period="1mo")
-
-        if not data["success"]:
-            return 0.0
-
-        # Find price closest to target date
-        target_timestamp = target_date.timestamp()
-        closest_price = 0.0
-        min_diff = float("inf")
-
-        for price_data in data["prices"]:
-            price_timestamp = price_data["timestamp"] / 1000  # Convert to seconds
-            diff = abs(price_timestamp - target_timestamp)
-
-            if diff < min_diff:
-                min_diff = diff
-                closest_price = price_data["price"]
-
-        return closest_price
-
-    except Exception as e:
-        logger.error(f"Error getting asset price for {symbol} at {target_date}: {e}")
-        return 0.0
+    return api_manager.get_asset_price_at_date(symbol, target_date)
 
 
 def get_net_deposits_in_period(
@@ -335,6 +140,7 @@ def get_net_deposits_in_period(
 
     except Exception as e:
         logger.error(f"Error calculating net deposits: {e}")
+        traceback.format_exc()
         return 0.0
 
 
@@ -437,6 +243,7 @@ def calculate_risk_metrics(
 
     except Exception as e:
         logger.error(f"Error calculating risk metrics: {e}")
+        traceback.format_exc()
         return {
             "volatility": 0,
             "beta": 0,
@@ -521,12 +328,134 @@ def calculate_performance_attribution(
 
     except Exception as e:
         logger.error(f"Error calculating performance attribution: {e}")
+        traceback.format_exc()
         return {"asset_attribution": {}, "total_contribution": 0.0}
 
 
 # ========================================
 # Main Portfolio Performance Analysis Tools
 # ========================================
+
+
+def calculate_portfolio_performance(
+    user_id: str, start_date: str, end_date: str = None, source_id: int = None
+) -> Dict:
+    """
+    Calculate portfolio performance metrics over a time period.
+
+    Args:
+        user_id (str): User identifier
+        start_date (str): Start date for calculation (ISO format)
+        end_date (str, optional): End date (default: now)
+        source_id (int, optional): Specific source to analyze
+
+    Returns:
+        Dict: Performance metrics including:
+            - starting_value: Portfolio value at start
+            - ending_value: Portfolio value at end
+            - net_deposits: Net deposits/withdrawals
+            - realized_pnl: Realized profit/loss from sells
+            - unrealized_pnl: Unrealized profit/loss
+            - total_return: Total return percentage
+            - time_weighted_return: Time-weighted return
+    """
+    try:
+        with get_db() as db:
+            # Parse dates
+            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            end_dt = datetime.utcnow()
+            if end_date:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+
+            # Get user sources
+            query = db.query(PortfolioSourceModel).filter(
+                PortfolioSourceModel.user_id == user_id,
+                PortfolioSourceModel.is_active == True,
+            )
+
+            if source_id:
+                query = query.filter(PortfolioSourceModel.source_id == source_id)
+
+            sources = query.all()
+            source_ids = [s.source_id for s in sources]
+
+            if not source_ids:
+                return {"error": "No active sources found"}
+
+            # Get transactions in period
+            transactions = (
+                db.query(TransactionModel)
+                .filter(
+                    TransactionModel.source_id.in_(source_ids),
+                    TransactionModel.transaction_time >= start_dt,
+                    TransactionModel.transaction_time <= end_dt,
+                )
+                .order_by(TransactionModel.transaction_time)
+                .all()
+            )
+
+            # Calculate metrics
+            net_deposits = Decimal("0")
+            realized_pnl = Decimal("0")
+
+            for tx in transactions:
+                if tx.transaction_type in [TransactionType.DEPOSIT]:
+                    net_deposits += tx.quantity * (tx.price or Decimal("0"))
+                elif tx.transaction_type in [TransactionType.WITHDRAW]:
+                    net_deposits -= tx.quantity * (tx.price or Decimal("0"))
+                elif tx.transaction_type == TransactionType.SELL and tx.price:
+                    # Calculate realized P&L (simplified - would need cost basis tracking)
+                    realized_pnl += tx.quantity * tx.price
+
+            # Get current positions and values
+            positions = (
+                db.query(PositionModel)
+                .filter(PositionModel.source_id.in_(source_ids))
+                .all()
+            )
+
+            ending_value = Decimal("0")
+            unrealized_pnl = Decimal("0")
+
+            for position in positions:
+                if position.last_price and position.quantity > 0:
+                    position_value = position.quantity * position.last_price
+                    ending_value += position_value
+
+                    if position.avg_cost:
+                        cost_basis = position.quantity * position.avg_cost
+                        unrealized_pnl += position_value - cost_basis
+
+            # Simplified starting value calculation
+            # In production, would need historical position snapshots
+            starting_value = ending_value - net_deposits - realized_pnl - unrealized_pnl
+
+            # Calculate returns
+            total_return = Decimal("0")
+            if starting_value > 0:
+                total_return = (
+                    (ending_value - starting_value - net_deposits) / starting_value
+                ) * 100
+
+            return {
+                "period": {
+                    "start": start_dt.isoformat(),
+                    "end": end_dt.isoformat(),
+                    "days": (end_dt - start_dt).days,
+                },
+                "starting_value": float(starting_value),
+                "ending_value": float(ending_value),
+                "net_deposits": float(net_deposits),
+                "realized_pnl": float(realized_pnl),
+                "unrealized_pnl": float(unrealized_pnl),
+                "total_pnl": float(realized_pnl + unrealized_pnl),
+                "total_return": float(total_return),
+                "source_count": len(sources),
+            }
+
+    except Exception as e:
+        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
+        return {"error": f"Failed to calculate performance: {str(e)}"}
 
 
 @tool
@@ -562,16 +491,16 @@ def analyze_portfolio_performance(
                 else datetime.utcnow()
             )
         except ValueError:
+            traceback.format_exc()
             return {
                 "error": "Invalid date format. Use ISO format (YYYY-MM-DD)",
                 "error_code": "INVALID_DATE",
             }
 
         # Get basic performance data from existing function
-        from tools.tools_crypto_portfolios import calculate_portfolio_performance
 
-        performance = calculate_portfolio_performance.invoke(
-            {"user_id": user_id, "start_date": start_date, "end_date": end_date}
+        performance = calculate_portfolio_performance(
+            user_id=user_id, start_date=start_date, end_date=end_date
         )
 
         if isinstance(performance, dict) and "error" in performance:
@@ -662,15 +591,18 @@ def analyze_portfolio_performance(
 
     except ValueError as e:
         logger.error(f"Data validation error: {e}")
+        traceback.format_exc()
         return {
             "error": f"Data validation failed: {str(e)}",
             "error_code": "VALIDATION_ERROR",
         }
     except ConnectionError as e:
         logger.error(f"Database connection error: {e}")
+        traceback.format_exc()
         return {"error": "Database connection failed", "error_code": "DB_ERROR"}
     except Exception as e:
         logger.error(f"Exception:{e}\n{traceback.format_exc()}")
+        traceback.format_exc()
         return {
             "error": f"Failed to analyze portfolio performance: {str(e)}",
             "error_code": "UNKNOWN_ERROR",
@@ -710,6 +642,7 @@ def get_daily_portfolio_returns(
 
     except Exception as e:
         logger.error(f"Error calculating daily portfolio returns: {e}")
+        traceback.format_exc()
         return []
 
 
@@ -717,7 +650,7 @@ def get_daily_benchmark_returns(
     benchmark: str, start_date: datetime, end_date: datetime
 ) -> List[float]:
     """
-    Get daily benchmark returns for comparison
+    Get daily benchmark returns for comparison using unified API manager
 
     Args:
         benchmark: Benchmark symbol
@@ -727,26 +660,7 @@ def get_daily_benchmark_returns(
     Returns:
         List of daily returns as percentages
     """
-    try:
-        days_diff = (end_date - start_date).days + 7  # Add buffer
-        benchmark_data = get_benchmark_price_data(benchmark, days=days_diff)
-
-        if not benchmark_data["success"]:
-            return []
-
-        prices = benchmark_data["prices"]
-        returns = []
-
-        for i in range(1, len(prices)):
-            if prices[i - 1]["price"] > 0:
-                daily_return = ((prices[i]["price"] / prices[i - 1]["price"]) - 1) * 100
-                returns.append(daily_return)
-
-        return returns
-
-    except Exception as e:
-        logger.error(f"Error calculating benchmark returns: {e}")
-        return []
+    return api_manager.get_daily_benchmark_returns(benchmark, start_date, end_date)
 
 
 @tool
@@ -888,6 +802,7 @@ def compare_to_benchmarks(
 
             except Exception as e:
                 logger.error(f"Error processing benchmark {benchmark}: {e}")
+                traceback.format_exc()
                 continue
 
         if not comparisons:
@@ -942,6 +857,7 @@ def compare_to_benchmarks(
 
     except ValueError as e:
         logger.error(f"Data validation error: {e}")
+        traceback.format_exc()
         return {
             "error": f"Data validation failed: {str(e)}",
             "error_code": "VALIDATION_ERROR",
@@ -1050,6 +966,7 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
                                 benchmark_return = ((bench_end / bench_start) - 1) * 100
                     except Exception as be:
                         logger.warning(f"Failed to get benchmark data for period: {be}")
+                        traceback.format_exc()
 
                     performance_history.append(
                         {
@@ -1100,6 +1017,7 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
                     logger.warning(
                         f"Failed to calculate performance for period {period_start} to {period_end}: {pe}"
                     )
+                    traceback.format_exc()
                     continue
 
             # Sort by period_start (most recent first)
@@ -1145,6 +1063,7 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
 
     except ValueError as e:
         logger.error(f"Data validation error: {e}")
+        traceback.format_exc()
         return [
             {
                 "error": f"Data validation failed: {str(e)}",
@@ -1153,6 +1072,7 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
         ]
     except Exception as e:
         logger.error(f"Exception:{e}\n{traceback.format_exc()}")
+        traceback.format_exc()
         return [
             {
                 "error": f"Failed to get historical performance: {str(e)}",
