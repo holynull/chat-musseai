@@ -219,6 +219,28 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 
 		for await (const chunk of stream) {
 			console.log(chunk.data)
+			if (chunk.data.error) {
+				setMessages((prevMessages) => {
+					let pre_len = prevMessages.length
+					if (pre_len > 0) {
+						// Create a new array with the updated message
+						return [
+							...prevMessages,
+							new AIMessage({
+								...prevMessages[pre_len - 1],
+								content:
+									prevMessages[pre_len - 1].content +
+									"System Message: Error occured.",
+							}),
+						];
+					} else {
+						const newMessage = new AIMessage({
+							content: "System Message: Error occured.",
+						});
+						return [...prevMessages, newMessage];
+					}
+				});
+			}
 			if (!runingId && chunk.data?.metadata?.run_id) {
 				setRuningId(chunk.data.metadata.run_id)
 			}
