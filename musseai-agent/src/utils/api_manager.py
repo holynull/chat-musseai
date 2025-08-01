@@ -1,5 +1,6 @@
 # src/utils/api_manager.py
 import os
+import threading
 import requests
 import time
 from typing import Dict, List, Optional, Any
@@ -8,11 +9,70 @@ import numpy as np
 import pandas as pd
 from loggers import logger
 import traceback
+from utils.api_decorators import (
+    api_call_with_cache_and_rate_limit,
+    api_call_with_cache_and_rate_limit_no_429_retry,
+    APIRateLimitException,
+    cache_result,
+    clear_cache,
+    get_cache_stats,
+    rate_limit,
+    retry_on_429,
+)
+from utils.redis_cache import _cache_backend
 
-# In api_manager.py, add cache dictionary
-_price_cache = {}
+API_CONFIG = {
+    "default_cache_duration": 300,  # 5 minutes
+    "historical_data_cache": 86400,  # 24 hours for historical data
+    "market_data_cache": 300,  # 5 minutes for current market data
+    "risk_free_rate_cache": 3600,  # 1 hour for risk-free rate
+    "coingecko_rate_limit": 1.2,
+    "coincap_rate_limit": 0.1,
+    "binance_rate_limit": 0.1,
+    "cryptocompare_rate_limit": 0.05,
+    "yahoo_rate_limit": 2.0,
+    "max_retries": 3,
+    "retry_delay": 2,
+}
 
 
+def historical_data_api(func):
+    """Decorator combination for historical data APIs"""
+    return api_call_with_cache_and_rate_limit(
+        cache_duration=API_CONFIG["historical_data_cache"],
+        rate_limit_interval=API_CONFIG["coingecko_rate_limit"],
+        max_retries=API_CONFIG["max_retries"],
+        retry_delay=API_CONFIG["retry_delay"],
+    )(func)
+
+
+def market_data_api(func):
+    """Decorator combination for real-time market data APIs"""
+    return api_call_with_cache_and_rate_limit(
+        cache_duration=API_CONFIG["market_data_cache"],
+        rate_limit_interval=API_CONFIG["coingecko_rate_limit"],
+        max_retries=API_CONFIG["max_retries"],
+        retry_delay=API_CONFIG["retry_delay"],
+    )(func)
+
+
+def fast_api(rate_limit_interval=0.1):
+    """Decorator for high-frequency APIs like Binance"""
+
+    def decorator(func):
+        return api_call_with_cache_and_rate_limit(
+            cache_duration=API_CONFIG["market_data_cache"],
+            rate_limit_interval=rate_limit_interval,
+            max_retries=API_CONFIG["max_retries"],
+            retry_delay=API_CONFIG["retry_delay"],
+        )(func)
+
+    return decorator
+
+
+@cache_result(duration=86400)  # 24 hours cache
+@rate_limit(interval=1.2)
+@retry_on_429(max_retries=3, delay=2)
 def get_crypto_historical_data(
     coin_id: str, vs_currency: str = "usd", days: int = 365
 ) -> Dict:
@@ -27,16 +87,6 @@ def get_crypto_historical_data(
     Returns:
         Dict: Dictionary containing price history data
     """
-    # Check cache
-    cache_key = f"{coin_id}_{vs_currency}_{days}"
-    current_time = time.time()
-
-    # If cache exists and not expired (24 hour validity)
-    if cache_key in _price_cache:
-        cache_data, timestamp = _price_cache[cache_key]
-        if current_time - timestamp < 86400:  # 24 hours = 86400 seconds
-            return cache_data
-
     # First try using the global API manager
     global api_manager
 
@@ -56,7 +106,7 @@ def get_crypto_historical_data(
         symbol = common_names[coin_id]
 
     # Use fallback mechanism to get data
-    result = api_manager.fetch_with_fallback(symbol, days)
+    result = api_manager.fetch_with_batch_cache_fallback(symbol, days)
 
     if result and "prices" in result and len(result["prices"]) > 0:
         # Convert to format needed by performance_analysis.py
@@ -86,9 +136,6 @@ def get_crypto_historical_data(
             "source": "multi_api_manager",
         }
 
-        # Update cache
-        _price_cache[cache_key] = (response_data, current_time)
-
         return response_data
 
     # If unable to get data, return failure
@@ -98,9 +145,6 @@ def get_crypto_historical_data(
         "coin_id": coin_id,
     }
 
-    # Cache failed results too, but only for a short time (5 minutes) to avoid frequent retries of failing APIs
-    _price_cache[cache_key] = (failed_response, current_time)
-
     return failed_response
 
 
@@ -109,47 +153,28 @@ class MultiAPIManager:
         self.apis = {
             "coingecko": {
                 "base_url": "https://api.coingecko.com/api/v3",
-                "rate_limit": 1.0,  # Slightly reduced from 1.2 for better reliability
-                "daily_limit": 10000,
-                "priority": 1,  # Highest priority
-                "last_request": 0,
-                "retry_count": 0,
-                "max_retries": 3,
+                "priority": 1,
             },
             "coincap": {
-                "base_url": "https://rest.coincap.io/v3",  # Updated from API 2.0 to API 3.0
-                "rate_limit": 0.1,
-                "daily_limit": None,
+                "base_url": "https://rest.coincap.io/v3",
                 "priority": 2,
-                "last_request": 0,
-                "api_key": os.getenv(
-                    "COINCAP_API_KEY"
-                ),  # Add API key support for authentication
+                "api_key": os.getenv("COINCAP_API_KEY"),
             },
             "cryptocompare": {
                 "base_url": "https://min-api.cryptocompare.com/data",
-                "rate_limit": 0.05,
-                "daily_limit": 100000,
-                "priority": 3,  # Third priority
-                "last_request": 0,
+                "priority": 3,
             },
             "binance": {
                 "base_url": "https://api.binance.com/api/v3",
-                "rate_limit": 0.1,
-                "daily_limit": None,
-                "priority": 4,  # Fourth priority
-                "last_request": 0,
+                "priority": 4,
             },
             "yahoo": {
                 "base_url": "https://query1.finance.yahoo.com/v8/finance/chart",
-                "rate_limit": 0.5,
-                "daily_limit": None,
-                "priority": 5,  # Lowest priority
-                "last_request": 0,
+                "priority": 5,
             },
         }
 
-        # 添加基准映射常量
+        self.symbol_mapping = self._init_symbol_mapping()
         self.benchmark_mapping = {
             "BTC": "bitcoin",
             "ETH": "ethereum",
@@ -158,11 +183,100 @@ class MultiAPIManager:
             "GOLD": "GC=F",
             "USD": "DX-Y.NYB",
         }
-
-        # 风险无风险利率源
         self.risk_free_rate_symbol = "^TNX"
 
         self.symbol_mapping = self._init_symbol_mapping()
+
+        # Track which APIs are currently rate limited
+        self.rate_limited_apis = {}
+        self.rate_limit_reset_time = {}
+
+        # Configuration for global retries
+        self.default_max_global_retries = 2
+        self.global_retry_wait_base = 60  # Base wait time in seconds
+
+    def fetch_with_batch_cache_fallback(
+        self, symbol: str, days: int = 90
+    ) -> Optional[Dict]:
+        """Fetch data with batch cache fallback"""
+        # First try batch cache
+        cached_data = self.batch_cache_manager.get_cached_data("crypto", symbol)
+        if cached_data and cached_data.get("historical_data"):
+            cache_age = time.time() - cached_data.get("cached_at", 0)
+            if cache_age < 3600:  # Use cached data if less than 1 hour old
+                logger.info(
+                    f"Using batch cached data for {symbol} (age: {cache_age:.1f}s)"
+                )
+                return cached_data["historical_data"]
+
+        # Fallback to individual API calls
+        logger.info(f"Batch cache miss for {symbol}, using individual API call")
+        return self.fetch_with_fallback(symbol, days)
+
+    @cache_result(duration=3600)  # 1-hour cache for individual calls
+    def fetch_yahoo_finance_data_optimized(
+        self, symbol: str, period: str = "1y"
+    ) -> Dict:
+        """Optimized Yahoo Finance with batch cache support"""
+        # Check batch cache first
+        cached_data = self.batch_cache_manager.get_cached_data("traditional", symbol)
+        if cached_data and cached_data.get("data"):
+            cache_age = time.time() - cached_data.get("cached_at", 0)
+            if cache_age < 1800:  # Use cached data if less than 30 minutes old
+                logger.info(
+                    f"Using batch cached Yahoo data for {symbol} (age: {cache_age:.1f}s)"
+                )
+                return cached_data["data"]
+
+        # If not in batch cache or expired, make individual call
+        return self._fetch_yahoo_finance_individual(symbol, period)
+
+    def _fetch_yahoo_finance_individual(self, symbol: str, period: str = "1y") -> Dict:
+        """Individual Yahoo Finance API call with improved error handling"""
+        url = f"{self.apis['yahoo']['base_url']}/{symbol}"
+
+        # Calculate time range
+        period_days = {"1y": 365, "6m": 180, "3m": 90, "1m": 30}
+        days = period_days.get(period, 365)
+
+        params = {
+            "period1": int((datetime.now() - timedelta(days=days)).timestamp()),
+            "period2": int(datetime.now().timestamp()),
+            "interval": "1d",
+            "includePrePost": "false",
+        }
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Cache-Control": "no-cache",
+        }
+
+        response = requests.get(url, params=params, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+        return self._process_yahoo_data(data, symbol)
+
+    def _is_api_rate_limited(self, api_name: str) -> bool:
+        """Check if an API is currently rate limited"""
+        if api_name in self.rate_limited_apis:
+            reset_time = self.rate_limit_reset_time.get(api_name, 0)
+            if time.time() < reset_time:
+                return True
+            else:
+                # Reset time has passed, remove from rate limited list
+                self.rate_limited_apis.pop(api_name, None)
+                self.rate_limit_reset_time.pop(api_name, None)
+        return False
+
+    def _mark_api_rate_limited(self, api_name: str, reset_after_seconds: int = 300):
+        """Mark an API as rate limited for a certain duration"""
+        self.rate_limited_apis[api_name] = True
+        self.rate_limit_reset_time[api_name] = time.time() + reset_after_seconds
+        logger.warning(
+            f"API {api_name} marked as rate limited for {reset_after_seconds} seconds"
+        )
 
     def _init_symbol_mapping(self):
         """初始化不同API的符号映射"""
@@ -188,314 +302,228 @@ class MultiAPIManager:
             },
         }
 
-    def _wait_for_rate_limit(self, api_name: str):
-        """等待满足API速率限制"""
-        api_config = self.apis[api_name]
-        elapsed = time.time() - api_config["last_request"]
-        if elapsed < api_config["rate_limit"]:
-            time.sleep(api_config["rate_limit"] - elapsed)
-        api_config["last_request"] = time.time()
-
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=86400, rate_limit_interval=1.2, api_name="coingecko"
+    )
     def fetch_historical_prices_coingecko(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
-        """
-        Fetch historical prices from CoinGecko with enhanced error handling and retry logic
-        """
-        max_retries = self.apis["coingecko"].get("max_retries", 3)
+        """Fetch historical prices from CoinGecko with enhanced error handling"""
+        # Simplified implementation without manual retry/rate limiting
+        if not self.symbol_mapping["coingecko"]:
+            self.symbol_mapping["coingecko"] = self._get_coingecko_mapping()
 
-        for attempt in range(max_retries):
-            try:
-                self._wait_for_rate_limit("coingecko")
+        coin_id = self.symbol_mapping["coingecko"].get(symbol.upper())
+        if not coin_id:
+            common_mappings = {
+                "BTC": "bitcoin",
+                "ETH": "ethereum",
+                "SOL": "solana",
+                "ADA": "cardano",
+                "DOT": "polkadot",
+                "AVAX": "avalanche-2",
+                "LINK": "chainlink",
+            }
+            coin_id = common_mappings.get(symbol.upper(), symbol.lower())
 
-                # Get coin ID mapping if not cached
-                if not self.symbol_mapping["coingecko"]:
-                    self.symbol_mapping["coingecko"] = self._get_coingecko_mapping()
+        url = f"{self.apis['coingecko']['base_url']}/coins/{coin_id}/market_chart"
+        params = {"vs_currency": "usd", "days": days, "interval": "daily"}
 
-                coin_id = self.symbol_mapping["coingecko"].get(symbol.upper())
-                if not coin_id:
-                    #  Try common mappings for major coins
-                    common_mappings = {
-                        "BTC": "bitcoin",
-                        "ETH": "ethereum",
-                        "SOL": "solana",
-                        "ADA": "cardano",
-                        "DOT": "polkadot",
-                        "AVAX": "avalanche-2",
-                        "LINK": "chainlink",
-                    }
-                    coin_id = common_mappings.get(symbol.upper(), symbol.lower())
+        headers = {
+            "User-Agent": self.apis["coingecko"].get(
+                "user_agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            ),
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+        }
 
-                url = (
-                    f"{self.apis['coingecko']['base_url']}/coins/{coin_id}/market_chart"
-                )
-                params = {"vs_currency": "usd", "days": days, "interval": "daily"}
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response.raise_for_status()
 
-                # Enhanced headers to avoid 401 errors
-                headers = {
-                    "User-Agent": self.apis["coingecko"].get(
-                        "user_agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    ),
-                    "Accept": "application/json",
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Cache-Control": "no-cache",
-                }
+        data = response.json()
+        result = self._process_coingecko_data(data)
 
-                response = requests.get(url, params=params, headers=headers, timeout=15)
-                response.raise_for_status()
+        if result and len(result.get("prices", [])) > 0:
+            return result
+        else:
+            raise ValueError(f"CoinGecko returned empty data for {symbol}")
 
-                data = response.json()
-                result = self._process_coingecko_data(data)
-
-                if result and len(result.get("prices", [])) > 0:
-                    # Reset retry count on success
-                    self.apis["coingecko"]["retry_count"] = 0
-                    return result
-                else:
-                    logger.warning(
-                        f"CoinGecko returned empty data for {symbol} on attempt {attempt + 1}"
-                    )
-
-            except requests.exceptions.HTTPError as e:
-                logger.debug(traceback.format_exc())
-                if e.response.status_code == 401:
-                    logger.error(
-                        f"CoinGecko API unauthorized error (401) for {symbol} on attempt {attempt + 1}"
-                    )
-                    # Increase rate limit on 401 errors
-                    self.apis["coingecko"]["rate_limit"] = min(
-                        5.0, self.apis["coingecko"]["rate_limit"] * 1.5
-                    )
-                elif e.response.status_code == 429:
-                    logger.error(
-                        f"CoinGecko API rate limit (429) for {symbol} on attempt {attempt + 1}"
-                    )
-                    # Exponential backoff for rate limits
-                    backoff_time = 2**attempt
-                    logger.info(f"Backing off for {backoff_time} seconds...")
-                    time.sleep(backoff_time)
-                    self.apis["coingecko"]["rate_limit"] = min(
-                        10.0, self.apis["coingecko"]["rate_limit"] * 2
-                    )
-                elif e.response.status_code == 404:
-                    logger.error(
-                        f"CoinGecko API not found (404) for {symbol} - invalid coin ID"
-                    )
-                    break  # Don't retry on 404
-                else:
-                    logger.error(f"CoinGecko API HTTP error for {symbol}: {e}")
-
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2
-                    logger.info(f"Retrying CoinGecko in {wait_time} seconds...")
-                    time.sleep(wait_time)
-
-            except requests.exceptions.RequestException as e:
-                logger.debug(traceback.format_exc())
-                logger.error(
-                    f"CoinGecko API request failed for {symbol} on attempt {attempt + 1}: {e}"
-                )
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 1
-                    time.sleep(wait_time)
-            except Exception as e:
-                logger.debug(traceback.format_exc())
-                logger.error(
-                    f"CoinGecko API unexpected error for {symbol} on attempt {attempt + 1}: {e}"
-                )
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-
-            # All attempts failed
-            self.apis["coingecko"]["retry_count"] += 1
-            logger.error(
-                f"CoinGecko API failed for {symbol} after {max_retries} attempts"
-            )
-            return None
-
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=300, rate_limit_interval=0.1, api_name="coincap"
+    )
     def fetch_historical_prices_coincap(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
         """Fetch historical prices from CoinCap API 3.0 with authentication"""
-        try:
-            self._wait_for_rate_limit("coincap")
+        asset_id = self.symbol_mapping["coincap"].get(symbol.upper(), symbol.lower())
 
-            # CoinCap uses asset IDs
-            asset_id = self.symbol_mapping["coincap"].get(symbol.upper())
-            if not asset_id:
-                asset_id = symbol.lower()  # fallback
+        end_time = int(time.time() * 1000)
+        start_time = end_time - (days * 24 * 60 * 60 * 1000)
 
-            end_time = int(time.time() * 1000)
-            start_time = end_time - (days * 24 * 60 * 60 * 1000)
+        url = f"{self.apis['coincap']['base_url']}/assets/{asset_id}/history"
+        params = {"interval": "d1", "start": start_time, "end": end_time}
 
-            url = f"{self.apis['coincap']['base_url']}/assets/{asset_id}/history"
-            params = {"interval": "d1", "start": start_time, "end": end_time}
+        headers = {}
+        if self.apis["coincap"].get("api_key"):
+            headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
 
-            # Add authentication header if API key is available
-            headers = {}
-            if self.apis["coincap"].get("api_key"):
-                headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
 
-            response = requests.get(url, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
+        data = response.json()
+        return self._process_coincap_data(data)
 
-            data = response.json()
-            return self._process_coincap_data(data)
-
-        except Exception as e:
-            logger.error(f"CoinCap API 3.0 failed for {symbol}: {e}")
-            logger.debug(traceback.format_exc())
-            return None
-
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=300, rate_limit_interval=0.1, api_name="binance"
+    )
     def fetch_historical_prices_binance(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
-        """从Binance获取历史价格"""
-        try:
-            self._wait_for_rate_limit("binance")
+        """Fetch historical prices from Binance"""
+        binance_symbol = f"{symbol.upper()}USDT"
 
-            # Binance uses USDT pairs
-            binance_symbol = f"{symbol.upper()}USDT"
+        url = f"{self.apis['binance']['base_url']}/klines"
+        params = {
+            "symbol": binance_symbol,
+            "interval": "1d",
+            "limit": min(days, 1000),  # Binance limit
+        }
 
-            url = f"{self.apis['binance']['base_url']}/klines"
-            params = {
-                "symbol": binance_symbol,
-                "interval": "1d",
-                "limit": min(days, 1000),  # Binance limit
-            }
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
 
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
+        data = response.json()
+        return self._process_binance_data(data)
 
-            data = response.json()
-            return self._process_binance_data(data)
-
-        except Exception as e:
-            logger.error(f"Binance API failed for {symbol}: {e}")
-            logger.debug(traceback.format_exc())
-            return None
-
+    @api_call_with_cache_and_rate_limit(cache_duration=300, rate_limit_interval=0.05)
     def fetch_historical_prices_cryptocompare(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
-        """从CryptoCompare获取历史价格"""
-        try:
-            self._wait_for_rate_limit("cryptocompare")
+        """Fetch historical prices from CryptoCompare"""
+        url = f"{self.apis['cryptocompare']['base_url']}/v2/histoday"
+        params = {
+            "fsym": symbol.upper(),
+            "tsym": "USD",
+            "limit": days,
+            "aggregate": 1,
+        }
 
-            url = f"{self.apis['cryptocompare']['base_url']}/v2/histoday"
-            params = {
-                "fsym": symbol.upper(),
-                "tsym": "USD",
-                "limit": days,
-                "aggregate": 1,
-            }
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
 
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
+        data = response.json()
+        return self._process_cryptocompare_data(data)
 
-            data = response.json()
-            return self._process_cryptocompare_data(data)
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=3600,
+        rate_limit_interval=2.0,  # 增加间隔
+        max_retries=5,  # 更多重试次数
+        retry_delay=5,  # 更长延迟
+    )
+    def fetch_yahoo_finance_data(self, symbol: str, period: str = "1y") -> Dict:
+        """Fetch stock/index data from Yahoo Finance"""
+        url = f"{self.apis['yahoo']['base_url']}/{symbol}"
+        params = {
+            "period1": int((datetime.now() - timedelta(days=365)).timestamp()),
+            "period2": int(datetime.now().timestamp()),
+            "interval": "1d",
+            "includePrePost": "false",
+        }
 
-        except Exception as e:
-            logger.error(f"CryptoCompare API failed for {symbol}: {e}")
-            logger.debug(traceback.format_exc())
-            return None
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
 
-    def fetch_with_fallback(self, symbol: str, days: int = 90) -> Optional[Dict]:
+        data = response.json()
+        return self._process_yahoo_data(data, symbol)
+
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=300,
+        rate_limit_interval=1.2,
+        max_retries=0,
+        retry_delay=2,  # 不重试
+    )
+    def fetch_with_fallback(
+        self, symbol: str, days: int = 90, max_global_retries: int = None
+    ) -> Optional[Dict]:
         """
-        Use multi-API failover mechanism with CoinGecko priority
+        Use multi-API failover mechanism with enhanced decorator support
         """
-        logger.info(f"Starting API fallback for {symbol} with CoinGecko priority")
+        if max_global_retries is None:
+            max_global_retries = self.default_max_global_retries
+        logger.info(f"Starting enhanced API fallback for {symbol}")
 
-        # First priority: Try CoinGecko with enhanced error handling
-        logger.info(f"Trying CoinGecko (priority 1) for {symbol}")
-        try:
-            # Add user agent to avoid rate limiting
-            self.apis["coingecko"]["user_agent"] = (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-            )
+        # Define API methods in priority order
+        api_methods = [
+            ("coingecko", self.fetch_historical_prices_coingecko),
+            ("coincap", self.fetch_historical_prices_coincap),
+            ("cryptocompare", self.fetch_historical_prices_cryptocompare),
+            ("binance", self.fetch_historical_prices_binance),
+        ]
 
-            result = self.fetch_historical_prices_coingecko(symbol, days)
+        for global_retry in range(max_global_retries + 1):
+            available_apis = []
+            rate_limited_count = 0
 
-            if result and len(result.get("prices", [])) > 10:
-                logger.info(f"Successfully fetched data from CoinGecko for {symbol}")
-                return result
-            else:
-                logger.warning(f"CoinGecko returned insufficient data for {symbol}")
-
-        except Exception as e:
-            logger.debug(traceback.format_exc())
-            logger.warning(f"CoinGecko API failed for {symbol}: {e}")
-            # Don't immediately give up on CoinGecko - might be temporary issue
-
-        # Second priority: Try reliable free APIs in order
-        free_apis = ["coincap", "cryptocompare", "binance"]
-        for api_name in free_apis:
-            try:
-                logger.info(f"Trying {api_name} (fallback) for {symbol}")
-
-                if api_name == "coincap":
-                    result = self.fetch_historical_prices_coincap(symbol, days)
-                elif api_name == "cryptocompare":
-                    result = self.fetch_historical_prices_cryptocompare(symbol, days)
-                elif api_name == "binance":
-                    result = self.fetch_historical_prices_binance(symbol, days)
+            # Filter out currently rate limited APIs
+            for api_name, api_method in api_methods:
+                if not self._is_api_rate_limited(api_name):
+                    available_apis.append((api_name, api_method))
                 else:
-                    continue
+                    rate_limited_count += 1
+                    logger.debug(f"Skipping rate limited API: {api_name}")
 
-                if result and len(result.get("prices", [])) > 10:
-                    logger.info(
-                        f"Successfully fetched data from {api_name} for {symbol}"
+            if not available_apis:
+                if global_retry < max_global_retries:
+                    wait_time = 60 * (global_retry + 1)  # Wait 60s, 120s, etc.
+                    logger.warning(
+                        f"All APIs rate limited, waiting {wait_time}s before retry {global_retry + 1}"
                     )
-                    return result
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error("All APIs exhausted after maximum retries")
+                    return None
 
-            except Exception as e:
-                logger.debug(traceback.format_exc())
-                logger.warning(f"API {api_name} failed for {symbol}: {e}")
-                continue
-
-        # Third priority: Retry CoinGecko with different parameters
-        logger.info(f"Retrying CoinGecko with relaxed parameters for {symbol}")
-        try:
-            # Try with shorter period if original failed
-            shorter_days = min(days, 30)
-            result = self.fetch_historical_prices_coingecko(symbol, shorter_days)
-
-            if result and len(result.get("prices", [])) > 5:
-                logger.info(
-                    f"Successfully fetched reduced data from CoinGecko for {symbol}"
-                )
-                return result
-
-        except Exception as e:
-            logger.debug(traceback.format_exc())
-            logger.warning(f"CoinGecko retry failed for {symbol}: {e}")
-
-        # Fourth priority: Try remaining APIs as last resort
-        remaining_apis = ["yahoo"]
-        for api_name in remaining_apis:
-            try:
-                logger.info(f"Trying {api_name} (last resort) for {symbol}")
-
-                method_name = f"fetch_historical_prices_{api_name}"
-                if hasattr(self, method_name):
-                    method = getattr(self, method_name)
-                    result = method(symbol, days)
+            # Try each available API
+            for api_name, api_method in available_apis:
+                try:
+                    logger.info(f"Trying API: {api_name} for {symbol}")
+                    result = api_method(symbol, days)
 
                     if result and len(result.get("prices", [])) > 10:
                         logger.info(
                             f"Successfully fetched data from {api_name} for {symbol}"
                         )
                         return result
+                    else:
+                        logger.warning(
+                            f"API {api_name} returned insufficient data for {symbol}"
+                        )
 
-            except Exception as e:
-                logger.debug(traceback.format_exc())
-                logger.warning(f"API {api_name} failed for {symbol}: {e}")
+                except APIRateLimitException as e:
+                    logger.warning(f"API {api_name} rate limited: {e}")
+                    self._mark_api_rate_limited(api_name, reset_after_seconds=300)
+                    continue  # Try next API immediately
+
+                except Exception as e:
+                    logger.warning(f"API {api_name} failed for {symbol}: {e}")
+                    continue  # Try next API
+
+            # If we get here, all available APIs failed (not due to rate limits)
+            logger.warning(
+                f"All available APIs failed for {symbol} on attempt {global_retry + 1}"
+            )
+            if global_retry < max_global_retries:
+                time.sleep(5)  # Short wait before retrying
                 continue
+            else:
+                break
 
-        logger.error(f"All APIs failed for {symbol}")
+        logger.error(
+            f"All APIs failed for {symbol} after {max_global_retries + 1} attempts"
+        )
         return None
 
     def _process_coingecko_data(self, data: Dict) -> Dict:
@@ -596,8 +624,6 @@ class MultiAPIManager:
 
         for attempt in range(max_retries):
             try:
-                self._wait_for_rate_limit("coingecko")
-
                 # Add user agent header to help prevent 401 errors
                 headers = {
                     "User-Agent": self.apis["coingecko"].get(
@@ -693,17 +719,130 @@ class MultiAPIManager:
                         "LINK": "chainlink",
                     }
 
-    def fetch_market_data_coingecko(self, symbol: str) -> Optional[Dict]:
+    @market_data_api
+    def fetch_market_data(self, symbol: str) -> Optional[Dict]:
         """
-        Fetch current market data from CoinGecko with caching, rate limiting and retry logic
+        Fetch current market data from multiple APIs with fallback mechanism
+
+        This function has been enhanced to use multiple third-party APIs:
+        1. CoinGecko (primary)
+        2. CoinCap (secondary)
+        3. Binance (tertiary)
+        4. CryptoCompare (fallback)
+
+        Args:
+            symbol: Cryptocurrency symbol or coin ID
+
+        Returns:
+            Dict: Market data in standardized format
+        """
+        # Define API methods in priority order
+        api_methods = [
+            ("coingecko", self._fetch_coingecko_market_data),
+            ("coincap", self._fetch_coincap_market_data),
+            ("binance", self._fetch_binance_market_data),
+            ("cryptocompare", self._fetch_cryptocompare_market_data),
+        ]
+
+        last_error = None
+
+        for api_name, api_method in api_methods:
+            # Skip rate-limited APIs
+            if self._is_api_rate_limited(api_name):
+                logger.debug(f"Skipping rate-limited API: {api_name}")
+                continue
+
+            try:
+                logger.info(
+                    f"Attempting to fetch market data from {api_name} for {symbol}"
+                )
+                result = api_method(symbol)
+
+                if result and self._validate_market_data(result):
+                    logger.info(
+                        f"Successfully fetched market data from {api_name} for {symbol}"
+                    )
+                    return result
+                else:
+                    logger.warning(f"API {api_name} returned invalid data for {symbol}")
+
+            except APIRateLimitException as e:
+                logger.warning(f"API {api_name} rate limited: {e}")
+                self._mark_api_rate_limited(api_name, reset_after_seconds=300)
+                last_error = e
+                continue
+
+            except Exception as e:
+                logger.warning(f"API {api_name} failed for {symbol}: {e}")
+                last_error = e
+                continue
+
+        # All APIs failed
+        logger.error(f"All APIs failed to fetch market data for {symbol}")
+        if last_error:
+            raise last_error
+        return None
+
+    def _validate_market_data(self, data: Dict) -> bool:
+        """
+        Validate market data format and content
+
+        Args:
+            data: Market data dictionary
+
+        Returns:
+            bool: True if data is valid
+        """
+        if not isinstance(data, dict):
+            return False
+
+        required_fields = ["current_price", "market_cap", "total_volume"]
+
+        for field in required_fields:
+            if field not in data:
+                return False
+            if data[field] is None:
+                return False
+            if not isinstance(data[field], (int, float)):
+                return False
+            if data[field] < 0:
+                return False
+
+        return True
+
+    def _fetch_coingecko_market_data(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch market data from CoinGecko API
+
+        Args:
+            symbol: Cryptocurrency symbol or coin ID
+
+        Returns:
+            Dict: Standardized market data
         """
         try:
-            self._wait_for_rate_limit("coingecko")
+            # Determine if symbol is coin_id or symbol
+            if not self.symbol_mapping["coingecko"]:
+                self.symbol_mapping["coingecko"] = self._get_coingecko_mapping()
+
+            coin_id = self.symbol_mapping["coingecko"].get(symbol.upper())
+            if not coin_id:
+                # Try common mappings
+                common_mappings = {
+                    "BTC": "bitcoin",
+                    "ETH": "ethereum",
+                    "SOL": "solana",
+                    "ADA": "cardano",
+                    "DOT": "polkadot",
+                    "AVAX": "avalanche-2",
+                    "LINK": "chainlink",
+                }
+                coin_id = common_mappings.get(symbol.upper(), symbol.lower())
 
             url = f"{self.apis['coingecko']['base_url']}/coins/markets"
             params = {
                 "vs_currency": "usd",
-                "ids": symbol.lower(),
+                "ids": coin_id,
                 "per_page": 1,
                 "page": 1,
                 "sparkline": False,
@@ -714,18 +853,304 @@ class MultiAPIManager:
                 "User-Agent": self.apis["coingecko"].get(
                     "user_agent",
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                )
+                ),
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
             }
 
             response = requests.get(url, params=params, headers=headers, timeout=10)
             response.raise_for_status()
-            return response.json()
+
+            data = response.json()
+            if not data or len(data) == 0:
+                raise ValueError(f"No data returned for {symbol}")
+
+            item = data[0]
+            return {
+                "id": item["id"],
+                "symbol": item["symbol"],
+                "name": item["name"],
+                "current_price": item["current_price"],
+                "market_cap": item["market_cap"],
+                "market_cap_rank": item["market_cap_rank"],
+                "fully_diluted_valuation": item.get("fully_diluted_valuation"),
+                "total_volume": item["total_volume"],
+                "high_24h": item["high_24h"],
+                "low_24h": item["low_24h"],
+                "price_change_24h": item["price_change_24h"],
+                "price_change_percentage_24h": item["price_change_percentage_24h"],
+                "price_change_percentage_7d": item.get(
+                    "price_change_percentage_7d_in_currency"
+                ),
+                "price_change_percentage_1h": item.get(
+                    "price_change_percentage_1h_in_currency"
+                ),
+                "market_cap_change_24h": item["market_cap_change_24h"],
+                "market_cap_change_percentage_24h": item[
+                    "market_cap_change_percentage_24h"
+                ],
+                "circulating_supply": item["circulating_supply"],
+                "total_supply": item["total_supply"],
+                "max_supply": item["max_supply"],
+                "ath": item["ath"],
+                "ath_change_percentage": item["ath_change_percentage"],
+                "ath_date": item["ath_date"],
+                "atl": item["atl"],
+                "atl_change_percentage": item["atl_change_percentage"],
+                "atl_date": item["atl_date"],
+                "last_updated": item["last_updated"],
+                "source": "coingecko",
+            }
 
         except Exception as e:
-            logger.debug(traceback.format_exc())
             logger.error(f"CoinGecko market data API failed for {symbol}: {e}")
-            return None
+            raise
 
+    def _fetch_coincap_market_data(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch market data from CoinCap API
+
+        Args:
+            symbol: Cryptocurrency symbol
+
+        Returns:
+            Dict: Standardized market data
+        """
+        try:
+            # Map symbol to CoinCap asset ID
+            asset_id = self.symbol_mapping["coincap"].get(
+                symbol.upper(), symbol.lower()
+            )
+
+            url = f"{self.apis['coincap']['base_url']}/assets/{asset_id}"
+
+            headers = {}
+            if self.apis["coincap"].get("api_key"):
+                headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
+
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            if not data.get("data"):
+                raise ValueError(f"No data returned for {symbol}")
+
+            item = data["data"]
+
+            # Convert CoinCap format to standardized format
+            return {
+                "id": item["id"],
+                "symbol": item["symbol"].lower(),
+                "name": item["name"],
+                "current_price": float(item["priceUsd"]) if item["priceUsd"] else 0,
+                "market_cap": (
+                    float(item["marketCapUsd"]) if item["marketCapUsd"] else 0
+                ),
+                "market_cap_rank": int(item["rank"]) if item["rank"] else 0,
+                "fully_diluted_valuation": None,  # Not available in CoinCap
+                "total_volume": (
+                    float(item["volumeUsd24Hr"]) if item["volumeUsd24Hr"] else 0
+                ),
+                "high_24h": None,  # Not available in basic endpoint
+                "low_24h": None,  # Not available in basic endpoint
+                "price_change_24h": None,
+                "price_change_percentage_24h": (
+                    float(item["changePercent24Hr"]) if item["changePercent24Hr"] else 0
+                ),
+                "price_change_percentage_7d": None,  # Not available
+                "price_change_percentage_1h": None,  # Not available
+                "market_cap_change_24h": None,
+                "market_cap_change_percentage_24h": None,
+                "circulating_supply": float(item["supply"]) if item["supply"] else 0,
+                "total_supply": float(item["supply"]) if item["supply"] else 0,
+                "max_supply": float(item["maxSupply"]) if item["maxSupply"] else None,
+                "ath": None,  # Not available
+                "ath_change_percentage": None,
+                "ath_date": None,
+                "atl": None,
+                "atl_change_percentage": None,
+                "atl_date": None,
+                "last_updated": None,
+                "source": "coincap",
+            }
+
+        except Exception as e:
+            logger.error(f"CoinCap market data API failed for {symbol}: {e}")
+            raise
+
+    def _fetch_binance_market_data(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch market data from Binance API
+
+        Args:
+            symbol: Cryptocurrency symbol
+
+        Returns:
+            Dict: Standardized market data
+        """
+        try:
+            # Convert symbol to Binance format (e.g., BTC -> BTCUSDT)
+            binance_symbol = f"{symbol.upper()}USDT"
+
+            # Get 24hr ticker statistics
+            url = f"{self.apis['binance']['base_url']}/ticker/24hr"
+            params = {"symbol": binance_symbol}
+
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            if not data:
+                raise ValueError(f"No data returned for {symbol}")
+
+            # Get additional price info
+            price_url = f"{self.apis['binance']['base_url']}/ticker/price"
+            price_response = requests.get(price_url, params=params, timeout=10)
+            price_data = price_response.json() if price_response.ok else {}
+
+            # Convert Binance format to standardized format
+            return {
+                "id": symbol.lower(),
+                "symbol": symbol.lower(),
+                "name": symbol.upper(),
+                "current_price": float(data["lastPrice"]),
+                "market_cap": None,  # Not available from Binance
+                "market_cap_rank": None,
+                "fully_diluted_valuation": None,
+                "total_volume": float(data["volume"])
+                * float(data["lastPrice"]),  # Volume in USD
+                "high_24h": float(data["highPrice"]),
+                "low_24h": float(data["lowPrice"]),
+                "price_change_24h": float(data["priceChange"]),
+                "price_change_percentage_24h": float(data["priceChangePercent"]),
+                "price_change_percentage_7d": None,  # Not available
+                "price_change_percentage_1h": None,  # Not available
+                "market_cap_change_24h": None,
+                "market_cap_change_percentage_24h": None,
+                "circulating_supply": None,
+                "total_supply": None,
+                "max_supply": None,
+                "ath": None,
+                "ath_change_percentage": None,
+                "ath_date": None,
+                "atl": None,
+                "atl_change_percentage": None,
+                "atl_date": None,
+                "last_updated": None,
+                "source": "binance",
+            }
+
+        except Exception as e:
+            logger.error(f"Binance market data API failed for {symbol}: {e}")
+            raise
+
+    def _fetch_cryptocompare_market_data(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch market data from CryptoCompare API
+
+        Args:
+            symbol: Cryptocurrency symbol
+
+        Returns:
+            Dict: Standardized market data
+        """
+        try:
+            # Get current price data
+            price_url = f"{self.apis['cryptocompare']['base_url']}/price"
+            price_params = {"fsym": symbol.upper(), "tsyms": "USD"}
+
+            price_response = requests.get(price_url, params=price_params, timeout=10)
+            price_response.raise_for_status()
+            price_data = price_response.json()
+
+            if "USD" not in price_data:
+                raise ValueError(f"No USD price data for {symbol}")
+
+            current_price = price_data["USD"]
+
+            # Get additional market data
+            pricemulti_url = f"{self.apis['cryptocompare']['base_url']}/pricemultifull"
+            multi_params = {"fsyms": symbol.upper(), "tsyms": "USD"}
+
+            multi_response = requests.get(
+                pricemulti_url, params=multi_params, timeout=10
+            )
+            multi_data = multi_response.json() if multi_response.ok else {}
+
+            # Extract detailed data if available
+            detailed_data = {}
+            if "RAW" in multi_data and symbol.upper() in multi_data["RAW"]:
+                detailed_data = multi_data["RAW"][symbol.upper()].get("USD", {})
+
+            return {
+                "id": symbol.lower(),
+                "symbol": symbol.lower(),
+                "name": symbol.upper(),
+                "current_price": current_price,
+                "market_cap": detailed_data.get("MKTCAP"),
+                "market_cap_rank": None,
+                "fully_diluted_valuation": None,
+                "total_volume": detailed_data.get("TOTALVOLUME24HTO"),
+                "high_24h": detailed_data.get("HIGH24HOUR"),
+                "low_24h": detailed_data.get("LOW24HOUR"),
+                "price_change_24h": detailed_data.get("CHANGE24HOUR"),
+                "price_change_percentage_24h": detailed_data.get("CHANGEPCT24HOUR"),
+                "price_change_percentage_7d": None,  # Not available
+                "price_change_percentage_1h": detailed_data.get("CHANGEPCTHOUR"),
+                "market_cap_change_24h": None,
+                "market_cap_change_percentage_24h": None,
+                "circulating_supply": detailed_data.get("SUPPLY"),
+                "total_supply": None,
+                "max_supply": None,
+                "ath": None,
+                "ath_change_percentage": None,
+                "ath_date": None,
+                "atl": None,
+                "atl_change_percentage": None,
+                "atl_date": None,
+                "last_updated": None,
+                "source": "cryptocompare",
+            }
+
+        except Exception as e:
+            logger.error(f"CryptoCompare market data API failed for {symbol}: {e}")
+            raise
+
+    # Enhanced batch fetch function
+    @market_data_api
+    def fetch_multiple_market_data(self, symbols: List[str]) -> Dict[str, Dict]:
+        """
+        Fetch market data for multiple symbols using multi-API fallback
+
+        Args:
+            symbols: List of cryptocurrency symbols
+
+        Returns:
+            Dict: Mapping of symbol to market data
+        """
+        results = {}
+
+        for symbol in symbols:
+            try:
+                market_data = self.fetch_market_data(symbol)
+                if market_data:
+                    results[symbol] = market_data
+                else:
+                    results[symbol] = {"success": False, "error": "No data available"}
+
+                # Add small delay to respect rate limits
+                time.sleep(0.1)
+
+            except Exception as e:
+                logger.error(f"Failed to fetch market data for {symbol}: {e}")
+                results[symbol] = {"success": False, "error": str(e)}
+
+        return results
+
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=1800, rate_limit_interval=1.2, api_name="coingecko"
+    )
     def fetch_market_chart_coingecko(
         self, symbol: str, days: str = "30", interval: str = "daily"
     ) -> Optional[Dict]:
@@ -733,106 +1158,326 @@ class MultiAPIManager:
         Fetch market chart data from CoinGecko with caching and rate limiting
         """
         try:
-            self._wait_for_rate_limit("coingecko")
+            # Determine coin_id from symbol
+            if not self.symbol_mapping["coingecko"]:
+                self.symbol_mapping["coingecko"] = self._get_coingecko_mapping()
 
-            url = f"{self.apis['coingecko']['base_url']}/coins/{symbol.lower()}/market_chart"
+            coin_id = self.symbol_mapping["coingecko"].get(symbol.upper())
+            if not coin_id:
+                common_mappings = {
+                    "BTC": "bitcoin",
+                    "ETH": "ethereum",
+                    "SOL": "solana",
+                    "ADA": "cardano",
+                    "DOT": "polkadot",
+                    "AVAX": "avalanche-2",
+                    "LINK": "chainlink",
+                }
+                coin_id = common_mappings.get(symbol.upper(), symbol.lower())
+
+            url = f"{self.apis['coingecko']['base_url']}/coins/{coin_id}/market_chart"
             params = {"vs_currency": "usd", "days": days, "interval": interval}
 
             headers = {
                 "User-Agent": self.apis["coingecko"].get(
                     "user_agent",
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                )
+                ),
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
             }
 
-            response = requests.get(url, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json()
-
-        except Exception as e:
-            logger.debug(traceback.format_exc())
-            logger.error(f"CoinGecko market chart API failed for {symbol}: {e}")
-            return None
-
-    def fetch_yahoo_finance_data(self, symbol: str, period: str = "1y") -> Dict:
-        """
-        Fetch stock/index data from Yahoo Finance
-
-        Args:
-            symbol: Yahoo Finance symbol
-            period: Time period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
-
-        Returns:
-            Dict containing price history
-        """
-        try:
-            # Add yahoo to apis config if not exists
-            if "yahoo" not in self.apis:
-                self.apis["yahoo"] = {
-                    "base_url": "https://query1.finance.yahoo.com/v8/finance/chart",
-                    "rate_limit": 0.5,  # 2 requests per second
-                    "daily_limit": None,
-                    "priority": 5,
-                    "last_request": 0,
-                }
-
-            self._wait_for_rate_limit("yahoo")
-
-            url = f"{self.apis['yahoo']['base_url']}/{symbol}"
-            params = {
-                "period1": int((datetime.now() - timedelta(days=365)).timestamp()),
-                "period2": int(datetime.now().timestamp()),
-                "interval": "1d",
-                "includePrePost": "false",
-            }
-
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, params=params, headers=headers, timeout=15)
             response.raise_for_status()
 
             data = response.json()
-            return self._process_yahoo_data(data, symbol)
+            return self._process_coingecko_chart_data(data)
 
-        except requests.exceptions.RequestException as e:
-            logger.debug(traceback.format_exc())
-            logger.error(f"Yahoo Finance API request failed for {symbol}: {e}")
-            return {"success": False, "error": str(e), "symbol": symbol}
         except Exception as e:
-            logger.debug(traceback.format_exc())
-            logger.error(f"Unexpected error fetching Yahoo Finance data: {e}")
-            return {"success": False, "error": str(e), "symbol": symbol}
+            logger.error(f"CoinGecko market chart API failed for {symbol}: {e}")
+            raise
+
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=1800, rate_limit_interval=0.1, api_name="coincap"
+    )
+    def fetch_market_chart_coincap(
+        self, symbol: str, days: str = "30", interval: str = "daily"
+    ) -> Optional[Dict]:
+        """
+        Fetch market chart data from CoinCap API
+        """
+        try:
+            asset_id = self.symbol_mapping["coincap"].get(
+                symbol.upper(), symbol.lower()
+            )
+
+            # Convert days to milliseconds for CoinCap API
+            days_int = int(days)
+            end_time = int(time.time() * 1000)
+            start_time = end_time - (days_int * 24 * 60 * 60 * 1000)
+
+            # Map interval to CoinCap format
+            coincap_interval = self._map_interval_to_coincap(interval, days_int)
+
+            url = f"{self.apis['coincap']['base_url']}/assets/{asset_id}/history"
+            params = {
+                "interval": coincap_interval,
+                "start": start_time,
+                "end": end_time,
+            }
+
+            headers = {}
+            if self.apis["coincap"].get("api_key"):
+                headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
+
+            response = requests.get(url, params=params, headers=headers, timeout=15)
+            response.raise_for_status()
+
+            data = response.json()
+            return self._process_coincap_chart_data(data)
+
+        except Exception as e:
+            logger.error(f"CoinCap market chart API failed for {symbol}: {e}")
+            raise
+
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=1800, rate_limit_interval=0.1, api_name="binance"
+    )
+    def fetch_market_chart_binance(
+        self, symbol: str, days: str = "30", interval: str = "daily"
+    ) -> Optional[Dict]:
+        """
+        Fetch market chart data from Binance API
+        """
+        try:
+            binance_symbol = f"{symbol.upper()}USDT"
+
+            # Map interval to Binance format
+            binance_interval = self._map_interval_to_binance(interval)
+
+            # Calculate limit based on days and interval
+            days_int = int(days)
+            limit = min(days_int, 1000)  # Binance limit
+
+            url = f"{self.apis['binance']['base_url']}/klines"
+            params = {
+                "symbol": binance_symbol,
+                "interval": binance_interval,
+                "limit": limit,
+            }
+
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+
+            data = response.json()
+            return self._process_binance_chart_data(data)
+
+        except Exception as e:
+            logger.error(f"Binance market chart API failed for {symbol}: {e}")
+            raise
+
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=1800, rate_limit_interval=0.05, api_name="cryptocompare"
+    )
+    def fetch_market_chart_cryptocompare(
+        self, symbol: str, days: str = "30", interval: str = "daily"
+    ) -> Optional[Dict]:
+        """
+        Fetch market chart data from CryptoCompare API
+        """
+        try:
+            # Map interval to CryptoCompare endpoint
+            endpoint = self._map_interval_to_cryptocompare_endpoint(interval)
+
+            url = f"{self.apis['cryptocompare']['base_url']}/v2/{endpoint}"
+            params = {
+                "fsym": symbol.upper(),
+                "tsym": "USD",
+                "limit": int(days),
+                "aggregate": 1,
+            }
+
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+
+            data = response.json()
+            return self._process_cryptocompare_chart_data(data)
+
+        except Exception as e:
+            logger.error(f"CryptoCompare market chart API failed for {symbol}: {e}")
+            raise
+
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=1800,
+        rate_limit_interval=1.2,
+        max_retries=0,
+        retry_delay=2,
+    )
+    def fetch_market_chart_multi_api(
+        self,
+        symbol: str,
+        days: str = "30",
+        interval: str = "daily",
+        max_global_retries: int = None,
+    ) -> Optional[Dict]:
+        """
+        Fetch market chart data using multi-API fallback mechanism with enhanced error handling
+
+        Args:
+            symbol: Cryptocurrency symbol
+            days: Number of days of data (default: "30")
+            interval: Data interval - "daily", "hourly", or "weekly" (default: "daily")
+            max_global_retries: Maximum global retry attempts
+
+        Returns:
+            Dict: Market chart data in standardized format with prices, market_caps, and total_volumes
+        """
+        if max_global_retries is None:
+            max_global_retries = self.default_max_global_retries
+
+        logger.info(f"Starting multi-API market chart fetch for {symbol}")
+
+        # Define API methods in priority order
+        api_methods = [
+            ("coingecko", self.fetch_market_chart_coingecko),
+            ("coincap", self.fetch_market_chart_coincap),
+            ("binance", self.fetch_market_chart_binance),
+            ("cryptocompare", self.fetch_market_chart_cryptocompare),
+        ]
+
+        for global_retry in range(max_global_retries + 1):
+            available_apis = []
+            rate_limited_count = 0
+
+            # Filter out currently rate limited APIs
+            for api_name, api_method in api_methods:
+                if not self._is_api_rate_limited(api_name):
+                    available_apis.append((api_name, api_method))
+                else:
+                    rate_limited_count += 1
+                    logger.debug(f"Skipping rate limited API: {api_name}")
+
+            if not available_apis:
+                if global_retry < max_global_retries:
+                    wait_time = 60 * (global_retry + 1)  # Wait 60s, 120s, etc.
+                    logger.warning(
+                        f"All APIs rate limited, waiting {wait_time}s before retry {global_retry + 1}"
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error("All APIs exhausted after maximum retries")
+                    return None
+
+            # Try each available API
+            for api_name, api_method in available_apis:
+                try:
+                    logger.info(f"Trying API: {api_name} for {symbol} market chart")
+                    result = api_method(symbol, days, interval)
+
+                    if result and self._validate_chart_data(result):
+                        logger.info(
+                            f"Successfully fetched market chart data from {api_name} for {symbol}"
+                        )
+                        result["source"] = api_name
+                        result["symbol"] = symbol
+                        result["days"] = days
+                        result["interval"] = interval
+                        return result
+                    else:
+                        logger.warning(
+                            f"API {api_name} returned insufficient chart data for {symbol}"
+                        )
+
+                except APIRateLimitException as e:
+                    logger.warning(f"API {api_name} rate limited: {e}")
+                    self._mark_api_rate_limited(api_name, reset_after_seconds=300)
+                    continue  # Try next API immediately
+
+                except Exception as e:
+                    logger.warning(f"API {api_name} failed for {symbol} chart: {e}")
+                    continue  # Try next API
+
+            # If we get here, all available APIs failed (not due to rate limits)
+            logger.warning(
+                f"All available APIs failed for {symbol} chart on attempt {global_retry + 1}"
+            )
+            if global_retry < max_global_retries:
+                time.sleep(5)  # Short wait before retrying
+                continue
+            else:
+                break
+
+        logger.error(
+            f"All APIs failed for {symbol} chart after {max_global_retries + 1} attempts"
+        )
+        return None
 
     def _process_yahoo_data(self, data: Dict, symbol: str) -> Dict:
-        """Process Yahoo Finance data format"""
+        """Process Yahoo Finance data format with enhanced error handling"""
         try:
-            chart_data = data["chart"]["result"][0]
-            timestamps = chart_data["timestamp"]
-            indicators = chart_data["indicators"]["quote"][0]
+            # Validate basic data structure
+            if not data or "chart" not in data:
+                raise ValueError("Invalid Yahoo Finance response: missing chart data")
+
+            chart = data.get("chart", {})
+            if not chart.get("result") or len(chart["result"]) == 0:
+                raise ValueError("Invalid Yahoo Finance response: empty result")
+
+            chart_data = chart["result"][0]
+
+            # Check for required fields with defensive programming
+            if "timestamp" not in chart_data:
+                logger.warning(f"Yahoo Finance response missing timestamp field for {symbol}")
+                # Try alternative field names or provide fallback
+                timestamps = chart_data.get("timestamps") or chart_data.get("times") or []
+                if not timestamps:
+                    raise ValueError("No timestamp data available in Yahoo Finance response")
+            else:
+                timestamps = chart_data["timestamp"]
+
+            # Validate indicators data
+            indicators = chart_data.get("indicators", {})
+            if not indicators or "quote" not in indicators or len(indicators["quote"]) == 0:
+                raise ValueError("Invalid Yahoo Finance response: missing quote indicators")
+
+            quote_data = indicators["quote"][0]
+
+            # Validate that we have the required price data
+            required_fields = ["close", "open", "high", "low"]
+            for field in required_fields:
+                if field not in quote_data:
+                    logger.warning(f"Missing {field} data in Yahoo Finance response for {symbol}")
 
             prices = []
             for i, timestamp in enumerate(timestamps):
-                if indicators["close"][i] is not None:
-                    prices.append(
-                        {
-                            "timestamp": timestamp * 1000,  # Convert to milliseconds
-                            "date": datetime.fromtimestamp(timestamp),
-                            "price": indicators["close"][i],
-                            "open": indicators["open"][i],
-                            "high": indicators["high"][i],
-                            "low": indicators["low"][i],
-                            "volume": (
-                                indicators["volume"][i]
-                                if indicators["volume"][i]
-                                else 0
-                            ),
-                        }
-                    )
+                if i < len(quote_data.get("close", [])) and quote_data["close"][i] is not None:
+                    prices.append({
+                        "timestamp": timestamp * 1000,  # Convert to milliseconds
+                        "date": datetime.fromtimestamp(timestamp),
+                        "price": quote_data["close"][i],
+                        "open": quote_data.get("open", [None] * len(timestamps))[i],
+                        "high": quote_data.get("high", [None] * len(timestamps))[i],
+                        "low": quote_data.get("low", [None] * len(timestamps))[i],
+                        "volume": quote_data.get("volume", [0] * len(timestamps))[i] or 0,
+                    })
+
+            if not prices:
+                raise ValueError(f"No valid price data extracted for {symbol}")
 
             return {"success": True, "symbol": symbol, "prices": prices}
 
+        except KeyError as e:
+            logger.error(f"Missing required field in Yahoo Finance data for {symbol}: {e}")
+            logger.debug(f"Yahoo Finance raw response structure: {list(data.keys()) if data else 'None'}")
+            return {"success": False, "error": f"Missing required field: {e}", "symbol": symbol}
+    
         except Exception as e:
-            logger.debug(traceback.format_exc())
             logger.error(f"Error processing Yahoo Finance data for {symbol}: {e}")
+            logger.debug(f"Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e), "symbol": symbol}
+
 
     def get_risk_free_rate(self) -> float:
         """
@@ -842,7 +1487,7 @@ class MultiAPIManager:
             Risk-free rate as decimal (e.g., 0.045 for 4.5%)
         """
         try:
-            data = self.fetch_yahoo_finance_data("^TNX", "5d")
+            data = self.fetch_yahoo_finance_data_optimized("^TNX", "5d")
             if data["success"] and data["prices"]:
                 latest_yield = data["prices"][-1]["price"]
                 return latest_yield / 100  # Convert percentage to decimal
@@ -884,7 +1529,7 @@ class MultiAPIManager:
                 return self.fetch_historical_prices_coingecko(benchmark, days)
         else:
             symbol = benchmark_mapping.get(benchmark, benchmark)
-            return self.fetch_yahoo_finance_data(symbol)
+            return self.fetch_yahoo_finance_data_optimized(symbol)
 
         return {"success": False, "error": f"Unknown benchmark: {benchmark}"}
 
@@ -924,7 +1569,7 @@ class MultiAPIManager:
                 if not data["success"]:
                     data = self.fetch_historical_prices_coingecko(symbol, 30)
             else:
-                data = self.fetch_yahoo_finance_data(symbol, period="1mo")
+                data = self.fetch_yahoo_finance_data_optimized(symbol, period="1mo")
 
             if not data["success"]:
                 return 0.0
@@ -1018,7 +1663,7 @@ class MultiAPIManager:
                 if symbol.upper() in crypto_symbols:
                     data = get_crypto_historical_data(symbol.lower(), "usd", days)
                 else:
-                    data = self.fetch_yahoo_finance_data(symbol, "1y")
+                    data = self.fetch_yahoo_finance_data_optimized(symbol, "1y")
 
                 results[symbol] = data
 
@@ -1032,107 +1677,1121 @@ class MultiAPIManager:
 
         return results
 
+    @market_data_api
+    def get_fear_greed_index(self):
+        """Get Fear & Greed Index with multi-API fallback"""
+        api_methods = [
+            ("alternative_me", self._fetch_fear_greed_alternative),
+            # ("coinmarketcap", self._fetch_fear_greed_cmc),  # If available
+        ]
 
-def get_latest_crypto_price(symbol: str) -> Dict:
-    """
-    Get latest price for a cryptocurrency using CoinCap API 3.0 with authentication
+        for api_name, api_method in api_methods:
+            try:
+                result = api_method()
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning(f"Fear & Greed API {api_name} failed: {e}")
+                continue
 
-    Args:
-        symbol: Cryptocurrency symbol (e.g. 'BTC')
+        # Fallback to estimated values based on market conditions
+        return self._estimate_fear_greed_from_market()
 
-    Returns:
-        Dict with price information
-    """
-    try:
-        # Try CoinCap first (most reliable for latest prices)
-        api_manager._wait_for_rate_limit("coincap")
+    def _fetch_fear_greed_alternative(self):
+        """Fetch from Alternative.me (existing implementation)"""
+        url = "https://api.alternative.me/fng/"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
 
-        # CoinCap uses asset IDs
-        asset_id = api_manager.symbol_mapping["coincap"].get(symbol.upper())
-        if not asset_id:
-            # Common mappings
-            common_mappings = {
+        current_index = int(data["data"][0]["value"])
+        classification = data["data"][0]["value_classification"]
+
+        # Enhanced market condition mapping (existing logic)
+        if current_index >= 80:
+            market_condition = "extreme_bull"
+            market_sentiment = "extreme_greed"
+        elif current_index >= 70:
+            market_condition = "strong_bull"
+            market_sentiment = "greed"
+        elif current_index >= 60:
+            market_condition = "bull_market"
+            market_sentiment = "optimistic"
+        elif current_index >= 50:
+            market_condition = "bull_leaning"
+            market_sentiment = "neutral_positive"
+        elif current_index >= 40:
+            market_condition = "sideways"
+            market_sentiment = "neutral"
+        elif current_index >= 30:
+            market_condition = "bear_leaning"
+            market_sentiment = "neutral_negative"
+        elif current_index >= 20:
+            market_condition = "bear_market"
+            market_sentiment = "fear"
+        elif current_index >= 10:
+            market_condition = "strong_bear"
+            market_sentiment = "strong_fear"
+        else:
+            market_condition = "extreme_bear"
+            market_sentiment = "extreme_fear"
+
+        return current_index, classification, market_condition, market_sentiment
+
+    def _estimate_fear_greed_from_market(self):
+        """Estimate fear & greed based on market data when APIs fail"""
+        try:
+            # Get BTC trend
+            btc_trend = self.analyze_btc_trend(7)
+            weekly_change = btc_trend["weekly_change"]
+
+            # Estimate index based on price movement
+            if weekly_change > 15:
+                index = 75  # Greed
+            elif weekly_change > 5:
+                index = 60  # Optimistic
+            elif weekly_change > -5:
+                index = 45  # Neutral
+            elif weekly_change > -15:
+                index = 30  # Fear
+            else:
+                index = 20  # Strong fear
+
+            if index >= 70:
+                classification = "Greed"
+                market_condition = "bull_market"
+                market_sentiment = "greed"
+            elif index >= 50:
+                classification = "Neutral"
+                market_condition = "sideways"
+                market_sentiment = "neutral"
+            else:
+                classification = "Fear"
+                market_condition = "bear_market"
+                market_sentiment = "fear"
+
+            return index, classification, market_condition, market_sentiment
+
+        except Exception:
+            # Ultimate fallback
+            return 50, "Neutral", "sideways", "neutral"
+
+    @market_data_api
+    def get_market_metrics(self):
+        """Get market metrics from multiple APIs with fallback"""
+        # Define API methods in priority order
+        api_methods = [
+            ("coingecko", self._fetch_coingecko_global_metrics),
+            ("coincap", self._fetch_coincap_global_metrics),
+            # ("binance", self._fetch_binance_global_metrics),
+        ]
+
+        for api_name, api_method in api_methods:
+            if self._is_api_rate_limited(api_name):
+                continue
+
+            try:
+                result = api_method()
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning(f"API {api_name} failed for global metrics: {e}")
+                continue
+
+        raise ValueError("All APIs failed for global metrics")
+
+    def _fetch_coingecko_global_metrics(self):
+        """Fetch from CoinGecko (existing implementation)"""
+        url = "https://api.coingecko.com/api/v3/global"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        return {
+            "total_market_cap": data["data"]["total_market_cap"]["usd"],
+            "btc_dominance": data["data"]["market_cap_percentage"]["btc"],
+            "eth_dominance": data["data"]["market_cap_percentage"].get("eth", 0),
+            "market_cap_change_24h": data["data"][
+                "market_cap_change_percentage_24h_usd"
+            ],
+            "active_cryptocurrencies": data["data"]["active_cryptocurrencies"],
+            "markets": data["data"]["markets"],
+            "source": "coingecko",
+        }
+
+    def _fetch_coincap_global_metrics(self):
+        """Fetch from CoinCap"""
+        headers = {}
+        if self.apis["coincap"].get("api_key"):
+            headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
+
+        url = f"{self.apis['coincap']['base_url']}/assets"
+        params = {"limit": 10}  # Get top 10 for dominance calculation
+
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if not data.get("data"):
+            return None
+
+        total_market_cap = sum(
+            float(asset.get("marketCapUsd", 0)) for asset in data["data"]
+        )
+        btc_data = next(
+            (asset for asset in data["data"] if asset["id"] == "bitcoin"), None
+        )
+        eth_data = next(
+            (asset for asset in data["data"] if asset["id"] == "ethereum"), None
+        )
+
+        btc_dominance = (
+            (float(btc_data["marketCapUsd"]) / total_market_cap * 100)
+            if btc_data
+            else 0
+        )
+        eth_dominance = (
+            (float(eth_data["marketCapUsd"]) / total_market_cap * 100)
+            if eth_data
+            else 0
+        )
+
+        return {
+            "total_market_cap": total_market_cap,
+            "btc_dominance": btc_dominance,
+            "eth_dominance": eth_dominance,
+            "market_cap_change_24h": None,  # Not available in CoinCap
+            "active_cryptocurrencies": len(data["data"]),
+            "markets": None,
+            "source": "coincap",
+        }
+
+    @historical_data_api
+    def analyze_btc_trend(self, days=30):
+        """Analyze Bitcoin price trend using multi-API fallback"""
+        # Use existing multi-API historical data method
+        btc_data = self.fetch_with_batch_cache_fallback("BTC", days)
+
+        if not btc_data or not btc_data.get("prices"):
+            raise ValueError("Failed to fetch Bitcoin data from all APIs")
+
+        prices = btc_data["prices"]
+
+        if len(prices) < 7:
+            raise ValueError("Insufficient price data for trend analysis")
+
+        # Calculate key metrics (existing logic)
+        current_price = prices[-1]
+        week_ago_price = prices[-7] if len(prices) >= 7 else prices[0]
+        month_ago_price = prices[0]
+
+        # Calculate percentage changes
+        weekly_change = (current_price - week_ago_price) / week_ago_price * 100
+        monthly_change = (current_price - month_ago_price) / month_ago_price * 100
+
+        # Calculate moving averages
+        ma_7 = sum(prices[-7:]) / min(7, len(prices))
+        ma_14 = sum(prices[-14:]) / min(14, len(prices))
+        ma_30 = sum(prices) / len(prices)
+
+        # Calculate volatility
+        daily_returns = [
+            (prices[i] - prices[i - 1]) / prices[i - 1] * 100
+            for i in range(1, len(prices))
+        ]
+        volatility = np.std(daily_returns) if len(daily_returns) > 1 else 0
+
+        # Determine trend
+        if current_price > ma_7 > ma_14 > ma_30 and weekly_change > 10:
+            trend = "strong_bullish"
+        elif current_price > ma_7 > ma_30 and weekly_change > 5:
+            trend = "bullish"
+        elif current_price < ma_7 < ma_14 < ma_30 and weekly_change < -10:
+            trend = "strong_bearish"
+        elif current_price < ma_7 < ma_30 and weekly_change < -5:
+            trend = "bearish"
+        else:
+            trend = "sideways"
+
+        return {
+            "current_price": current_price,
+            "weekly_change": weekly_change,
+            "monthly_change": monthly_change,
+            "ma_7": ma_7,
+            "ma_14": ma_14,
+            "ma_30": ma_30,
+            "volatility": volatility,
+            "trend": trend,
+            "source": btc_data.get("source", "multi_api"),
+        }
+
+    @market_data_api
+    def fetch_binance_market_data(self, symbols: List[str]) -> Dict:
+        """
+        从Binance获取市场数
+        """
+        results = {}
+
+        try:
+            # Binance 24hr ticker API
+            url = f"{self.apis['binance']['base_url']}/ticker/24hr"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # 创建符号映射
+            for item in data:
+                symbol = item["symbol"]
+                if symbol.endswith("USDT"):
+                    base_symbol = symbol[:-4]  # 移除USDT
+                    if base_symbol in symbols:
+                        results[base_symbol] = {
+                            "id": base_symbol.lower(),
+                            "symbol": base_symbol.lower(),
+                            "current_price": float(item["lastPrice"]),
+                            "market_cap": None,  # Binance不提供市值
+                            "total_volume": float(item["volume"])
+                            * float(item["lastPrice"]),
+                            "price_change_percentage_24h": float(
+                                item["priceChangePercent"]
+                            ),
+                        }
+
+        except Exception as e:
+            logger.error(
+                f"Binance market data fetch failed: {e}\n{traceback.format_exc()}"
+            )
+        return results
+
+    @market_data_api
+    def fetch_current_market_data_coincap(self, coin_ids: List[str]) -> Dict:
+        """
+        Fetch current market data from CoinCap API v3
+
+        Args:
+            coin_ids (List[str]): List of CoinCap asset IDs or symbols
+
+        Returns:
+            Dict: Current market data
+        """
+        try:
+            headers = {}
+            if self.apis["coincap"]["api_key"]:
+                # CoinCap uses Bearer token, not X-CG-API-KEY
+                headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
+
+            # Use the correct CoinCap endpoint for assets
+            url = f"{self.apis['coincap']['base_url']}/assets"
+
+            # Convert symbols to CoinCap asset IDs if needed
+            asset_ids = []
+            for coin_id in coin_ids:
+                # Map symbols to CoinCap asset IDs
+                if coin_id.upper() in [
+                    "ETH",
+                    "BTC",
+                    "SOL",
+                    "BNB",
+                    "USDT",
+                    "TRX",
+                    "SWFTC",
+                    "ETHW",
+                ]:
+                    symbol_to_id = {
+                        "ETH": "ethereum",
+                        "BTC": "bitcoin",
+                        "SOL": "solana",
+                        "BNB": "binance-coin",
+                        "USDT": "tether",
+                        "TRX": "tron",
+                        "SWFTC": "swftcoin",  # 需要验证准确的ID
+                        "ETHW": "ethereum-pow",  # 需要验证准确的ID
+                    }
+                    asset_ids.append(symbol_to_id.get(coin_id.upper(), coin_id.lower()))
+                else:
+                    asset_ids.append(coin_id.lower())
+
+            # Use CoinCap parameters, not CoinGecko parameters
+            params = {"ids": ",".join(asset_ids), "limit": len(asset_ids)}
+
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Process CoinCap response format
+            all_data = {}
+            if "data" in data:
+                for item in data["data"]:
+                    # Convert CoinCap format to expected format
+                    processed_item = {
+                        "id": item["id"],
+                        "symbol": item["symbol"].lower(),
+                        "current_price": (
+                            float(item["priceUsd"]) if item["priceUsd"] else 0
+                        ),
+                        "market_cap": (
+                            float(item["marketCapUsd"]) if item["marketCapUsd"] else 0
+                        ),
+                        "total_volume": (
+                            float(item["volumeUsd24Hr"]) if item["volumeUsd24Hr"] else 0
+                        ),
+                        "price_change_percentage_24h": (
+                            float(item["changePercent24Hr"])
+                            if item["changePercent24Hr"]
+                            else 0
+                        ),
+                        "rank": int(item["rank"]) if item["rank"] else 0,
+                    }
+                    all_data[item["id"]] = processed_item
+
+            return all_data
+
+        except Exception as e:
+            logger.error(f"Failed to fetch market data from CoinCap: {e}")
+            logger.debug(traceback.format_exc())
+            return {}
+
+    @market_data_api
+    def get_coin_id_mapping_coincap(self) -> Dict[str, str]:
+        """
+        Get mapping from symbol to CoinCap asset ID using CoinCap API v3.
+
+        Returns:
+            Dict: Mapping of symbol to asset ID
+        """
+        try:
+            headers = {}
+            if self.apis["coincap"]["api_key"]:
+                # CoinCap uses Bearer token authentication
+                headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
+
+            # Use correct CoinCap v3 endpoint
+            url = f"{self.apis['coincap']['base_url']}/assets"
+
+            # CoinCap API supports pagination and filtering
+            params = {
+                "limit": 2000,  # Get top 2000 assets to build comprehensive mapping
+                "offset": 0,
+            }
+
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            mapping = {}
+
+            # Process CoinCap response format
+            if "data" in data:
+                for asset in data["data"]:
+                    symbol = asset["symbol"].upper()
+                    asset_id = asset["id"]
+
+                    # Prefer assets with higher rank (lower number = higher rank)
+                    if symbol not in mapping:
+                        mapping[symbol] = asset_id
+                    else:
+                        # If symbol already exists, prefer the one with better rank
+                        existing_rank = float("inf")  # Default to infinity if no rank
+                        current_rank = int(asset.get("rank", float("inf")))
+
+                        # Keep the asset with better (lower) rank
+                        if current_rank < existing_rank:
+                            mapping[symbol] = asset_id
+
+            # Add manual mappings for important coins to ensure accuracy
+            important_mappings = {
                 "BTC": "bitcoin",
                 "ETH": "ethereum",
                 "BNB": "binance-coin",
                 "SOL": "solana",
+                "ADA": "cardano",
+                "XRP": "ripple",
+                "DOGE": "dogecoin",
+                "DOT": "polkadot",
+                "AVAX": "avalanche",
+                "SHIB": "shiba-inu",
+                "MATIC": "polygon",
+                "LINK": "chainlink",
+                "UNI": "uniswap",
+                "ATOM": "cosmos",
+                "LTC": "litecoin",
+                "NEAR": "near-protocol",
+                "APT": "aptos",
+                "OP": "optimism",
+                "ARB": "arbitrum",
             }
-            asset_id = common_mappings.get(symbol.upper(), symbol.lower())
 
-        url = f"{api_manager.apis['coincap']['base_url']}/assets/{asset_id}"
+            # Override with manual mappings for critical assets
+            for symbol, asset_id in important_mappings.items():
+                mapping[symbol] = asset_id
 
-        # Add authentication header if API key is available
-        headers = {}
-        if api_manager.apis["coincap"].get("api_key"):
-            headers["Authorization"] = (
-                f"Bearer {api_manager.apis['coincap']['api_key']}"
+            logger.info(
+                f"Successfully built CoinCap mapping with {len(mapping)} assets"
+            )
+            return mapping
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error fetching CoinCap mapping: {e}")
+            if e.response.status_code == 401:
+                logger.warning("CoinCap API authentication failed - check API key")
+            elif e.response.status_code == 429:
+                logger.warning("CoinCap API rate limit exceeded")
+            return self._get_fallback_coin_mapping()
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error fetching CoinCap mapping: {e}")
+            return self._get_fallback_coin_mapping()
+
+        except Exception as e:
+            logger.error(f"Unexpected error fetching CoinCap mapping: {e}")
+            logger.debug(traceback.format_exc())
+            return self._get_fallback_coin_mapping()
+
+    def _get_fallback_coin_mapping(self) -> Dict[str, str]:
+        """
+        Provide fallback coin mapping when API calls fail
+
+        Returns:
+            Dict: Basic mapping of popular cryptocurrencies
+        """
+        return {
+            "BTC": "bitcoin",
+            "ETH": "ethereum",
+            "BNB": "binance-coin",
+            "SOL": "solana",
+            "ADA": "cardano",
+            "XRP": "ripple",
+            "DOGE": "dogecoin",
+            "DOT": "polkadot",
+            "AVAX": "avalanche",
+            "SHIB": "shiba-inu",
+            "MATIC": "polygon",
+            "LINK": "chainlink",
+            "UNI": "uniswap",
+            "ATOM": "cosmos",
+            "LTC": "litecoin",
+            "NEAR": "near-protocol",
+            "APT": "aptos",
+            "OP": "optimism",
+            "ARB": "arbitrum",
+            "TRX": "tron",
+            "USDT": "tether",
+            "USDC": "usd-coin",
+            "BUSD": "binance-usd",
+            "DAI": "dai",
+            "WETH": "weth",
+            "STETH": "staked-ether",
+            "CRO": "cronos",
+            "ALGO": "algorand",
+            "VET": "vechain",
+            "SAND": "the-sandbox",
+            "MANA": "decentraland",
+            "AXS": "axie-infinity",
+            "FTM": "fantom",
+            "THETA": "theta-token",
+            "ICP": "internet-computer",
+            "HBAR": "hedera-hashgraph",
+            "XLM": "stellar",
+            "ETC": "ethereum-classic",
+            "FIL": "filecoin",
+            "AAVE": "aave",
+            "GRT": "the-graph",
+            "ENJ": "enjincoin",
+            "CHZ": "chiliz",
+            "FLOW": "flow",
+            "XTZ": "tezos",
+        }
+
+    @market_data_api
+    def get_real_defi_yields(self) -> Dict:
+        """Fetch real DeFi yields from multiple protocols with fallback"""
+        yields = {}
+
+        # Define yield sources in priority order
+        yield_sources = [
+            ("aave", self._fetch_aave_yields),
+            ("compound", self._fetch_compound_yields),
+            ("defi_pulse", self._fetch_defi_pulse_yields),
+            ("fallback", self._get_fallback_yields),
+        ]
+
+        for source_name, fetch_method in yield_sources:
+            try:
+                source_yields = fetch_method()
+                if source_yields:
+                    yields.update(source_yields)
+                    logger.info(f"Successfully fetched yields from {source_name}")
+                    break  # Use first successful source
+            except Exception as e:
+                logger.warning(f"DeFi yields source {source_name} failed: {e}")
+                continue
+
+        return yields if yields else self._get_fallback_yields()
+
+    def _fetch_aave_yields(self):
+        """Fetch Aave yields (existing implementation)"""
+        aave_response = requests.get(
+            "https://aave-api-v2.aave.com/data/liquidity/v2", timeout=10
+        )
+        aave_data = aave_response.json()
+
+        yields = {}
+        for reserve in aave_data:
+            if reserve["symbol"] == "USDC":
+                yields["aave_usdc_supply"] = float(reserve["liquidityRate"]) * 100
+            if reserve["symbol"] == "USDT":
+                yields["aave_usdt_supply"] = float(reserve["liquidityRate"]) * 100
+            if reserve["symbol"] == "WETH":
+                yields["aave_eth_supply"] = float(reserve["liquidityRate"]) * 100
+
+        return yields
+
+    def _fetch_compound_yields(self):
+        """Fetch Compound yields"""
+        # Compound API endpoint
+        url = "https://api.compound.finance/api/v2/ctoken"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        yields = {}
+        for token in data.get("cToken", []):
+            if token["underlying_symbol"] == "USDC":
+                yields["compound_usdc"] = float(token["supply_rate"]["value"]) * 100
+            elif token["underlying_symbol"] == "USDT":
+                yields["compound_usdt"] = float(token["supply_rate"]["value"]) * 100
+            elif token["underlying_symbol"] == "ETH":
+                yields["compound_eth"] = float(token["supply_rate"]["value"]) * 100
+
+        return yields
+
+    def _fetch_defi_pulse_yields(self):
+        """Fetch yields from DeFiPulse or similar aggregator"""
+        # This would be implemented if DeFiPulse API is available
+        # For now, return empty dict to fall through to next source
+        return {}
+
+    def _get_fallback_yields(self):
+        """Conservative fallback yields based on current market conditions"""
+        return {
+            "aave_usdc_supply": 4.0,
+            "aave_usdt_supply": 3.8,
+            "aave_eth_supply": 2.5,
+            "compound_usdc": 3.5,
+            "compound_usdt": 3.2,
+            "compound_eth": 2.2,
+            "curve_3pool": 2.2,
+            "yearn_usdc": 4.8,
+            "uniswap_v3_eth_usdc": 8.5,
+            "eth_staking": 4.0,
+            "source": "fallback_estimates",
+        }
+
+    def _fetch_fed_rate(self):
+        """Fetch from Federal Reserve API if available"""
+        # This would be implemented if FRED API access is available
+        # For now, return None to fall through
+        return None
+
+    # Add these helper methods to MultiAPIManager class
+
+    def _validate_chart_data(self, data: Dict) -> bool:
+        """Validate chart data format and content"""
+        if not isinstance(data, dict):
+            return False
+
+        required_fields = ["prices"]
+        for field in required_fields:
+            if field not in data:
+                return False
+            if not isinstance(data[field], list):
+                return False
+            if len(data[field]) < 5:  # Minimum data points
+                return False
+
+        return True
+
+    def _map_interval_to_coincap(self, interval: str, days: int) -> str:
+        """Map interval to CoinCap format"""
+        if days <= 1:
+            return "h1"  # Hourly
+        elif days <= 7:
+            return "h6"  # 6-hourly
+        else:
+            return "d1"  # Daily
+
+    def _map_interval_to_binance(self, interval: str) -> str:
+        """Map interval to Binance format"""
+        mapping = {"hourly": "1h", "daily": "1d", "weekly": "1w"}
+        return mapping.get(interval, "1d")
+
+    def _map_interval_to_cryptocompare_endpoint(self, interval: str) -> str:
+        """Map interval to CryptoCompare endpoint"""
+        mapping = {"hourly": "histohour", "daily": "histoday", "weekly": "histoday"}
+        return mapping.get(interval, "histoday")
+
+    def _process_coingecko_chart_data(self, data: Dict) -> Dict:
+        """Process CoinGecko chart data format"""
+        prices = data.get("prices", [])
+        market_caps = data.get("market_caps", [])
+        volumes = data.get("total_volumes", [])
+
+        return {
+            "prices": [[item[0], item[1]] for item in prices],
+            "market_caps": [[item[0], item[1]] for item in market_caps],
+            "total_volumes": [[item[0], item[1]] for item in volumes],
+        }
+
+    def _process_coincap_chart_data(self, data: Dict) -> Dict:
+        """Process CoinCap chart data format"""
+        history = data.get("data", [])
+
+        prices = []
+        market_caps = []
+        volumes = []
+
+        for item in history:
+            timestamp = int(item.get("time", 0))
+            price = float(item.get("priceUsd", 0))
+            volume = float(item.get("volumeUsd24Hr", 0))
+
+            prices.append([timestamp, price])
+            market_caps.append([timestamp, None])  # Not available in history
+            volumes.append([timestamp, volume])
+
+        return {
+            "prices": prices,
+            "market_caps": market_caps,
+            "total_volumes": volumes,
+        }
+
+    def _process_binance_chart_data(self, data: List) -> Dict:
+        """Process Binance chart data format"""
+        prices = []
+        volumes = []
+
+        for kline in data:
+            timestamp = int(kline[0])
+            close_price = float(kline[4])
+            volume = float(kline[5])
+
+            prices.append([timestamp, close_price])
+            volumes.append([timestamp, volume])
+
+        return {
+            "prices": prices,
+            "market_caps": [[item[0], None] for item in prices],  # Not available
+            "total_volumes": volumes,
+        }
+
+    def _process_cryptocompare_chart_data(self, data: Dict) -> Dict:
+        """Process CryptoCompare chart data format"""
+        history = data.get("Data", {}).get("Data", [])
+
+        prices = []
+        volumes = []
+
+        for item in history:
+            timestamp = int(item["time"]) * 1000  # Convert to milliseconds
+            close_price = float(item["close"])
+            volume = float(item.get("volumeto", 0))
+
+            prices.append([timestamp, close_price])
+            volumes.append([timestamp, volume])
+
+        return {
+            "prices": prices,
+            "market_caps": [[item[0], None] for item in prices],  # Not available
+            "total_volumes": volumes,
+        }
+
+
+@api_call_with_cache_and_rate_limit(
+    cache_duration=300, rate_limit_interval=1.0, max_retries=3, retry_delay=2
+)
+def get_latest_crypto_price(symbol: str) -> Dict:
+    """Get latest price using multi-API fallback mechanism"""
+    global api_manager
+
+    # Use the existing multi-API market data method
+    market_data = api_manager.fetch_market_data(symbol)
+    if market_data:
+        return {
+            "success": True,
+            "symbol": symbol.upper(),
+            "price": market_data["current_price"],
+            "market_cap": market_data["market_cap"],
+            "volume_24h": market_data["total_volume"],
+            "change_24h": market_data["price_change_percentage_24h"],
+            "timestamp": int(time.time() * 1000),
+            "source": market_data["source"],
+        }
+
+    raise ValueError(f"No price data available for {symbol}")
+
+
+class BatchCacheManager:
+    """Batch cache manager for efficient data preloading and caching"""
+
+    def __init__(self, api_manager):
+        self.api_manager = api_manager
+        self.batch_cache_duration = 86400  # 24 hours for batch data
+        self.preload_symbols = [
+            "BTC",
+            "ETH",
+            "BNB",
+            "ADA",
+            "SOL",
+            "DOT",
+            "LINK",
+            "UNI",
+            "AAVE",
+            "^GSPC",
+            "^IXIC",
+            "^DJI",
+            "^TNX",
+            "GC=F",
+            "DX-Y.NYB",  # Traditional assets
+        ]
+
+    @cache_result(duration=86400)  # 24-hour cache
+    def preload_all_market_data(self) -> Dict:
+        """Preload and cache all commonly used market data at once"""
+        logger.info("Starting batch preload of market data...")
+
+        batch_data = {
+            "crypto_prices": {},
+            "traditional_assets": {},
+            "market_metrics": {},
+            "fear_greed_index": None,
+            "risk_free_rate": None,
+            "timestamp": time.time(),
+        }
+
+        # Batch load crypto data
+        crypto_symbols = [
+            "BTC",
+            "ETH",
+            "BNB",
+            "ADA",
+            "SOL",
+            "DOT",
+            "LINK",
+            "UNI",
+            "AAVE",
+        ]
+        for symbol in crypto_symbols:
+            try:
+                # Get both current price and historical data
+                market_data = self.api_manager.fetch_market_data(symbol)
+                historical_data = self.api_manager.fetch_with_fallback(symbol, days=365)
+
+                batch_data["crypto_prices"][symbol] = {
+                    "market_data": market_data,
+                    "historical_data": historical_data,
+                    "cached_at": time.time(),
+                }
+
+                # Small delay to respect rate limits
+                time.sleep(0.5)
+
+            except Exception as e:
+                logger.warning(f"Failed to preload data for {symbol}: {e}")
+                continue
+
+        # Batch load traditional assets
+        traditional_symbols = {
+            "^GSPC": "SP500",
+            "^IXIC": "NASDAQ",
+            "^DJI": "DOW",
+            "^TNX": "10Y_TREASURY",
+            "GC=F": "GOLD",
+            "DX-Y.NYB": "USD_INDEX",
+        }
+
+        for symbol, name in traditional_symbols.items():
+            try:
+                data = self.api_manager.fetch_yahoo_finance_data(symbol, "1y")
+                batch_data["traditional_assets"][name] = {
+                    "data": data,
+                    "symbol": symbol,
+                    "cached_at": time.time(),
+                }
+                time.sleep(1.0)  # Yahoo Finance needs more delay
+
+            except Exception as e:
+                logger.warning(f"Failed to preload {name} ({symbol}): {e}")
+                continue
+
+        # Load market metrics
+        try:
+            batch_data["market_metrics"] = self.api_manager.get_market_metrics()
+            batch_data["fear_greed_index"] = self.api_manager.get_fear_greed_index()
+            batch_data["risk_free_rate"] = self.api_manager.get_risk_free_rate()
+        except Exception as e:
+            logger.warning(f"Failed to load market metrics: {e}")
+
+        logger.info(
+            f"Batch preload completed. Cached {len(batch_data['crypto_prices'])} crypto assets and {len(batch_data['traditional_assets'])} traditional assets"
+        )
+        return batch_data
+
+    def get_cached_data(self, asset_type: str, symbol: str) -> Optional[Dict]:
+        """Get data from batch cache"""
+        cache_key = "preload_all_market_data_"
+        cached_batch = _cache_backend.get(cache_key)
+
+        if not cached_batch:
+            logger.info("No batch cache found, triggering preload...")
+            batch_data = self.preload_all_market_data()
+        else:
+            batch_data, timestamp = cached_batch
+            # Check if cache is still valid (within 24 hours)
+            if time.time() - timestamp > self.batch_cache_duration:
+                logger.info("Batch cache expired, reloading...")
+                batch_data = self.preload_all_market_data()
+
+        if asset_type == "crypto" and symbol in batch_data.get("crypto_prices", {}):
+            return batch_data["crypto_prices"][symbol]
+        elif asset_type == "traditional":
+            for name, data in batch_data.get("traditional_assets", {}).items():
+                if data.get("symbol") == symbol or name == symbol:
+                    return data
+
+        return None
+
+    def warm_cache_on_startup(self):
+        """Warm cache on application startup"""
+        try:
+            logger.info("Warming cache on startup...")
+            self.preload_all_market_data()
+            logger.info("Cache warming completed successfully")
+        except Exception as e:
+            logger.error(f"Cache warming failed: {e}")
+
+
+class CacheRefreshScheduler:
+    """Background scheduler for cache refresh"""
+
+    def __init__(self, batch_cache_manager):
+        self.batch_cache_manager = batch_cache_manager
+        self.scheduler_thread = None
+        self.running = False
+
+    def start_scheduler(self):
+        """Start background cache refresh scheduler"""
+        if self.running:
+            return
+
+        self.running = True
+        self.scheduler_thread = threading.Thread(target=self._scheduler_loop)
+        self.scheduler_thread.daemon = True
+        self.scheduler_thread.start()
+        logger.info("Cache refresh scheduler started")
+
+    def stop_scheduler(self):
+        """Stop background scheduler"""
+        self.running = False
+        if self.scheduler_thread:
+            self.scheduler_thread.join(timeout=5)
+        logger.info("Cache refresh scheduler stopped")
+
+    def _scheduler_loop(self):
+        """Main scheduler loop"""
+        while self.running:
+            try:
+                # Refresh every 4 hours
+                time.sleep(4 * 3600)
+
+                if self.running:
+                    logger.info("Starting scheduled cache refresh...")
+                    self.batch_cache_manager.preload_all_market_data()
+                    logger.info("Scheduled cache refresh completed")
+
+            except Exception as e:
+                logger.error(f"Scheduled cache refresh failed: {e}")
+                # Continue running even if refresh fails
+                time.sleep(300)  # Wait 5 minutes before retrying
+
+
+class SmartCacheInvalidator:
+    """Smart cache invalidation based on market conditions"""
+
+    def __init__(self, api_manager):
+        self.api_manager = api_manager
+        self.last_btc_price = None
+        self.volatility_threshold = 0.05  # 5% price change triggers refresh
+
+    def should_invalidate_cache(self) -> bool:
+        """Check if cache should be invalidated due to high volatility"""
+        try:
+            # Get current BTC price as market indicator
+            current_btc_data = self.api_manager.fetch_market_data("BTC")
+            if not current_btc_data:
+                return False
+
+            current_price = current_btc_data.get("current_price", 0)
+
+            if self.last_btc_price is None:
+                self.last_btc_price = current_price
+                return False
+
+            # Calculate price change
+            price_change = (
+                abs(current_price - self.last_btc_price) / self.last_btc_price
             )
 
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
+            if price_change > self.volatility_threshold:
+                logger.info(
+                    f"High volatility detected: {price_change:.2%} BTC price change, invalidating cache"
+                )
+                self.last_btc_price = current_price
+                return True
 
-        data = response.json().get("data", {})
-        if data and "priceUsd" in data:
-            return {
-                "success": True,
-                "symbol": symbol.upper(),
-                "price": float(data["priceUsd"]),
-                "market_cap": float(data.get("marketCapUsd", 0)),
-                "volume_24h": float(data.get("volumeUsd24Hr", 0)),
-                "change_24h": float(data.get("changePercent24Hr", 0)),
-                "timestamp": int(time.time() * 1000),
-                "source": "coincap_v3",
-            }
-    except Exception as e:
-        logger.debug(traceback.format_exc())
-        logger.warning(f"CoinCap API 3.0 failed for latest price of {symbol}: {e}")
+            return False
 
-    # If CoinCap fails, try CryptoCompare
-    try:
-        api_manager._wait_for_rate_limit("cryptocompare")
+        except Exception as e:
+            logger.warning(f"Failed to check market volatility: {e}")
+            return False
 
-        url = f"{api_manager.apis['cryptocompare']['base_url']}/price"
-        params = {"fsym": symbol.upper(), "tsyms": "USD"}
-
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-
-        data = response.json()
-        if data and "USD" in data:
-            return {
-                "success": True,
-                "symbol": symbol.upper(),
-                "price": float(data["USD"]),
-                "timestamp": int(time.time() * 1000),
-                "source": "cryptocompare",
-            }
-    except Exception as e:
-        logger.debug(traceback.format_exc())
-        logger.warning(f"CryptoCompare API failed for latest price of {symbol}: {e}")
-
-    # All APIs failed
-    return {
-        "success": False,
-        "symbol": symbol.upper(),
-        "error": "Failed to get latest price from any API",
-    }
+    def conditional_cache_refresh(self):
+        """Refresh cache only if market conditions warrant it"""
+        if self.should_invalidate_cache():
+            logger.info("Triggering conditional cache refresh due to market volatility")
+            # Clear existing cache
+            clear_cache("*market*")
+            # Trigger fresh data load
+            self.api_manager.batch_cache_manager.preload_all_market_data()
 
 
-# 全局实例
-api_manager = MultiAPIManager()
+# 在 api_manager.py 中添加的完整集成代码
 
 
-# 在文件末尾添加全局函数，保持向后兼容性
-def get_risk_free_rate_global() -> float:
-    """Global function for backward compatibility"""
-    return api_manager.get_risk_free_rate()
+class EnhancedMultiAPIManager(MultiAPIManager):
+    """Enhanced API Manager with comprehensive caching strategy"""
+
+    def __init__(self):
+        super().__init__()
+        # Initialize batch caching components
+        self.batch_cache_manager = BatchCacheManager(self)
+        self.cache_scheduler = CacheRefreshScheduler(self.batch_cache_manager)
+        self.cache_invalidator = SmartCacheInvalidator(self)
+
+        # Start background processes
+        self._initialize_caching_system()
+
+    def _initialize_caching_system(self):
+        """Initialize the comprehensive caching system"""
+        logger.info("Initializing enhanced caching system...")
+
+        try:
+            # Warm cache on startup
+            threading.Thread(
+                target=self.batch_cache_manager.warm_cache_on_startup, daemon=True
+            ).start()
+
+            # Start refresh scheduler
+            self.cache_scheduler.start_scheduler()
+
+            # Set up periodic volatility checks
+            threading.Thread(target=self._volatility_monitor_loop, daemon=True).start()
+
+            logger.info("Enhanced caching system initialized successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize caching system: {e}")
+
+    def _volatility_monitor_loop(self):
+        """Background loop to monitor market volatility"""
+        while True:
+            try:
+                time.sleep(300)  # Check every 5 minutes
+                self.cache_invalidator.conditional_cache_refresh()
+            except Exception as e:
+                logger.error(f"Volatility monitor error: {e}")
+                time.sleep(60)  # Wait 1 minute on error
+
+    # Override key methods to use batch cache
+    def fetch_with_fallback(
+        self, symbol: str, days: int = 90, max_global_retries: int = None
+    ) -> Optional[Dict]:
+        """Enhanced fallback with batch cache priority"""
+        # First try batch cache
+        result = self.batch_cache_manager.get_cached_data("crypto", symbol)
+        if result and result.get("historical_data"):
+            cache_age = time.time() - result.get("cached_at", 0)
+            if cache_age < 1800:  # 30 minutes freshness
+                logger.info(f"Batch cache hit for {symbol} (age: {cache_age:.1f}s)")
+                return result["historical_data"]
+
+        # Fallback to original method
+        logger.info(f"Using individual API fallback for {symbol}")
+        return super().fetch_with_fallback(symbol, days, max_global_retries)
+
+    def fetch_yahoo_finance_data(self, symbol: str, period: str = "1y") -> Dict:
+        """Enhanced Yahoo Finance with batch cache support"""
+        # Check batch cache first
+        result = self.batch_cache_manager.get_cached_data("traditional", symbol)
+        if result and result.get("data"):
+            cache_age = time.time() - result.get("cached_at", 0)
+            if cache_age < 1800:  # 30 minutes freshness
+                logger.info(
+                    f"Batch cache hit for Yahoo Finance {symbol} (age: {cache_age:.1f}s)"
+                )
+                return result["data"]
+
+        # If not in batch cache or expired, use original method with improved caching
+        logger.info(f"Using individual Yahoo Finance call for {symbol}")
+        return self.fetch_yahoo_finance_data_optimized(symbol, period)
+
+    def get_cache_status(self) -> Dict:
+        """Get comprehensive cache status"""
+        cache_stats = get_cache_stats()
+
+        # Add batch cache specific stats
+        batch_cache_key = "preload_all_market_data_"
+        batch_cached = _cache_backend.get(batch_cache_key)
+
+        batch_status = {
+            "batch_cache_exists": bool(batch_cached),
+            "batch_cache_age": 0,
+            "cached_crypto_symbols": 0,
+            "cached_traditional_symbols": 0,
+        }
+
+        if batch_cached:
+            batch_data, timestamp = batch_cached
+            batch_status["batch_cache_age"] = time.time() - timestamp
+            batch_status["cached_crypto_symbols"] = len(
+                batch_data.get("crypto_prices", {})
+            )
+            batch_status["cached_traditional_symbols"] = len(
+                batch_data.get("traditional_assets", {})
+            )
+
+        return {
+            "redis_cache": cache_stats,
+            "batch_cache": batch_status,
+            "scheduler_running": self.cache_scheduler.running,
+            "last_volatility_check": getattr(
+                self.cache_invalidator, "last_check_time", None
+            ),
+        }
+
+    def force_cache_refresh(self):
+        """Manually trigger full cache refresh"""
+        logger.info("Manual cache refresh triggered")
+        clear_cache("*")
+        self.batch_cache_manager.preload_all_market_data()
+        logger.info("Manual cache refresh completed")
+
+    def shutdown(self):
+        """Graceful shutdown of caching system"""
+        logger.info("Shutting down enhanced caching system...")
+        self.cache_scheduler.stop_scheduler()
+        logger.info("Caching system shutdown completed")
 
 
-def get_benchmark_price_data_global(benchmark: str, days: int = 365) -> Dict:
-    """Global function for backward compatibility"""
-    return api_manager.get_benchmark_price_data(benchmark, days)
-
-
-def get_asset_price_at_date_global(symbol: str, target_date: datetime) -> float:
-    """Global function for backward compatibility"""
-    return api_manager.get_asset_price_at_date(symbol, target_date)
+# 替换全局实例
+api_manager = EnhancedMultiAPIManager()

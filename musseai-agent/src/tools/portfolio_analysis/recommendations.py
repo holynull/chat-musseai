@@ -1,22 +1,13 @@
-from decimal import Decimal
-import numpy as np
-import requests
-from typing import List, Dict, Optional
+from typing import Dict
 from datetime import datetime, timedelta
 from langchain.agents import tool
 from mysql.db import get_db
 from mysql.model import (
     PortfolioSourceModel,
-    PositionModel,
     TransactionModel,
     TransactionType,
 )
 from loggers import logger
-from utils.api_decorators import (
-    api_call_with_cache_and_rate_limit,
-    cache_result,
-    rate_limit,
-)
 from utils.api_manager import api_manager
 import traceback
 
@@ -25,89 +16,54 @@ import traceback
 # ========================================
 
 
-@api_call_with_cache_and_rate_limit(cache_duration=600, rate_limit_interval=1.5)
 def get_real_market_conditions() -> Dict:
     """
-    Fetch real market conditions using free APIs
+    Fetch real market conditions using unified market analysis method
 
     Returns:
         Dict: Real market data including trends, volatility, and prices
     """
     try:
-        # Fetch Fear & Greed Index (free API)
-        fear_greed_response = requests.get(
-            "https://api.alternative.me/fng/?limit=1", timeout=10
-        )
-        fear_greed_data = fear_greed_response.json()
+        # Use the unified market analysis from market_analysis module
+        from .market_analysis import get_comprehensive_market_condition
 
-        # Fetch major crypto prices from CoinGecko (free)
-        prices_response = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={
-                "ids": "bitcoin,ethereum,binancecoin",
-                "vs_currencies": "usd",
-                "include_24hr_change": "true",
-                "include_24hr_vol": "true",
-            },
-            timeout=10,
-        )
-        prices_data = prices_response.json()
+        # Get comprehensive market data
+        market_data = get_comprehensive_market_condition()
 
-        # Calculate overall market trend
-        btc_change = prices_data.get("bitcoin", {}).get("usd_24h_change", 0)
-        eth_change = prices_data.get("ethereum", {}).get("usd_24h_change", 0)
-
-        avg_change = (btc_change + eth_change) / 2
-
-        if avg_change > 5:
-            trend = "BULLISH"
-        elif avg_change < -5:
-            trend = "BEARISH"
-        else:
-            trend = "NEUTRAL"
-
-        # Determine volatility based on 24h changes
-        volatility_score = abs(btc_change) + abs(eth_change)
-        if volatility_score > 15:
-            volatility = "HIGH"
-        elif volatility_score > 8:
-            volatility = "MEDIUM"
-        else:
-            volatility = "LOW"
-
-        # Fear & Greed analysis
-        fear_greed_value = int(fear_greed_data["data"][0]["value"])
-        if fear_greed_value > 75:
-            sentiment = "EXTREME_GREED"
-            recommendation = "Consider taking profits, market may be overheated"
-        elif fear_greed_value > 50:
-            sentiment = "GREED"
-            recommendation = "Good time for balanced approach"
-        elif fear_greed_value > 25:
-            sentiment = "FEAR"
-            recommendation = (
-                "Consider dollar-cost averaging, good accumulation opportunity"
-            )
-        else:
-            sentiment = "EXTREME_FEAR"
-            recommendation = "Excellent buying opportunity for long-term investors"
-
-        return {
-            "overall_trend": trend,
-            "volatility": volatility,
-            "sentiment": sentiment,
-            "fear_greed_index": fear_greed_value,
-            "recommendation": recommendation,
-            "btc_price": prices_data.get("bitcoin", {}).get("usd", 0),
-            "eth_price": prices_data.get("ethereum", {}).get("usd", 0),
-            "btc_24h_change": btc_change,
-            "eth_24h_change": eth_change,
+        # Transform the data to maintain compatibility with existing code
+        # that expects the old format
+        transformed_data = {
+            "overall_trend": market_data.get(
+                "overall_market_condition", "NEUTRAL"
+            ).upper(),
+            "volatility": _map_volatility_level(
+                market_data.get("btc_trend", {}).get("volatility", 50)
+            ),
+            "sentiment": _map_fear_greed_to_sentiment(
+                market_data.get("fear_greed_index", 50)
+            ),
+            "fear_greed_index": market_data.get("fear_greed_index", 50),
+            "recommendation": _generate_recommendation_text(market_data),
+            "btc_price": market_data.get("market_metrics", {}).get("btc_price", 0),
+            "eth_price": market_data.get("market_metrics", {}).get("eth_price", 0),
+            "btc_24h_change": market_data.get("btc_trend", {}).get(
+                "price_change_24h", 0
+            ),
+            "eth_24h_change": market_data.get("market_metrics", {}).get(
+                "eth_24h_change", 0
+            ),
             "last_updated": datetime.utcnow().isoformat(),
+            # Include additional data from comprehensive analysis
+            "market_regime": market_data.get("market_regime", {}),
+            "seasonal_factors": market_data.get("seasonal_factors", {}),
+            "comprehensive_data": market_data,  # Full data for advanced usage
         }
+
+        return transformed_data
 
     except Exception as e:
         logger.error(f"Failed to fetch market conditions: {e}")
-        traceback.format_exc()
+        traceback.print_exc()
         # Fallback to neutral conditions
         return {
             "overall_trend": "NEUTRAL",
@@ -119,155 +75,127 @@ def get_real_market_conditions() -> Dict:
         }
 
 
-@api_call_with_cache_and_rate_limit(cache_duration=1800, rate_limit_interval=2.0)
-def get_real_defi_yields() -> Dict:
+def _map_volatility_level(volatility_score: float) -> str:
     """
-    Fetch real DeFi yields from various protocols
-
-    Returns:
-        Dict: Current APY rates for different DeFi protocols
-    """
-    try:
-        yields = {}
-
-        # Fetch Aave rates (free API)
-        try:
-            aave_response = requests.get(
-                "https://aave-api-v2.aave.com/data/liquidity/v2", timeout=10
-            )
-            aave_data = aave_response.json()
-
-            # Find USDC lending rate
-            for reserve in aave_data:
-                if reserve["symbol"] == "USDC":
-                    yields["aave_usdc_supply"] = float(reserve["liquidityRate"]) * 100
-                if reserve["symbol"] == "USDT":
-                    yields["aave_usdt_supply"] = float(reserve["liquidityRate"]) * 100
-                if reserve["symbol"] == "WETH":
-                    yields["aave_eth_supply"] = float(reserve["liquidityRate"]) * 100
-
-        except Exception as e:
-            logger.warning(f"Failed to fetch Aave yields: {e}")
-            traceback.format_exc()
-            yields.update(
-                {
-                    "aave_usdc_supply": 4.5,
-                    "aave_usdt_supply": 4.2,
-                    "aave_eth_supply": 2.8,
-                }
-            )
-
-        # Add estimated yields for other protocols (fallback values based on current market)
-        yields.update(
-            {
-                "compound_usdc": 3.8,
-                "curve_3pool": 2.5,
-                "yearn_usdc": 5.2,
-                "uniswap_v3_eth_usdc": 8.5,  # Variable based on fees
-                "eth_staking": 4.1,  # Current ETH staking reward
-            }
-        )
-
-        return yields
-
-    except Exception as e:
-        logger.error(f"Failed to fetch DeFi yields: {e}")
-        traceback.format_exc()
-        # Return conservative fallback yields
-        return {
-            "aave_usdc_supply": 4.0,
-            "compound_usdc": 3.5,
-            "curve_3pool": 2.2,
-            "eth_staking": 4.0,
-            "yearn_usdc": 4.8,
-        }
-
-
-@cache_result(duration=3600)
-def get_asset_market_data(symbol: str) -> Dict:
-    """
-    Get comprehensive market data for an asset
+    Map numerical volatility score to categorical level
 
     Args:
-        symbol: Asset symbol (e.g., 'BTC', 'ETH')
+        volatility_score: Numerical volatility score (0-100)
 
     Returns:
-        Dict: Market data including market cap, rank, volatility
+        str: Volatility level (LOW, MEDIUM, HIGH)
     """
-    try:
-        # Use our existing API manager for historical data
-        historical_data = api_manager.fetch_with_fallback(symbol, days=30)
+    if volatility_score > 70:
+        return "HIGH"
+    elif volatility_score > 40:
+        return "MEDIUM"
+    else:
+        return "LOW"
 
-        if not historical_data:
-            return {"error": f"No market data available for {symbol}"}
 
-        # Get current price and market cap from CoinGecko
-        response = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/{symbol.lower()}", timeout=10
-        )
+def _map_fear_greed_to_sentiment(fear_greed_index: int) -> str:
+    """
+    Map Fear & Greed Index to sentiment categories
 
-        if response.status_code == 200:
-            coin_data = response.json()
-            market_data = coin_data.get("market_data", {})
+    Args:
+        fear_greed_index: Fear & Greed Index value (0-100)
 
-            return {
-                "symbol": symbol,
-                "current_price": market_data.get("current_price", {}).get("usd", 0),
-                "market_cap": market_data.get("market_cap", {}).get("usd", 0),
-                "market_cap_rank": market_data.get("market_cap_rank", 999),
-                "volume_24h": market_data.get("total_volume", {}).get("usd", 0),
-                "price_change_24h": market_data.get("price_change_percentage_24h", 0),
-                "price_change_7d": market_data.get("price_change_percentage_7d", 0),
-                "price_change_30d": market_data.get("price_change_percentage_30d", 0),
-                "volatility": historical_data.get("volatility", 0),
-                "mean_return": historical_data.get("mean_return", 0),
-                "ath": market_data.get("ath", {}).get("usd", 0),
-                "ath_change_percentage": market_data.get(
-                    "ath_change_percentage", {}
-                ).get("usd", 0),
-                "last_updated": datetime.utcnow().isoformat(),
-            }
-        else:
-            # Fallback to historical data only
-            return {
-                "symbol": symbol,
-                "volatility": historical_data.get("volatility", 0),
-                "mean_return": historical_data.get("mean_return", 0),
-                "market_cap_rank": 999,
-                "last_updated": datetime.utcnow().isoformat(),
-            }
+    Returns:
+        str: Sentiment category
+    """
+    if fear_greed_index > 75:
+        return "EXTREME_GREED"
+    elif fear_greed_index > 50:
+        return "GREED"
+    elif fear_greed_index > 25:
+        return "FEAR"
+    else:
+        return "EXTREME_FEAR"
 
-    except Exception as e:
-        logger.error(f"Failed to fetch market data for {symbol}: {e}")
-        traceback.format_exc()
-        return {"error": f"Failed to fetch market data for {symbol}"}
+
+def _generate_recommendation_text(market_data: Dict) -> str:
+    """
+    Generate recommendation text based on comprehensive market data
+
+    Args:
+        market_data: Comprehensive market analysis data
+
+    Returns:
+        str: Human-readable recommendation text
+    """
+    fear_greed = market_data.get("fear_greed_index", 50)
+    market_condition = market_data.get("overall_market_condition", "sideways")
+    volatility = market_data.get("btc_trend", {}).get("volatility", 50)
+
+    # Generate contextual recommendations
+    if fear_greed < 25:
+        return "Excellent buying opportunity for long-term investors - market in extreme fear"
+    elif fear_greed < 40:
+        return "Consider dollar-cost averaging, good accumulation opportunity"
+    elif fear_greed > 75:
+        return "Consider taking profits, market may be overheated"
+    elif fear_greed > 60:
+        return "Good time for balanced approach, monitor for signs of excess"
+    elif market_condition == "bull_market":
+        return "Bull market conditions - manage risk while maintaining exposure"
+    elif market_condition == "bear_market":
+        return "Bear market conditions - focus on capital preservation and selective opportunities"
+    elif volatility > 70:
+        return "High volatility environment - reduce position sizes and use wider stops"
+    else:
+        return "Neutral market conditions - maintain balanced portfolio approach"
 
 
 def classify_asset_by_market_cap(symbol: str, market_data: Dict = None) -> str:
     """
     Classify asset based on real market cap data
-
+    
     Args:
         symbol: Asset symbol
         market_data: Optional pre-fetched market data
-
+    
     Returns:
         str: Asset classification
     """
     if not market_data:
-        market_data = get_asset_market_data(symbol)
-
-    if "error" in market_data:
-        # Fallback classification
+        market_data = api_manager.fetch_market_data(symbol)
+    
+    # Enhanced validation for market data
+    if not market_data or not api_manager._validate_market_data(market_data):
+        # Fallback classification based on known assets
         if symbol in ["BTC", "ETH"]:
             return "TOP_10"
         elif symbol in ["USDT", "USDC", "DAI", "BUSD"]:
             return "STABLECOINS"
         else:
             return "UNKNOWN"
-
-    rank = market_data.get("market_cap_rank", 999)
-
+    
+    # Get rank with additional null checking
+    rank = market_data.get("market_cap_rank")
+    
+    # Handle None or invalid rank values
+    if rank is None or not isinstance(rank, (int, float)):
+        logger.warning(f"Invalid market_cap_rank for {symbol}: {rank}, using fallback classification")
+        # Fallback classification based on known assets
+        if symbol in ["BTC", "ETH"]:
+            return "TOP_10"
+        elif symbol in ["USDT", "USDC", "DAI", "BUSD", "FRAX", "TUSD"]:
+            return "STABLECOINS"
+        elif symbol in ["BNB", "XRP", "ADA", "SOL", "DOGE", "AVAX", "DOT", "MATIC"]:
+            return "TOP_10"
+        elif symbol in ["LINK", "UNI", "LTC", "BCH", "ATOM", "NEAR", "APE", "CRO"]:
+            return "LARGE_CAP"
+        else:
+            return "SMALL_CAP"  # Conservative default
+    
+    # Convert to int for comparison
+    try:
+        rank = int(rank)
+    except (ValueError, TypeError):
+        logger.warning(f"Cannot convert rank to int for {symbol}: {rank}")
+        return "UNKNOWN"
+    
+    # Stablecoin check first (priority over rank)
     if symbol in ["USDT", "USDC", "DAI", "BUSD", "FRAX", "TUSD"]:
         return "STABLECOINS"
     elif rank <= 10:
@@ -278,6 +206,7 @@ def classify_asset_by_market_cap(symbol: str, market_data: Dict = None) -> str:
         return "MID_CAP"
     else:
         return "SMALL_CAP"
+
 
 
 # ========================================
@@ -473,8 +402,7 @@ def get_rebalancing_recommendations(
         }
 
     except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        traceback.format_exc()
+        logger.error(f"Exception:{e}\n{traceback.format_exc()}\n{traceback.format_exc()}")
         return {"error": f"Failed to generate rebalancing recommendations: {str(e)}"}
 
 
@@ -512,7 +440,16 @@ def find_investment_opportunities(user_id: str, risk_tolerance: str = "MEDIUM") 
 
         # Get real market data
         market_conditions = get_real_market_conditions()
-        defi_yields = get_real_defi_yields()
+        try:
+            defi_yields = api_manager.get_real_defi_yields()
+        except Exception as e:
+            logger.error(f"Failed to fetch DeFi yields: {e}\n{traceback.format_exc()}")
+            defi_yields = {
+                "aave_usdc_supply": 4.0,
+                "yearn_usdc": 4.8,
+                "eth_staking": 4.0,
+                "compound_usdc": 3.5
+            }
 
         # Analyze current portfolio
         total_value = portfolio["total_value"]
@@ -741,7 +678,7 @@ def find_investment_opportunities(user_id: str, risk_tolerance: str = "MEDIUM") 
                 else:
                     return_score = 10  # Default for non-numeric returns
             except:
-                traceback.format_exc()
+                logger.error(traceback.format_exc())
                 return_score = 5
 
             # Market condition bonus

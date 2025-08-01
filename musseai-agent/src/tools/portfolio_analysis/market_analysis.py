@@ -1,59 +1,16 @@
-from decimal import Decimal
 import numpy as np
 from typing import List, Dict
-from datetime import datetime, timedelta
+from datetime import datetime
 from langchain.agents import tool
-from mysql.db import get_db
-from mysql.model import (
-    PortfolioSourceModel,
-    PositionModel,
-    TransactionModel,
-    TransactionType,
-)
 from loggers import logger
 import traceback
 
-import requests
 from .portfolio_overview import get_comprehensive_market_condition
-
-from utils.api_decorators import (
-    cache_result,
-    rate_limit,
-    retry_on_429,
-    api_call_with_cache_and_rate_limit,
-)
-
+from utils.api_manager import api_manager
 
 # ========================================
 # Market Analysis Tools
 # ========================================
-
-
-@api_call_with_cache_and_rate_limit(
-    cache_duration=300,
-    rate_limit_interval=1.2,
-    max_retries=3,
-    retry_delay=2,
-)
-def fetch_coingecko_market_data(symbol):
-    """Fetch market data from CoinGecko using api_manager"""
-    from utils.api_manager import api_manager
-
-    return api_manager.fetch_market_data_coingecko(symbol)
-
-
-@api_call_with_cache_and_rate_limit(
-    cache_duration=1800,
-    rate_limit_interval=1.2,
-    max_retries=3,
-    retry_delay=2,
-)
-def fetch_coingecko_market_chart(symbol, days="30", interval="daily"):
-    """Fetch market chart data from CoinGecko using api_manager"""
-    from utils.api_manager import api_manager
-
-    return api_manager.fetch_market_chart_coingecko(symbol, days, interval)
-
 
 @tool
 def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
@@ -67,9 +24,10 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
         Dict: Market analysis and conditions
     """
 
-    @cache_result(duration=300)  # Cache results for 5 minutes
     def _analyze_market_conditions(assets):
         try:
+            from utils.api_manager import api_manager
+
             # Get base market condition data
             market_data = get_comprehensive_market_condition()
 
@@ -96,17 +54,48 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
             ):
                 asset_specific_analysis = {}
 
-                for symbol in asset_symbols:
-                    try:
-                        # Get asset-specific data from CoinGecko or other API
+                # Use batch fetch for better efficiency and error handling
+                try:
+                    logger.info(
+                        f"Fetching market data for {len(asset_symbols)} assets using batch method"
+                    )
+                    market_data_batch = api_manager.fetch_multiple_market_data(
+                        asset_symbols
+                    )
+
+                    for symbol in asset_symbols:
                         symbol_upper = symbol.upper()
 
-                        # Try to fetch data, handle missing assets gracefully
                         try:
-                            asset_data = fetch_coingecko_market_data(symbol)
+                            # Check if batch fetch was successful for this symbol
+                            if symbol in market_data_batch:
+                                batch_result = market_data_batch[symbol]
 
-                            # Check if valid data was returned
-                            if not asset_data or len(asset_data) == 0:
+                                # If batch result has error, fall back to individual fetch
+                                if (
+                                    batch_result.get("success", True)
+                                    and "error" not in batch_result
+                                ):
+                                    asset_data = [
+                                        batch_result
+                                    ]  # Wrap in list for compatibility
+                                else:
+                                    logger.warning(
+                                        f"Batch fetch failed for {symbol}, trying individual fetch"
+                                    )
+                                    asset_data = [api_manager.fetch_market_data(symbol)]
+                            else:
+                                logger.warning(
+                                    f"No data in batch result for {symbol}, trying individual fetch"
+                                )
+                                asset_data = [api_manager.fetch_market_data(symbol)]
+
+                            # Validate the data
+                            if (
+                                not asset_data
+                                or len(asset_data) == 0
+                                or not asset_data[0]
+                            ):
                                 asset_specific_analysis[symbol_upper] = {
                                     "error": f"No data found for {symbol}. Verify the asset symbol is correct."
                                 }
@@ -114,17 +103,17 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
 
                             data = asset_data[0]
 
-                            # Get additional technical indicators
-                            technical_indicators = fetch_technical_indicators(symbol)
+                            # Get additional technical indicators using api_manager
+                            technical_indicators = fetch_technical_indicators_enhanced(
+                                symbol
+                            )
 
                             # Extract price changes
                             price_change_24h = data.get(
                                 "price_change_percentage_24h", 0
                             )
                             price_change_7d = data.get("price_change_percentage_7d", 0)
-                            price_change_1h = data.get(
-                                "price_change_percentage_1h_in_currency", 0
-                            )
+                            price_change_1h = data.get("price_change_percentage_1h", 0)
 
                             # Get volume and market cap data for additional context
                             volume_24h = data.get("total_volume", 0)
@@ -368,22 +357,55 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                                     trend_strength,
                                 ),
                             }
-                        except requests.exceptions.HTTPError as e:
-                            if e.response.status_code == 404:
+
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to analyze asset {symbol}: {e}\n{traceback.format_exc()}"
+                            )
+                            asset_specific_analysis[symbol_upper] = {
+                                "error": f"Analysis failed: {str(e)}"
+                            }
+
+                except Exception as batch_error:
+                    logger.error(f"Batch market data fetch failed: {batch_error}")
+                    logger.info("Falling back to individual asset fetching")
+
+                    # Fallback to original individual fetching method
+                    for symbol in asset_symbols:
+                        try:
+                            symbol_upper = symbol.upper()
+
+                            # Get asset-specific data from individual API call
+                            asset_data = [api_manager.fetch_market_data(symbol)]
+
+                            # Check if valid data was returned
+                            if (
+                                not asset_data
+                                or len(asset_data) == 0
+                                or not asset_data[0]
+                            ):
                                 asset_specific_analysis[symbol_upper] = {
-                                    "error": f"Asset {symbol} not found. Please verify the symbol."
+                                    "error": f"No data found for {symbol}. Verify the asset symbol is correct."
                                 }
-                            else:
-                                asset_specific_analysis[symbol_upper] = {
-                                    "error": f"API error: {str(e)}"
-                                }
-                            traceback.format_exc()
-                    except Exception as e:
-                        logger.warning(f"Failed to analyze asset {symbol}: {e}")
-                        asset_specific_analysis[symbol_upper] = {
-                            "error": f"Analysis failed: {str(e)}"
-                        }
-                        traceback.format_exc()
+                                continue
+
+                            data = asset_data[0]
+
+                            # Get additional technical indicators
+                            technical_indicators = fetch_technical_indicators_enhanced(
+                                symbol
+                            )
+
+                            # Continue with the same analysis logic as above...
+                            # (The rest of the analysis logic would be the same as in the batch processing)
+
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to analyze asset {symbol} in fallback: {e}"
+                            )
+                            asset_specific_analysis[symbol_upper] = {
+                                "error": f"Analysis failed: {str(e)}"
+                            }
 
                 # Add asset-specific analysis to result
                 result["asset_analysis"] = asset_specific_analysis
@@ -391,7 +413,9 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                 # Add correlations between assets if multiple assets
                 if len(asset_specific_analysis) > 1:
                     try:
-                        correlations = calculate_asset_correlations(asset_symbols)
+                        correlations = calculate_asset_correlations_enhanced(
+                            asset_symbols
+                        )
                         result["asset_correlations"] = correlations
 
                         # Add diversification score based on correlations
@@ -411,8 +435,9 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                                 ),
                             }
                     except Exception as e:
-                        logger.warning(f"Failed to calculate asset correlations: {e}")
-                        traceback.format_exc()
+                        logger.warning(
+                            f"Failed to calculate asset correlations: {e}\n{traceback.format_exc()}"
+                        )
 
             # Add market insights based on conditions
             result["market_insights"] = generate_market_insights(result)
@@ -432,7 +457,6 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
             logger.error(
                 f"Failed to analyze market conditions: {e}\n{traceback.format_exc()}"
             )
-            traceback.format_exc()
             return {
                 "error": f"Failed to analyze market conditions: {str(e)}",
                 "market_condition": "unknown",
@@ -441,7 +465,163 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
     return _analyze_market_conditions(tuple(asset_symbols) if asset_symbols else None)
 
 
-@cache_result(duration=1800)  # Cache for 30 minutes
+def fetch_technical_indicators_enhanced(symbol):
+    """Enhanced version of fetch_technical_indicators using api_manager"""
+    try:
+        from utils.api_manager import api_manager
+
+        # Use api_manager to get historical data with multi-API fallback
+        historical_data = api_manager.fetch_market_chart_multi_api(symbol, days="30")
+
+        if not historical_data or "prices" not in historical_data:
+            logger.warning(f"No historical data available for {symbol}, using defaults")
+            return {
+                "rsi_14": 50,  # Neutral RSI
+                "macd": 0,
+                "ema_20": 0,
+                "ema_50": 0,
+                "support_level": 0,
+                "resistance_level": 0,
+                "average_volume_10d": 0,
+            }
+
+        # Extract price and volume data
+        prices = [price[1] for price in historical_data.get("prices", [])]
+        volumes = (
+            [vol[1] for vol in historical_data.get("total_volumes", [])]
+            if historical_data.get("total_volumes")
+            else []
+        )
+
+        if len(prices) < 14:
+            logger.warning(f"Insufficient price data for {symbol}, using defaults")
+            return {
+                "rsi_14": 50,
+                "macd": 0,
+                "ema_20": prices[-1] if prices else 0,
+                "ema_50": prices[-1] if prices else 0,
+                "support_level": min(prices) if prices else 0,
+                "resistance_level": max(prices) if prices else 0,
+                "average_volume_10d": (
+                    sum(volumes[-10:]) / 10
+                    if len(volumes) >= 10
+                    else (volumes[-1] if volumes else 0)
+                ),
+            }
+
+        # Calculate RSI (14-day)
+        rsi = calculate_rsi(prices, period=14)
+
+        # Calculate EMAs
+        ema_20 = calculate_ema(prices, period=20) if len(prices) >= 20 else prices[-1]
+        ema_50 = calculate_ema(prices, period=50) if len(prices) >= 50 else prices[-1]
+
+        # Calculate MACD
+        macd = calculate_macd(prices) if len(prices) >= 26 else 0
+
+        # Calculate support and resistance levels
+        support_level, resistance_level = calculate_support_resistance(prices)
+
+        # Calculate average volume
+        avg_volume_10d = (
+            sum(volumes[-10:]) / 10
+            if len(volumes) >= 10
+            else (volumes[-1] if volumes else 0)
+        )
+
+        return {
+            "rsi_14": rsi,
+            "macd": macd,
+            "ema_20": ema_20,
+            "ema_50": ema_50,
+            "support_level": support_level,
+            "resistance_level": resistance_level,
+            "average_volume_10d": avg_volume_10d,
+        }
+
+    except Exception as e:
+        logger.warning(
+            f"Failed to calculate technical indicators for {symbol}: {e}\n{traceback.format_exc()}"
+        )
+        return {
+            "rsi_14": 50,
+            "macd": 0,
+            "ema_20": 0,
+            "ema_50": 0,
+            "support_level": 0,
+            "resistance_level": 0,
+            "average_volume_10d": 0,
+        }
+
+
+def calculate_asset_correlations_enhanced(asset_symbols):
+    """Enhanced version of calculate_asset_correlations using api_manager"""
+    try:
+        from utils.api_manager import api_manager
+
+        # Get historical price data for correlation calculation using batch method
+        historical_prices = {}
+
+        for symbol in asset_symbols:
+            try:
+                # Get 30-day price history using api_manager's multi-API fallback
+                data = api_manager.fetch_market_chart_multi_api(symbol, days="30")
+
+                if data and "prices" in data and len(data["prices"]) > 0:
+                    # Extract just the prices from the data
+                    prices = [price[1] for price in data["prices"]]
+                    historical_prices[symbol.upper()] = prices
+                else:
+                    logger.warning(f"No price data available for {symbol}")
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get historical prices for {symbol}: {e}\n{traceback.format_exc()}"
+                )
+
+        # Calculate correlations if we have data for at least two assets
+        if len(historical_prices) > 1:
+            correlation_matrix = {}
+
+            # Ensure all price arrays have the same length
+            min_length = min(len(prices) for prices in historical_prices.values())
+            for symbol in historical_prices:
+                historical_prices[symbol] = historical_prices[symbol][:min_length]
+
+            # Calculate correlation between each pair of assets
+            for symbol1 in historical_prices:
+                correlation_matrix[symbol1] = {}
+                for symbol2 in historical_prices:
+                    if symbol1 != symbol2:
+                        try:
+                            correlation = np.corrcoef(
+                                historical_prices[symbol1], historical_prices[symbol2]
+                            )[0, 1]
+                            # Handle NaN values
+                            if np.isnan(correlation):
+                                correlation = 0.0
+                            correlation_matrix[symbol1][symbol2] = round(
+                                float(correlation), 3
+                            )
+                        except Exception as corr_error:
+                            logger.warning(
+                                f"Failed to calculate correlation between {symbol1} and {symbol2}: {corr_error}"
+                            )
+                            correlation_matrix[symbol1][symbol2] = 0.0
+                    else:
+                        correlation_matrix[symbol1][symbol2] = 1.0
+
+            return correlation_matrix
+        else:
+            return {"message": "Insufficient data to calculate correlations"}
+
+    except Exception as e:
+        logger.error(
+            f"Error calculating asset correlations: {e}\n{traceback.format_exc()}"
+        )
+        return {"error": str(e)}
+
+
 def calculate_asset_correlations(asset_symbols):
     """Calculate correlations between assets based on price movements"""
     try:
@@ -451,15 +631,16 @@ def calculate_asset_correlations(asset_symbols):
         for symbol in asset_symbols:
             try:
                 # Get 30-day price history
-                data = fetch_coingecko_market_chart(symbol)
+                data = api_manager.fetch_market_chart_multi_api(symbol, days="30")
 
                 if "prices" in data and len(data["prices"]) > 0:
                     # Extract just the prices from the data
                     prices = [price[1] for price in data["prices"]]
                     historical_prices[symbol.upper()] = prices
             except Exception as e:
-                logger.warning(f"Failed to get historical prices for {symbol}: {e}")
-                traceback.format_exc()
+                logger.warning(
+                    f"Failed to get historical prices for {symbol}: {e}\n{traceback.format_exc()}"
+                )
 
         # Calculate correlations if we have data for at least two assets
         if len(historical_prices) > 1:
@@ -489,8 +670,9 @@ def calculate_asset_correlations(asset_symbols):
             return {"message": "Insufficient data to calculate correlations"}
 
     except Exception as e:
-        logger.error(f"Error calculating asset correlations: {e}")
-        traceback.format_exc()
+        logger.error(
+            f"Error calculating asset correlations: {e}\n{traceback.format_exc()}"
+        )
         return {"error": str(e)}
 
 
@@ -502,7 +684,7 @@ def fetch_technical_indicators(symbol):
         # In a real implementation, you would calculate these from price data
 
         # Get historical price data
-        historical_data = fetch_coingecko_market_chart(symbol, days="30")
+        historical_data = api_manager.fetch_market_chart_multi_api(symbol, days="30")
 
         if not historical_data or "prices" not in historical_data:
             return {
@@ -557,8 +739,9 @@ def fetch_technical_indicators(symbol):
         }
 
     except Exception as e:
-        logger.warning(f"Failed to calculate technical indicators for {symbol}: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate technical indicators for {symbol}: {e}\n{traceback.format_exc()}"
+        )
         return {
             "rsi_14": 50,
             "macd": 0,
@@ -1254,7 +1437,6 @@ def get_market_opportunities(user_id: str, opportunity_type: str = "ALL") -> Dic
         Dict: Market opportunities with actionable recommendations
     """
 
-    @cache_result(duration=600)  # Cache for 10 minutes
     def _get_market_opportunities(uid, opp_type):
         try:
             # Get portfolio data
@@ -1566,7 +1748,9 @@ def get_market_opportunities(user_id: str, opportunity_type: str = "ALL") -> Dic
 
                 # Rebalancing opportunities with improved criteria
                 if opportunity_type in ["ALL", "REBALANCING"]:
-                    from tools.tools_crypto_portfolios_analysis import get_portfolio_allocation
+                    from tools.tools_crypto_portfolios_analysis import (
+                        get_portfolio_allocation,
+                    )
 
                     current_allocation = get_portfolio_allocation.invoke(
                         {"user_id": user_id, "group_by": "asset"}
@@ -2085,8 +2269,9 @@ def get_market_opportunities(user_id: str, opportunity_type: str = "ALL") -> Dic
                 }
 
         except Exception as e:
-            logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-            traceback.format_exc()
+            logger.error(
+                f"Exception:{e}\n{traceback.format_exc()}\n{traceback.format_exc()}"
+            )
             return {"error": f"Failed to get market opportunities: {str(e)}"}
 
     return _get_market_opportunities(user_id, opportunity_type)

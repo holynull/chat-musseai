@@ -1,8 +1,6 @@
-from decimal import Decimal
 import numpy as np
 from datetime import datetime, timedelta
-import requests
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict
 from datetime import datetime
 from langchain.agents import tool
 from mysql.db import get_db
@@ -16,192 +14,14 @@ from loggers import logger
 import traceback
 from collections import defaultdict
 
-from utils.api_decorators import cache_result, rate_limit, retry_on_429
+from utils.api_manager import (
+    api_manager,  # 添加全局实例
+)
 
 
 # ========================================
 # Portfolio Overview
 # ========================================
-
-
-@cache_result(duration=300)
-@rate_limit(interval=1.2)
-@retry_on_429(max_retries=3, delay=2)
-def get_fear_greed_index():
-    """
-    Get Fear & Greed Index from Alternative.me API with improved market condition mapping
-
-    Returns:
-        tuple: (index_value, classification, market_condition, market_sentiment)
-    """
-    try:
-        url = "https://api.alternative.me/fng/"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        current_index = int(data["data"][0]["value"])
-        classification = data["data"][0]["value_classification"]
-        timestamp = data["data"][0]["timestamp"]
-
-        # Enhanced market condition mapping based on crypto market characteristics
-        if current_index >= 80:
-            market_condition = "extreme_bull"
-            market_sentiment = "extreme_greed"
-        elif current_index >= 70:
-            market_condition = "strong_bull"
-            market_sentiment = "greed"
-        elif current_index >= 60:
-            market_condition = "bull_market"
-            market_sentiment = "optimistic"
-        elif current_index >= 50:
-            market_condition = "bull_leaning"
-            market_sentiment = "neutral_positive"
-        elif current_index >= 40:
-            market_condition = "sideways"
-            market_sentiment = "neutral"
-        elif current_index >= 30:
-            market_condition = "bear_leaning"
-            market_sentiment = "neutral_negative"
-        elif current_index >= 20:
-            market_condition = "bear_market"
-            market_sentiment = "fear"
-        elif current_index >= 10:
-            market_condition = "strong_bear"
-            market_sentiment = "strong_fear"
-        else:
-            market_condition = "extreme_bear"
-            market_sentiment = "extreme_fear"
-
-        return current_index, classification, market_condition, market_sentiment
-
-    except Exception as e:
-        logger.warning(
-            f"Failed to get Fear & Greed Index: {e}\n{traceback.format_exc()}"
-        )
-        traceback.format_exc()
-        return None, None, None, None
-
-
-@cache_result(duration=300)
-@rate_limit(interval=1.2)
-@retry_on_429(max_retries=3, delay=2)
-def get_market_metrics():
-    """
-    Get market metrics from CoinGecko API
-
-    Returns:
-        dict: Market metrics including market cap, BTC dominance, etc.
-    """
-    try:
-        url = "https://api.coingecko.com/api/v3/global"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        return {
-            "total_market_cap": data["data"]["total_market_cap"]["usd"],
-            "btc_dominance": data["data"]["market_cap_percentage"]["btc"],
-            "eth_dominance": data["data"]["market_cap_percentage"].get("eth", 0),
-            "market_cap_change_24h": data["data"][
-                "market_cap_change_percentage_24h_usd"
-            ],
-            "active_cryptocurrencies": data["data"]["active_cryptocurrencies"],
-            "markets": data["data"]["markets"],
-            "defi_volume_24h": data["data"].get("defi_volume_24h", 0),
-            "defi_market_cap": data["data"].get("defi_market_cap", 0),
-        }
-    except Exception as e:
-        logger.warning(f"Failed to get market metrics: {e}")
-        traceback.format_exc()
-        return None
-
-
-@cache_result(duration=300)
-@rate_limit(interval=1.2)
-@retry_on_429(max_retries=3, delay=2)
-def analyze_btc_trend(days=30):
-    """
-    Analyze Bitcoin price trend using CoinGecko API
-
-    Args:
-        days: Number of days to analyze
-
-    Returns:
-        dict: Trend analysis results
-    """
-    try:
-        url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-        params = {"vs_currency": "usd", "days": str(days), "interval": "daily"}
-
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-
-        prices = [price[1] for price in data["prices"]]
-        volumes = [volume[1] for volume in data["total_volumes"]]
-
-        if len(prices) < 7:
-            return None
-
-        # Calculate key metrics
-        current_price = prices[-1]
-        week_ago_price = prices[-7] if len(prices) >= 7 else prices[0]
-        month_ago_price = prices[0]
-
-        # Calculate percentage changes
-        weekly_change = (current_price - week_ago_price) / week_ago_price * 100
-        monthly_change = (current_price - month_ago_price) / month_ago_price * 100
-
-        # Calculate moving averages
-        ma_7 = sum(prices[-7:]) / min(7, len(prices))
-        ma_14 = sum(prices[-14:]) / min(14, len(prices))
-        ma_30 = sum(prices) / len(prices)
-
-        # Calculate volatility (standard deviation of daily returns)
-        daily_returns = [
-            (prices[i] - prices[i - 1]) / prices[i - 1] * 100
-            for i in range(1, len(prices))
-        ]
-        volatility = np.std(daily_returns) if len(daily_returns) > 1 else 0
-
-        # Average volume
-        avg_volume = sum(volumes) / len(volumes)
-        recent_volume = sum(volumes[-7:]) / min(7, len(volumes))
-        volume_trend = (
-            "increasing"
-            if recent_volume > avg_volume * 1.1
-            else "decreasing" if recent_volume < avg_volume * 0.9 else "stable"
-        )
-
-        # Determine trend
-        if current_price > ma_7 > ma_14 > ma_30 and weekly_change > 10:
-            trend = "strong_bullish"
-        elif current_price > ma_7 > ma_30 and weekly_change > 5:
-            trend = "bullish"
-        elif current_price < ma_7 < ma_14 < ma_30 and weekly_change < -10:
-            trend = "strong_bearish"
-        elif current_price < ma_7 < ma_30 and weekly_change < -5:
-            trend = "bearish"
-        else:
-            trend = "sideways"
-
-        return {
-            "current_price": current_price,
-            "weekly_change": weekly_change,
-            "monthly_change": monthly_change,
-            "ma_7": ma_7,
-            "ma_14": ma_14,
-            "ma_30": ma_30,
-            "volatility": volatility,
-            "volume_trend": volume_trend,
-            "trend": trend,
-        }
-
-    except Exception as e:
-        logger.warning(f"Failed to analyze BTC trend: {e}")
-        traceback.format_exc()
-        return None
 
 
 def get_comprehensive_market_condition():
@@ -215,10 +35,19 @@ def get_comprehensive_market_condition():
 
     # Get Fear & Greed Index
     try:
-        result = get_fear_greed_index()
+        result = api_manager.get_fear_greed_index()
         logger.debug(f"get_fear_greed_index: {result}")
-        if isinstance(result, tuple) and len(result) >= 3:
+        if isinstance(result, tuple) and len(result) >= 4:
+            # api_manager返回4个值: (index, classification, market_condition, market_sentiment)
+            (
+                fear_greed_value,
+                fear_greed_class,
+                fg_market_condition,
+                market_sentiment,
+            ) = result[:4]
+        elif isinstance(result, tuple) and len(result) >= 3:
             fear_greed_value, fear_greed_class, fg_market_condition = result[:3]
+            market_sentiment = "unknown"
         else:
             fear_greed_value, fear_greed_class, fg_market_condition = (
                 0,
@@ -237,13 +66,16 @@ def get_comprehensive_market_condition():
         market_data["fear_greed_classification"] = fear_greed_class
         market_data["fg_market_condition"] = fg_market_condition
 
+    # market_data["defi_yields"] = api_manager.get_real_defi_yields()
+    # market_data["risk_free_rate"] = api_manager.get_risk_free_rate()
+
     # Get market metrics
-    market_metrics = get_market_metrics()
+    market_metrics = api_manager.get_market_metrics()
     if market_metrics:
         market_data["market_metrics"] = market_metrics
 
     # Get BTC trend analysis
-    btc_trend = analyze_btc_trend()
+    btc_trend = api_manager.analyze_btc_trend()
     if btc_trend:
         market_data["btc_trend"] = btc_trend
 
@@ -252,6 +84,23 @@ def get_comprehensive_market_condition():
     market_data["overall_market_condition"] = market_condition
 
     return market_data
+
+
+def get_enhanced_market_data_with_charts(symbol="BTC", days=30):
+    """获取包含图表数据的增强市场信息"""
+    try:
+        # 获取基础市场数据
+        market_data = get_comprehensive_market_condition()
+
+        # 添加图表数据
+        chart_data = api_manager.fetch_market_chart_multi_api(symbol, str(days))
+        if chart_data:
+            market_data["chart_data"] = chart_data
+
+        return market_data
+    except Exception as e:
+        logger.error(f"Failed to get enhanced market data: {e}")
+        return get_comprehensive_market_condition()
 
 
 def determine_overall_market_condition(market_data):
@@ -322,6 +171,39 @@ def determine_overall_market_condition(market_data):
         return "sideways"
 
 
+def adjust_thresholds_with_defi_yields(base_thresholds, market_condition):
+    """根据DeFi收益率调整性能阈值"""
+    try:
+        defi_yields = api_manager.get_real_defi_yields()
+        if defi_yields:
+            # 获取平均DeFi收益率
+            avg_yield = (
+                sum(
+                    [
+                        defi_yields.get("aave_usdc_supply", 0),
+                        defi_yields.get("compound_usdc", 0),
+                        defi_yields.get("eth_staking", 0),
+                    ]
+                )
+                / 3
+            )
+
+            # 根据DeFi收益率调整阈值
+            yield_adjustment = avg_yield / 100  # 转换为小数
+
+            adjusted_thresholds = {}
+            for level, threshold in base_thresholds.items():
+                # DeFi收益率高时，提高期望阈值
+                adjustment_factor = 1 + (yield_adjustment * 0.5)
+                adjusted_thresholds[level] = threshold * adjustment_factor
+
+            return adjusted_thresholds
+    except Exception as e:
+        logger.debug(f"DeFi yield adjustment failed: {e}")
+
+    return base_thresholds
+
+
 def get_dynamic_performance_thresholds(positions, total_cost, total_value):
     """
     Calculate dynamic performance thresholds based on real market conditions
@@ -366,6 +248,10 @@ def get_dynamic_performance_thresholds(positions, total_cost, total_value):
             "alert": -45,
         },
     }
+    # base_thresholds = adjust_thresholds_with_defi_yields(
+    #     base_thresholds=base_thresholds, market_condition=market_condition
+    # )
+    thresholds = base_thresholds.get(market_condition, base_thresholds["sideways"])
 
     # Get base thresholds
     thresholds = base_thresholds.get(market_condition, base_thresholds["sideways"])
@@ -404,8 +290,9 @@ def calculate_actual_holding_period(positions):
         return 4  # More realistic average holding period
 
     except Exception as e:
-        logger.warning(f"Failed to calculate holding period: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate holding period: {e}\n{traceback.format_exc()}"
+        )
         return 6
 
 
@@ -603,7 +490,7 @@ def estimate_market_condition(positions):
         logger.warning(
             f"Failed to get market condition from API, falling back to portfolio analysis: {e}"
         )
-        traceback.format_exc()
+        logger.error(traceback.format_exc())
         # Fallback to original logic if API fails
         if not positions:
             return "sideways"
@@ -1444,114 +1331,126 @@ def calculate_portfolio_daily_returns(
 ) -> List[float]:
     """
     Calculate daily returns based on actual data instead of simulation
-    
+
     Args:
         positions: List of portfolio positions
         period_days: Number of days to calculate returns for
-        
+
     Returns:
         List[float]: Daily returns based on real data (no random simulation)
     """
     daily_returns = []
-    
+
     if not positions:
         return daily_returns
-    
+
     try:
         # Method 1: Calculate returns from transaction history
-        returns_from_transactions = calculate_returns_from_transactions(positions, period_days)
+        returns_from_transactions = calculate_returns_from_transactions(
+            positions, period_days
+        )
         if returns_from_transactions:
             logger.info("Using transaction-based returns calculation")
             return returns_from_transactions
-        
+
         # Method 2: Use current position data to estimate returns
-        returns_from_positions = calculate_returns_from_positions(positions, period_days)
+        returns_from_positions = calculate_returns_from_positions(
+            positions, period_days
+        )
         if returns_from_positions:
             logger.info("Using position-based returns calculation")
             return returns_from_positions
-            
+
         # Method 3: Fallback to market-based estimation (no random data)
         returns_from_market = calculate_returns_from_market_data(positions, period_days)
         if returns_from_market:
             logger.info("Using market-based returns calculation")
             return returns_from_market
-        
+
         # Method 4: Use price snapshots if available
-        returns_from_snapshots = calculate_returns_from_price_snapshots(positions, period_days)
+        returns_from_snapshots = calculate_returns_from_price_snapshots(
+            positions, period_days
+        )
         if returns_from_snapshots:
             logger.info("Using price snapshot-based returns calculation")
             return returns_from_snapshots
-            
+
         logger.warning("No reliable data source found for calculating daily returns")
         return []
-        
+
     except Exception as e:
-        logger.error(f"Error calculating portfolio daily returns: {e}")
-        traceback.format_exc()
+        logger.error(
+            f"Error calculating portfolio daily returns: {e}\n{traceback.format_exc()}"
+        )
         return []
 
-def calculate_returns_from_price_snapshots(positions: List[PositionModel], period_days: int) -> List[float]:
+
+def calculate_returns_from_price_snapshots(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns using historical price snapshots from database
-    
+
     Args:
         positions: Portfolio positions
         period_days: Number of days to calculate
-        
+
     Returns:
         List[float]: Daily returns based on price snapshots
     """
     try:
         from mysql.model import PriceSnapshotModel
-        
+
         with get_db() as db:
             # Get unique asset IDs from positions
             asset_ids = [p.asset_id for p in positions if p.quantity > 0]
-            
+
             if not asset_ids:
                 return []
-            
+
             # Calculate date range
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=period_days)
-            
+
             # Get price snapshots for all assets in the period
             price_snapshots = (
                 db.query(PriceSnapshotModel)
                 .filter(
                     PriceSnapshotModel.asset_id.in_(asset_ids),
                     PriceSnapshotModel.timestamp >= start_date,
-                    PriceSnapshotModel.timestamp <= end_date
+                    PriceSnapshotModel.timestamp <= end_date,
                 )
                 .order_by(PriceSnapshotModel.timestamp)
                 .all()
             )
-            
+
             if not price_snapshots:
                 logger.info("No price snapshots found for the period")
                 return []
-            
+
             # Group snapshots by date
             snapshots_by_date = defaultdict(dict)
             for snapshot in price_snapshots:
                 date_key = snapshot.timestamp.date()
                 snapshots_by_date[date_key][snapshot.asset_id] = float(snapshot.price)
-            
+
             # Calculate portfolio values for each date
             daily_portfolio_values = []
-            
+
             for i in range(period_days):
                 date = (start_date + timedelta(days=i)).date()
-                
+
                 if date in snapshots_by_date:
                     portfolio_value = 0
                     prices = snapshots_by_date[date]
-                    
+
                     for position in positions:
                         if position.asset_id in prices and position.quantity > 0:
-                            asset_value = float(position.quantity) * prices[position.asset_id]
+                            asset_value = (
+                                float(position.quantity) * prices[position.asset_id]
+                            )
                             portfolio_value += asset_value
-                    
+
                     daily_portfolio_values.append(portfolio_value)
                 else:
                     # Use previous day's value if no data available
@@ -1559,24 +1458,30 @@ def calculate_returns_from_price_snapshots(positions: List[PositionModel], perio
                         daily_portfolio_values.append(daily_portfolio_values[-1])
                     else:
                         daily_portfolio_values.append(0)
-            
+
             # Calculate daily returns
             daily_returns = []
             for i in range(1, len(daily_portfolio_values)):
-                if daily_portfolio_values[i-1] > 0:
-                    daily_return = (daily_portfolio_values[i] - daily_portfolio_values[i-1]) / daily_portfolio_values[i-1]
+                if daily_portfolio_values[i - 1] > 0:
+                    daily_return = (
+                        daily_portfolio_values[i] - daily_portfolio_values[i - 1]
+                    ) / daily_portfolio_values[i - 1]
                     daily_returns.append(daily_return)
                 else:
                     daily_returns.append(0.0)
-            
+
             return daily_returns
-            
+
     except Exception as e:
-        logger.error(f"Error calculating returns from price snapshots: {e}")
-        traceback.format_exc()
+        logger.error(
+            f"Error calculating returns from price snapshots: {e}\n{traceback.format_exc()}"
+        )
         return []
 
-def calculate_returns_from_transactions(positions: List[PositionModel], period_days: int) -> List[float]:
+
+def calculate_returns_from_transactions(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns based on actual transaction history
     """
@@ -1584,11 +1489,11 @@ def calculate_returns_from_transactions(positions: List[PositionModel], period_d
         with get_db() as db:
             # Get all source IDs from positions
             source_ids = list(set(p.source_id for p in positions))
-            
+
             # Calculate date range
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=period_days)
-            
+
             # Get transactions in the period
             transactions = (
                 db.query(TransactionModel)
@@ -1596,44 +1501,44 @@ def calculate_returns_from_transactions(positions: List[PositionModel], period_d
                     TransactionModel.source_id.in_(source_ids),
                     TransactionModel.transaction_time >= start_date,
                     TransactionModel.transaction_time <= end_date,
-                    TransactionModel.price.isnot(None)
+                    TransactionModel.price.isnot(None),
                 )
                 .order_by(TransactionModel.transaction_time)
                 .all()
             )
-            
+
             if not transactions:
                 return []
-            
+
             # Group transactions by day and calculate daily portfolio value changes
             transactions_by_date = defaultdict(list)
             for tx in transactions:
                 date_key = tx.transaction_time.date()
                 transactions_by_date[date_key].append(tx)
-            
+
             # Calculate current portfolio value
             current_portfolio_value = sum(
-                float(p.quantity * p.last_price) 
-                for p in positions 
+                float(p.quantity * p.last_price)
+                for p in positions
                 if p.last_price and p.quantity > 0
             )
-            
+
             # Calculate daily returns based on transaction impact
             daily_returns = []
             portfolio_values = []
-            
+
             # Start with current value and work backwards
             current_value = current_portfolio_value
             portfolio_values.append(current_value)
-            
+
             # Process each day
             for i in range(period_days):
                 date = (end_date - timedelta(days=i)).date()
-                
+
                 if date in transactions_by_date:
                     day_transactions = transactions_by_date[date]
                     net_flow = 0
-                    
+
                     for tx in day_transactions:
                         if tx.price:
                             transaction_value = float(tx.quantity * tx.price)
@@ -1641,358 +1546,466 @@ def calculate_returns_from_transactions(positions: List[PositionModel], period_d
                                 net_flow += transaction_value
                             elif tx.transaction_type == TransactionType.SELL:
                                 net_flow -= transaction_value
-                    
+
                     # Adjust portfolio value by removing the net flow impact
                     previous_value = current_value - net_flow
-                    
+
                     if previous_value > 0 and current_value > 0:
                         daily_return = (current_value - previous_value) / previous_value
                         daily_returns.insert(0, daily_return)
                     else:
                         daily_returns.insert(0, 0.0)
-                    
+
                     current_value = previous_value
                 else:
                     # No transactions, assume no change
                     daily_returns.insert(0, 0.0)
-                
+
                 portfolio_values.insert(0, current_value)
-            
+
             # Return only the calculated returns (limit to reasonable length)
-            return daily_returns[:min(period_days, 30)]
-            
+            return daily_returns[: min(period_days, 30)]
+
     except Exception as e:
-        logger.warning(f"Failed to calculate returns from transactions: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate returns from transactions: {e}\n{traceback.format_exc()}"
+        )
         return []
 
-def calculate_returns_from_positions(positions: List[PositionModel], period_days: int) -> List[float]:
+
+def calculate_returns_from_positions(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns based on current position performance
     """
     try:
         if not positions:
             return []
-        
+
         # Calculate portfolio-level metrics
         total_cost = 0
         total_current_value = 0
         position_returns = []
-        
+
         with get_db() as db:
             for position in positions:
                 if position.last_price and position.avg_cost and position.quantity > 0:
                     position_cost = float(position.quantity * position.avg_cost)
                     position_value = float(position.quantity * position.last_price)
-                    
+
                     total_cost += position_cost
                     total_current_value += position_value
-                    
+
                     # Calculate position return
                     if position_cost > 0:
-                        position_return = (position_value - position_cost) / position_cost
-                        
+                        position_return = (
+                            position_value - position_cost
+                        ) / position_cost
+
                         # Get asset info for risk adjustment
                         asset_info = get_asset_info(db, position.asset_id)
-                        asset_symbol = asset_info['symbol']
-                        
-                        position_returns.append({
-                            'return': position_return,
-                            'weight': position_value / total_current_value if total_current_value > 0 else 0,
-                            'symbol': asset_symbol,
-                            'volatility_factor': get_asset_volatility_factor(asset_symbol)
-                        })
-        
+                        asset_symbol = asset_info["symbol"]
+
+                        position_returns.append(
+                            {
+                                "return": position_return,
+                                "weight": (
+                                    position_value / total_current_value
+                                    if total_current_value > 0
+                                    else 0
+                                ),
+                                "symbol": asset_symbol,
+                                "volatility_factor": get_asset_volatility_factor(
+                                    asset_symbol
+                                ),
+                            }
+                        )
+
         if not position_returns or total_cost == 0:
             return []
-        
+
         # Calculate weighted average return
-        total_weight = sum(p['weight'] for p in position_returns)
+        total_weight = sum(p["weight"] for p in position_returns)
         if total_weight == 0:
             return []
-        
+
         # Normalize weights
         for p in position_returns:
-            p['weight'] = p['weight'] / total_weight
-        
+            p["weight"] = p["weight"] / total_weight
+
         # Calculate overall portfolio return
-        weighted_return = sum(p['return'] * p['weight'] for p in position_returns)
-        
+        weighted_return = sum(p["return"] * p["weight"] for p in position_returns)
+
         # Distribute return over the period with realistic variation
         daily_returns = []
         for i in range(min(period_days, 30)):
             # Create variation based on asset composition and market cycles
             base_daily_return = weighted_return / period_days
-            
+
             # Add cyclical variation (weekly patterns)
             weekly_cycle = np.sin(2 * np.pi * i / 7) * 0.1
-            
+
             # Add trend component
             trend_component = (i / period_days - 0.5) * 0.05
-            
+
             # Add volatility based on asset composition
-            portfolio_volatility = sum(p['weight'] * p['volatility_factor'] for p in position_returns)
+            portfolio_volatility = sum(
+                p["weight"] * p["volatility_factor"] for p in position_returns
+            )
             volatility_adjustment = portfolio_volatility * 0.02
-            
+
             # Combine components (no random elements)
-            daily_return = base_daily_return * (1 + weekly_cycle + trend_component) * volatility_adjustment
+            daily_return = (
+                base_daily_return
+                * (1 + weekly_cycle + trend_component)
+                * volatility_adjustment
+            )
             daily_returns.append(daily_return)
-        
+
         return daily_returns
-        
+
     except Exception as e:
-        logger.warning(f"Failed to calculate returns from positions: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate returns from positions: {e}\n{traceback.format_exc()}"
+        )
         return []
+
 
 def get_asset_volatility_factor(symbol: str) -> float:
     """
     Get volatility factor for different asset types
-    
+
     Args:
         symbol: Asset symbol
-        
+
     Returns:
         float: Volatility factor (1.0 = baseline)
     """
     symbol = symbol.upper()
-    
+
     # Volatility factors based on asset type
     volatility_factors = {
         # Stablecoins - very low volatility
-        'USDT': 0.1, 'USDC': 0.1, 'DAI': 0.1, 'BUSD': 0.1, 'USDD': 0.1,
-        
+        "USDT": 0.1,
+        "USDC": 0.1,
+        "DAI": 0.1,
+        "BUSD": 0.1,
+        "USDD": 0.1,
         # Major cryptocurrencies - moderate volatility
-        'BTC': 1.0, 'ETH': 1.2, 'BNB': 1.1,
-        
+        "BTC": 1.0,
+        "ETH": 1.2,
+        "BNB": 1.1,
         # Large cap altcoins - higher volatility
-        'ADA': 1.3, 'DOT': 1.4, 'SOL': 1.5, 'AVAX': 1.4, 'MATIC': 1.3,
-        'LINK': 1.2, 'UNI': 1.3, 'AAVE': 1.3, 'COMP': 1.4, 'SUSHI': 1.4,
-        
+        "ADA": 1.3,
+        "DOT": 1.4,
+        "SOL": 1.5,
+        "AVAX": 1.4,
+        "MATIC": 1.3,
+        "LINK": 1.2,
+        "UNI": 1.3,
+        "AAVE": 1.3,
+        "COMP": 1.4,
+        "SUSHI": 1.4,
         # Mid cap tokens - high volatility
-        'APE': 1.6, 'MANA': 1.5, 'ENS': 1.4, 'GRT': 1.5, 'BAT': 1.3,
-        '1INCH': 1.5, 'YFI': 1.6, 'QNT': 1.4, 'IMX': 1.5, 'NEXO': 1.3,
-        
+        "APE": 1.6,
+        "MANA": 1.5,
+        "ENS": 1.4,
+        "GRT": 1.5,
+        "BAT": 1.3,
+        "1INCH": 1.5,
+        "YFI": 1.6,
+        "QNT": 1.4,
+        "IMX": 1.5,
+        "NEXO": 1.3,
         # Meme coins and high-risk assets - very high volatility
-        'DOGE': 1.8, 'SHIB': 2.2, 'PEPE': 2.5, 'FLOKI': 2.3, 'BONK': 2.4,
-        
+        "DOGE": 1.8,
+        "SHIB": 2.2,
+        "PEPE": 2.5,
+        "FLOKI": 2.3,
+        "BONK": 2.4,
         # DeFi tokens - high volatility
-        'CAKE': 1.6, 'JOE': 1.7, 'PNG': 1.8, 'QI': 1.7, 'GMX': 1.5,
-        'PENDLE': 1.6,
-        
+        "CAKE": 1.6,
+        "JOE": 1.7,
+        "PNG": 1.8,
+        "QI": 1.7,
+        "GMX": 1.5,
+        "PENDLE": 1.6,
         # Other tokens
-        'TRX': 1.2, 'XRP': 1.3, 'BCH': 1.3, 'LTC': 1.2, 'JST': 1.5,
-        'WIN': 1.7, 'SUN': 1.8, 'BTT': 1.6, 'TON': 1.4, 'APT': 1.5,
-        'SUI': 1.6, 'OP': 1.4, 'ARB': 1.3,
+        "TRX": 1.2,
+        "XRP": 1.3,
+        "BCH": 1.3,
+        "LTC": 1.2,
+        "JST": 1.5,
+        "WIN": 1.7,
+        "SUN": 1.8,
+        "BTT": 1.6,
+        "TON": 1.4,
+        "APT": 1.5,
+        "SUI": 1.6,
+        "OP": 1.4,
+        "ARB": 1.3,
     }
-    
+
     return volatility_factors.get(symbol, 1.5)  # Default to 1.5 for unknown assets
 
-def calculate_returns_from_market_data(positions: List[PositionModel], period_days: int) -> List[float]:
+
+def calculate_returns_from_market_data(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns based on market conditions (no random data)
     """
     try:
         # Get real market data instead of using random numbers
         market_data = get_comprehensive_market_condition()
-        
+
         if not market_data:
             return []
-        
+
         # Use actual market indicators to estimate portfolio behavior
-        btc_trend = market_data.get('btc_trend', {})
-        market_condition = market_data.get('overall_market_condition', 'sideways')
-        
+        btc_trend = market_data.get("btc_trend", {})
+        market_condition = market_data.get("overall_market_condition", "sideways")
+
         # Base daily return on actual market performance
-        btc_weekly_change = btc_trend.get('weekly_change', 0)
+        btc_weekly_change = btc_trend.get("weekly_change", 0)
         btc_daily_return = btc_weekly_change / 7 / 100  # Convert to daily decimal
-        
+
         # Adjust based on portfolio composition
-        portfolio_beta = estimate_portfolio_beta(positions, market_condition)
-        
+        portfolio_beta = estimate_portfolio_beta_enhanced(positions, market_condition)
+
         daily_returns = []
         for i in range(min(period_days, 30)):
             # Use actual market performance with portfolio-specific adjustments
             base_return = btc_daily_return * portfolio_beta
-            
+
             # Add cyclical variation based on market patterns (not random)
             cycle_factor = np.sin(2 * np.pi * i / 7) * 0.1  # Weekly cycle
-            trend_factor = (i / period_days - 0.5) * 0.05   # Trend over period
-            
+            trend_factor = (i / period_days - 0.5) * 0.05  # Trend over period
+
             # Add market sentiment impact
-            fear_greed_index = market_data.get('fear_greed_index', 50)
-            sentiment_factor = (fear_greed_index - 50) / 100 * 0.02  # Convert to return impact
-            
-            daily_return = base_return * (1 + cycle_factor + trend_factor) + sentiment_factor
+            fear_greed_index = market_data.get("fear_greed_index", 50)
+            sentiment_factor = (
+                (fear_greed_index - 50) / 100 * 0.02
+            )  # Convert to return impact
+
+            daily_return = (
+                base_return * (1 + cycle_factor + trend_factor) + sentiment_factor
+            )
             daily_returns.append(daily_return)
-        
+
         return daily_returns
-        
+
     except Exception as e:
-        logger.warning(f"Failed to calculate returns from market data: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate returns from market data: {e}\n{traceback.format_exc()}"
+        )
         return []
 
-def estimate_portfolio_beta(positions: List[PositionModel], market_condition: str) -> float:
+
+def estimate_portfolio_beta(
+    positions: List[PositionModel], market_condition: str
+) -> float:
     """
     Estimate portfolio beta based on asset composition
-    
+
     Args:
         positions: Portfolio positions
         market_condition: Current market condition
-        
+
     Returns:
         float: Estimated portfolio beta relative to Bitcoin
     """
     if not positions:
         return 1.0
-    
+
     # Asset beta estimates relative to Bitcoin
     asset_betas = {
         # Major cryptocurrencies
-        'BTC': 1.0, 'ETH': 1.2, 'BNB': 1.1, 'ADA': 1.3, 'DOT': 1.4,
-        'SOL': 1.5, 'AVAX': 1.4, 'MATIC': 1.3, 'LINK': 1.2, 'UNI': 1.3,
-        'AAVE': 1.3, 'XRP': 1.3, 'BCH': 1.3, 'LTC': 1.2, 'TRX': 1.2,
-        
+        "BTC": 1.0,
+        "ETH": 1.2,
+        "BNB": 1.1,
+        "ADA": 1.3,
+        "DOT": 1.4,
+        "SOL": 1.5,
+        "AVAX": 1.4,
+        "MATIC": 1.3,
+        "LINK": 1.2,
+        "UNI": 1.3,
+        "AAVE": 1.3,
+        "XRP": 1.3,
+        "BCH": 1.3,
+        "LTC": 1.2,
+        "TRX": 1.2,
         # Meme coins and high-risk assets
-        'DOGE': 1.8, 'SHIB': 2.2, 'PEPE': 2.5, 'FLOKI': 2.3, 'BONK': 2.4,
-        
+        "DOGE": 1.8,
+        "SHIB": 2.2,
+        "PEPE": 2.5,
+        "FLOKI": 2.3,
+        "BONK": 2.4,
         # Stablecoins
-        'USDT': 0.1, 'USDC': 0.1, 'DAI': 0.1, 'BUSD': 0.1, 'USDD': 0.1,
-        
+        "USDT": 0.1,
+        "USDC": 0.1,
+        "DAI": 0.1,
+        "BUSD": 0.1,
+        "USDD": 0.1,
         # DeFi tokens
-        'CAKE': 1.6, 'JOE': 1.7, 'GMX': 1.5, 'COMP': 1.4, 'YFI': 1.6,
-        'SUSHI': 1.4, 'PENDLE': 1.6, 'QI': 1.7,
-        
+        "CAKE": 1.6,
+        "JOE": 1.7,
+        "GMX": 1.5,
+        "COMP": 1.4,
+        "YFI": 1.6,
+        "SUSHI": 1.4,
+        "PENDLE": 1.6,
+        "QI": 1.7,
         # Other tokens
-        'APT': 1.5, 'SUI': 1.6, 'TON': 1.4, 'OP': 1.4, 'ARB': 1.3,
-        'APE': 1.6, 'MANA': 1.5, 'ENS': 1.4, 'GRT': 1.5, 'BAT': 1.3,
-        '1INCH': 1.5, 'QNT': 1.4, 'IMX': 1.5, 'NEXO': 1.3,
+        "APT": 1.5,
+        "SUI": 1.6,
+        "TON": 1.4,
+        "OP": 1.4,
+        "ARB": 1.3,
+        "APE": 1.6,
+        "MANA": 1.5,
+        "ENS": 1.4,
+        "GRT": 1.5,
+        "BAT": 1.3,
+        "1INCH": 1.5,
+        "QNT": 1.4,
+        "IMX": 1.5,
+        "NEXO": 1.3,
     }
-    
+
     # Adjust betas based on market condition
     beta_adjustments = {
-        'bull_market': 0.9,    # Lower beta in bull market
-        'bear_market': 1.2,    # Higher beta in bear market
-        'sideways': 1.0        # Normal beta
+        "bull_market": 0.9,  # Lower beta in bull market
+        "bear_market": 1.2,  # Higher beta in bear market
+        "sideways": 1.0,  # Normal beta
     }
-    
+
     adjustment_factor = beta_adjustments.get(market_condition, 1.0)
-    
+
     total_value = sum(
-        float(p.quantity * p.last_price) 
-        for p in positions 
+        float(p.quantity * p.last_price)
+        for p in positions
         if p.last_price and p.quantity > 0
     )
-    
+
     if total_value == 0:
         return 1.0
-    
+
     weighted_beta = 0.0
-    
+
     try:
         with get_db() as db:
             for position in positions:
                 if position.last_price and position.quantity > 0:
                     position_value = float(position.quantity * position.last_price)
                     weight = position_value / total_value
-                    
+
                     # Get asset symbol
                     asset_symbol = get_asset_symbol(db, position.asset_id)
-                    
+
                     # Get beta for this asset
-                    asset_beta = asset_betas.get(asset_symbol.upper(), 1.5)  # Default to 1.5 for unknown assets
-                    
+                    asset_beta = asset_betas.get(
+                        asset_symbol.upper(), 1.5
+                    )  # Default to 1.5 for unknown assets
+
                     # Apply market condition adjustment
                     adjusted_beta = asset_beta * adjustment_factor
-                    
+
                     weighted_beta += weight * adjusted_beta
-    
+
     except Exception as e:
-        logger.warning(f"Error calculating portfolio beta: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Error calculating portfolio beta: {e}\n{traceback.format_exc()}"
+        )
         return 1.0
-    
+
     return max(0.1, min(3.0, weighted_beta))  # Clamp between 0.1 and 3.0
+
 
 def get_asset_symbol(db, asset_id: int) -> str:
     """
     Get asset symbol from database based on asset_id
-    
+
     Args:
         db: Database session
         asset_id: Asset identifier (integer primary key)
-        
+
     Returns:
         str: Asset symbol or 'UNKNOWN' if not found
     """
     try:
         from mysql.model import AssetModel
-        
+
         # Query asset by asset_id
         asset = db.query(AssetModel).filter(AssetModel.asset_id == asset_id).first()
-        
+
         if asset and asset.symbol:
             return asset.symbol.upper()
         else:
             logger.warning(f"Asset not found for asset_id: {asset_id}")
-            return 'UNKNOWN'
-            
+            return "UNKNOWN"
+
     except Exception as e:
-        logger.error(f"Error querying asset symbol for asset_id {asset_id}: {e}")
-        traceback.format_exc()
-        return 'UNKNOWN'
+        logger.error(
+            f"Error querying asset symbol for asset_id {asset_id}: {e}\n{traceback.format_exc()}"
+        )
+        return "UNKNOWN"
+
 
 def get_asset_info(db, asset_id: int) -> dict:
     """
     Get complete asset information from database
-    
+
     Args:
         db: Database session
         asset_id: Asset identifier
-        
+
     Returns:
         dict: Asset information including symbol, name, chain, etc.
     """
     try:
         from mysql.model import AssetModel
-        
+
         asset = db.query(AssetModel).filter(AssetModel.asset_id == asset_id).first()
-        
+
         if asset:
             return {
-                'asset_id': asset.asset_id,
-                'symbol': asset.symbol.upper() if asset.symbol else 'UNKNOWN',
-                'name': asset.name,
-                'chain': asset.chain,
-                'contract_address': asset.contract_address,
-                'decimals': asset.decimals
+                "asset_id": asset.asset_id,
+                "symbol": asset.symbol.upper() if asset.symbol else "UNKNOWN",
+                "name": asset.name,
+                "chain": asset.chain,
+                "contract_address": asset.contract_address,
+                "decimals": asset.decimals,
             }
         else:
             return {
-                'asset_id': asset_id,
-                'symbol': 'UNKNOWN',
-                'name': 'Unknown Asset',
-                'chain': 'UNKNOWN',
-                'contract_address': None,
-                'decimals': 18
+                "asset_id": asset_id,
+                "symbol": "UNKNOWN",
+                "name": "Unknown Asset",
+                "chain": "UNKNOWN",
+                "contract_address": None,
+                "decimals": 18,
             }
-            
-    except Exception as e:
-        logger.error(f"Error querying asset info for asset_id {asset_id}: {e}")
-        traceback.format_exc()
-        return {
-            'asset_id': asset_id,
-            'symbol': 'UNKNOWN',
-            'name': 'Unknown Asset',
-            'chain': 'UNKNOWN',
-            'contract_address': None,
-            'decimals': 18
-        }
-                
-                    
 
-def calculate_returns_from_transactions(positions: List[PositionModel], period_days: int) -> List[float]:
+    except Exception as e:
+        logger.error(
+            f"Error querying asset info for asset_id {asset_id}: {e}\n{traceback.format_exc()}"
+        )
+        return {
+            "asset_id": asset_id,
+            "symbol": "UNKNOWN",
+            "name": "Unknown Asset",
+            "chain": "UNKNOWN",
+            "contract_address": None,
+            "decimals": 18,
+        }
+
+
+def calculate_returns_from_transactions(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns based on actual transaction history
     """
@@ -2000,377 +2013,425 @@ def calculate_returns_from_transactions(positions: List[PositionModel], period_d
         with get_db() as db:
             # Get all source IDs from positions
             source_ids = list(set(p.source_id for p in positions))
-            
+
             # Calculate date range
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=period_days)
-            
+
             # Get transactions in the period
             transactions = (
                 db.query(TransactionModel)
                 .filter(
                     TransactionModel.source_id.in_(source_ids),
                     TransactionModel.transaction_time >= start_date,
-                    TransactionModel.transaction_time <= end_date
+                    TransactionModel.transaction_time <= end_date,
                 )
                 .order_by(TransactionModel.transaction_time)
                 .all()
             )
-            
+
             if not transactions:
                 return []
-            
+
             # Group transactions by day and calculate daily portfolio value changes
             daily_values = {}
             current_portfolio_value = sum(
-                float(p.quantity * p.last_price) 
-                for p in positions 
+                float(p.quantity * p.last_price)
+                for p in positions
                 if p.last_price and p.quantity > 0
             )
-            
+
             # Work backwards from current value
             portfolio_value = current_portfolio_value
-            
+
             # Group transactions by date
             transactions_by_date = defaultdict(list)
             for tx in reversed(transactions):  # Process most recent first
                 date_key = tx.transaction_time.date()
                 transactions_by_date[date_key].append(tx)
-            
+
             # Calculate daily returns based on transaction impact
             daily_returns = []
             prev_value = current_portfolio_value
-            
+
             for i in range(period_days):
                 date = (end_date - timedelta(days=i)).date()
-                
+
                 if date in transactions_by_date:
                     # Calculate portfolio value change due to transactions
                     day_transactions = transactions_by_date[date]
                     net_flow = 0
-                    
+
                     for tx in day_transactions:
                         if tx.transaction_type == TransactionType.BUY and tx.price:
                             net_flow += float(tx.quantity * tx.price)
                         elif tx.transaction_type == TransactionType.SELL and tx.price:
                             net_flow -= float(tx.quantity * tx.price)
-                    
+
                     # Adjust for net flow to get organic growth/decline
                     if prev_value > 0:
-                        adjusted_return = ((prev_value - net_flow) - prev_value) / prev_value
+                        adjusted_return = (
+                            (prev_value - net_flow) - prev_value
+                        ) / prev_value
                         daily_returns.insert(0, adjusted_return)
                         prev_value = prev_value - net_flow
                 else:
                     # No transactions, assume minimal change
                     daily_returns.insert(0, 0.0)
-            
+
             return daily_returns[:period_days]
-            
+
     except Exception as e:
-        logger.warning(f"Failed to calculate returns from transactions: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate returns from transactions: {e}\n{traceback.format_exc()}"
+        )
         return []
 
-def calculate_returns_from_positions(positions: List[PositionModel], period_days: int) -> List[float]:
+
+def calculate_returns_from_positions(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns based on current position performance
     """
     try:
         if not positions:
             return []
-        
+
         # Calculate average return across positions
         total_returns = []
         total_weight = 0
-        
+
         for position in positions:
             if position.last_price and position.avg_cost and position.quantity > 0:
                 # Calculate position return
-                position_return = (position.last_price - position.avg_cost) / position.avg_cost
+                position_return = (
+                    position.last_price - position.avg_cost
+                ) / position.avg_cost
                 position_value = float(position.quantity * position.last_price)
-                
+
                 total_returns.append(position_return * position_value)
                 total_weight += position_value
-        
+
         if total_weight == 0:
             return []
-        
+
         # Calculate weighted average return
         avg_return = sum(total_returns) / total_weight
-        
+
         # Distribute return over the period (simplified approach)
         daily_return = avg_return / period_days
-        
+
         # Create a more realistic return distribution
         daily_returns = []
         for i in range(min(period_days, 30)):  # Limit to reasonable period
             # Vary the daily return slightly based on position (no random)
-            position_factor = (i % 5) / 10 - 0.2  # Creates variation between -0.2 and 0.3
+            position_factor = (
+                i % 5
+            ) / 10 - 0.2  # Creates variation between -0.2 and 0.3
             adjusted_daily_return = daily_return * (1 + position_factor * 0.1)
             daily_returns.append(adjusted_daily_return)
-        
+
         return daily_returns
-        
+
     except Exception as e:
-        logger.warning(f"Failed to calculate returns from positions: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate returns from positions: {e}\n{traceback.format_exc()}"
+        )
         return []
 
-def calculate_returns_from_market_data(positions: List[PositionModel], period_days: int) -> List[float]:
+
+def calculate_returns_from_market_data(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns based on market conditions (no random data)
     """
     try:
         # Get real market data instead of using random numbers
         market_data = get_comprehensive_market_condition()
-        
+
         if not market_data:
             return []
-        
+
         # Use actual market indicators to estimate portfolio behavior
-        btc_trend = market_data.get('btc_trend', {})
-        market_condition = market_data.get('overall_market_condition', 'sideways')
-        
+        btc_trend = market_data.get("btc_trend", {})
+        market_condition = market_data.get("overall_market_condition", "sideways")
+
         # Base daily return on actual market performance
-        btc_weekly_change = btc_trend.get('weekly_change', 0)
+        btc_weekly_change = btc_trend.get("weekly_change", 0)
         btc_daily_return = btc_weekly_change / 7 / 100  # Convert to daily decimal
-        
+
         # Adjust based on portfolio composition
-        portfolio_beta = estimate_portfolio_beta(positions, market_condition)
-        
+        portfolio_beta = estimate_portfolio_beta_enhanced(positions, market_condition)
+
         daily_returns = []
         for i in range(min(period_days, 30)):
             # Use actual market performance with portfolio-specific adjustments
             base_return = btc_daily_return * portfolio_beta
-            
+
             # Add cyclical variation based on market patterns (not random)
             cycle_factor = np.sin(2 * np.pi * i / 7) * 0.1  # Weekly cycle
-            trend_factor = (i / period_days - 0.5) * 0.05   # Trend over period
-            
+            trend_factor = (i / period_days - 0.5) * 0.05  # Trend over period
+
             daily_return = base_return * (1 + cycle_factor + trend_factor)
             daily_returns.append(daily_return)
-        
+
         return daily_returns
-        
+
     except Exception as e:
-        logger.warning(f"Failed to calculate returns from market data: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Failed to calculate returns from market data: {e}\n{traceback.format_exc()}"
+        )
         return []
 
-def estimate_portfolio_beta(positions: List[PositionModel], market_condition: str) -> float:
+
+def estimate_portfolio_beta(
+    positions: List[PositionModel], market_condition: str
+) -> float:
     """
     Estimate portfolio beta based on asset composition
-    
+
     Args:
         positions: Portfolio positions
         market_condition: Current market condition
-        
+
     Returns:
         float: Estimated portfolio beta relative to Bitcoin
     """
     if not positions:
         return 1.0
-    
+
     # Asset beta estimates relative to Bitcoin
     asset_betas = {
         # Major cryptocurrencies
-        'BTC': 1.0,
-        'ETH': 1.2,
-        'BNB': 1.1,
-        'ADA': 1.3,
-        'DOT': 1.4,
-        'SOL': 1.5,
-        'AVAX': 1.4,
-        'MATIC': 1.3,
-        'LINK': 1.2,
-        'UNI': 1.3,
-        'AAVE': 1.3,
-        
+        "BTC": 1.0,
+        "ETH": 1.2,
+        "BNB": 1.1,
+        "ADA": 1.3,
+        "DOT": 1.4,
+        "SOL": 1.5,
+        "AVAX": 1.4,
+        "MATIC": 1.3,
+        "LINK": 1.2,
+        "UNI": 1.3,
+        "AAVE": 1.3,
         # Meme coins and high-risk assets
-        'DOGE': 1.8,
-        'SHIB': 2.2,
-        'PEPE': 2.5,
-        'FLOKI': 2.3,
-        'BONK': 2.4,
-        'SAFEMOON': 2.8,
-        
+        "DOGE": 1.8,
+        "SHIB": 2.2,
+        "PEPE": 2.5,
+        "FLOKI": 2.3,
+        "BONK": 2.4,
+        "SAFEMOON": 2.8,
         # Stablecoins
-        'USDT': 0.1,
-        'USDC': 0.1,
-        'DAI': 0.1,
-        'BUSD': 0.1,
+        "USDT": 0.1,
+        "USDC": 0.1,
+        "DAI": 0.1,
+        "BUSD": 0.1,
     }
-    
+
     # Adjust betas based on market condition
     beta_adjustments = {
-        'bull_market': 0.9,    # Lower beta in bull market
-        'bear_market': 1.2,    # Higher beta in bear market
-        'sideways': 1.0        # Normal beta
+        "bull_market": 0.9,  # Lower beta in bull market
+        "bear_market": 1.2,  # Higher beta in bear market
+        "sideways": 1.0,  # Normal beta
     }
-    
+
     adjustment_factor = beta_adjustments.get(market_condition, 1.0)
-    
+
     total_value = sum(
-        float(p.quantity * p.last_price) 
-        for p in positions 
+        float(p.quantity * p.last_price)
+        for p in positions
         if p.last_price and p.quantity > 0
     )
-    
+
     if total_value == 0:
         return 1.0
-    
+
     weighted_beta = 0.0
-    
+
     try:
         with get_db() as db:
             for position in positions:
                 if position.last_price and position.quantity > 0:
                     position_value = float(position.quantity * position.last_price)
                     weight = position_value / total_value
-                    
+
                     # Get asset symbol (you might need to join with assets table)
                     # For now, use a simplified approach based on asset_id
                     asset_symbol = get_asset_symbol(db, position.asset_id)
-                    
+
                     # Get beta for this asset
-                    asset_beta = asset_betas.get(asset_symbol.upper(), 1.5)  # Default to 1.5 for unknown assets
-                    
+                    asset_beta = asset_betas.get(
+                        asset_symbol.upper(), 1.5
+                    )  # Default to 1.5 for unknown assets
+
                     # Apply market condition adjustment
                     adjusted_beta = asset_beta * adjustment_factor
-                    
+
                     weighted_beta += weight * adjusted_beta
-    
+
     except Exception as e:
-        logger.warning(f"Error calculating portfolio beta: {e}")
-        traceback.format_exc()
+        logger.warning(
+            f"Error calculating portfolio beta: {e}\n{traceback.format_exc()}"
+        )
         return 1.0
-    
+
     return max(0.1, min(3.0, weighted_beta))  # Clamp between 0.1 and 3.0
+
+
+def estimate_portfolio_beta_enhanced(positions, market_condition):
+    """使用实时市场数据增强Beta计算"""
+    try:
+        # 获取实时市场数据来调整Beta值
+        market_metrics = api_manager.get_market_metrics()
+        btc_dominance = market_metrics.get("btc_dominance", 50)
+
+        # 根据BTC主导地位调整Beta
+        dominance_factor = 1.0
+        if btc_dominance > 60:
+            dominance_factor = 1.1  # BTC主导时，其他币种Beta增加
+        elif btc_dominance < 40:
+            dominance_factor = 0.9  # BTC主导地位下降时，Beta减少
+
+        base_beta = estimate_portfolio_beta(positions, market_condition)
+        return base_beta * dominance_factor
+
+    except Exception as e:
+        logger.warning(f"Enhanced beta calculation failed: {e}")
+        return estimate_portfolio_beta(positions, market_condition)
+
 
 def get_asset_symbol(db, asset_id: int) -> str:
     """
     Get asset symbol from database based on asset_id
-    
+
     Args:
         db: Database session
         asset_id: Asset identifier (integer primary key)
-        
+
     Returns:
         str: Asset symbol or 'UNKNOWN' if not found
     """
     try:
         from mysql.model import AssetModel
-        
+
         # Query asset by asset_id
         asset = db.query(AssetModel).filter(AssetModel.asset_id == asset_id).first()
-        
+
         if asset and asset.symbol:
             return asset.symbol.upper()
         else:
             logger.warning(f"Asset not found for asset_id: {asset_id}")
-            return 'UNKNOWN'
-            
+            return "UNKNOWN"
+
     except Exception as e:
-        logger.error(f"Error querying asset symbol for asset_id {asset_id}: {e}")
-        traceback.format_exc()
-        return 'UNKNOWN'
+        logger.error(
+            f"Error querying asset symbol for asset_id {asset_id}: {e}\n{traceback.format_exc()}"
+        )
+        return "UNKNOWN"
+
 
 def get_asset_info(db, asset_id: int) -> dict:
     """
     Get complete asset information from database
-    
+
     Args:
         db: Database session
         asset_id: Asset identifier
-        
+
     Returns:
         dict: Asset information including symbol, name, chain, etc.
     """
     try:
         from mysql.model import AssetModel
-        
+
         asset = db.query(AssetModel).filter(AssetModel.asset_id == asset_id).first()
-        
+
         if asset:
             return {
-                'asset_id': asset.asset_id,
-                'symbol': asset.symbol.upper() if asset.symbol else 'UNKNOWN',
-                'name': asset.name,
-                'chain': asset.chain,
-                'contract_address': asset.contract_address,
-                'decimals': asset.decimals
+                "asset_id": asset.asset_id,
+                "symbol": asset.symbol.upper() if asset.symbol else "UNKNOWN",
+                "name": asset.name,
+                "chain": asset.chain,
+                "contract_address": asset.contract_address,
+                "decimals": asset.decimals,
             }
         else:
             return {
-                'asset_id': asset_id,
-                'symbol': 'UNKNOWN',
-                'name': 'Unknown Asset',
-                'chain': 'UNKNOWN',
-                'contract_address': None,
-                'decimals': 18
+                "asset_id": asset_id,
+                "symbol": "UNKNOWN",
+                "name": "Unknown Asset",
+                "chain": "UNKNOWN",
+                "contract_address": None,
+                "decimals": 18,
             }
-            
+
     except Exception as e:
-        logger.error(f"Error querying asset info for asset_id {asset_id}: {e}")
-        traceback.format_exc()
+        logger.error(
+            f"Error querying asset info for asset_id {asset_id}: {e}\n{traceback.format_exc()}"
+        )
         return {
-            'asset_id': asset_id,
-            'symbol': 'UNKNOWN',
-            'name': 'Unknown Asset',
-            'chain': 'UNKNOWN',
-            'contract_address': None,
-            'decimals': 18
+            "asset_id": asset_id,
+            "symbol": "UNKNOWN",
+            "name": "Unknown Asset",
+            "chain": "UNKNOWN",
+            "contract_address": None,
+            "decimals": 18,
         }
 
-def calculate_returns_with_external_api(positions: List[PositionModel], period_days: int) -> List[float]:
+
+def calculate_returns_with_external_api(
+    positions: List[PositionModel], period_days: int
+) -> List[float]:
     """
     Calculate returns using external price API (alternative approach)
-    
+
     Args:
         positions: Portfolio positions
         period_days: Number of days to calculate
-        
+
     Returns:
         List[float]: Daily returns based on actual price data
     """
     try:
         # This function would integrate with external APIs like CoinGecko
         # to get actual historical price data for the assets
-        
+
         daily_returns = []
-        
+
         # Get unique asset symbols from positions
         asset_symbols = []
         asset_weights = {}
-        
+
         total_value = sum(
-            float(p.quantity * p.last_price) 
-            for p in positions 
+            float(p.quantity * p.last_price)
+            for p in positions
             if p.last_price and p.quantity > 0
         )
-        
+
         if total_value == 0:
             return []
-        
+
         with get_db() as db:
             for position in positions:
                 if position.last_price and position.quantity > 0:
                     symbol = get_asset_symbol(db, position.asset_id)
                     position_value = float(position.quantity * position.last_price)
                     weight = position_value / total_value
-                    
+
                     asset_symbols.append(symbol)
                     asset_weights[symbol] = weight
-        
+
         # Here you would make API calls to get historical data
         # For now, we'll use the market-based approach as fallback
         return calculate_returns_from_market_data(positions, period_days)
-        
-    except Exception as e:
-        logger.warning(f"Error calculating returns with external API: {e}")
-        traceback.format_exc()
-        return []
 
+    except Exception as e:
+        logger.warning(
+            f"Error calculating returns with external API: {e}\n{traceback.format_exc()}"
+        )
+        return []
 
 
 def calculate_portfolio_volatility(daily_returns: List[float]) -> float:

@@ -1,15 +1,7 @@
-"""
-Enhanced Portfolio Performance Analysis with Real Data Integration
-Uses third-party APIs to fetch real market data and provides comprehensive analysis
-"""
-
 from decimal import Decimal
 import numpy as np
-import pandas as pd
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict
 from datetime import datetime, timedelta
-import requests
-import json
 from langchain.agents import tool
 from mysql.db import get_db
 from mysql.model import (
@@ -20,16 +12,11 @@ from mysql.model import (
     TransactionType,
 )
 from loggers import logger
-from utils.api_decorators import api_call_with_cache_and_rate_limit, cache_result
 import traceback
 
 from utils.api_manager import (
     api_manager,
-    get_crypto_historical_data,
-    get_benchmark_price_data_global,
 )
-
-get_benchmark_price_data = get_benchmark_price_data_global
 
 
 # ========================================
@@ -118,10 +105,15 @@ def get_net_deposits_in_period(
         with get_db() as db:
             transactions = (
                 db.query(TransactionModel)
+                .join(
+                    PortfolioSourceModel,
+                    TransactionModel.source_id == PortfolioSourceModel.source_id,
+                )
                 .filter(
-                    TransactionModel.user_id == user_id,
-                    TransactionModel.created_at >= start_date,
-                    TransactionModel.created_at <= end_date,
+                    PortfolioSourceModel.user_id == user_id,
+                    PortfolioSourceModel.is_active == True,
+                    TransactionModel.transaction_time >= start_date,
+                    TransactionModel.transaction_time <= end_date,
                     TransactionModel.transaction_type.in_(
                         [TransactionType.DEPOSIT, TransactionType.WITHDRAW]
                     ),
@@ -132,15 +124,18 @@ def get_net_deposits_in_period(
             net_deposits = 0.0
             for tx in transactions:
                 if tx.transaction_type == TransactionType.DEPOSIT:
-                    net_deposits += float(tx.amount)
+                    # For deposits: quantity * price gives the USD value
+                    deposit_value = float(tx.quantity) * float(tx.price or 0)
+                    net_deposits += deposit_value
                 elif tx.transaction_type == TransactionType.WITHDRAW:
-                    net_deposits -= float(tx.amount)
+                    # For withdrawals: quantity * price gives the USD value
+                    withdrawal_value = float(tx.quantity) * float(tx.price or 0)
+                    net_deposits -= withdrawal_value
 
             return net_deposits
 
     except Exception as e:
-        logger.error(f"Error calculating net deposits: {e}")
-        traceback.format_exc()
+        logger.error(f"Error calculating net deposits: {e}\n{traceback.format_exc()}")
         return 0.0
 
 
@@ -190,7 +185,7 @@ def calculate_risk_metrics(
             beta = 1.0
 
         # Alpha calculation (excess return over expected return)
-        risk_free_rate = get_risk_free_rate()
+        risk_free_rate = api_manager.get_risk_free_rate()
         portfolio_return = np.mean(returns_array)
         benchmark_return = np.mean(benchmark_array) if len(benchmark_array) > 0 else 0
         expected_return = risk_free_rate + beta * (benchmark_return - risk_free_rate)
@@ -242,8 +237,7 @@ def calculate_risk_metrics(
         }
 
     except Exception as e:
-        logger.error(f"Error calculating risk metrics: {e}")
-        traceback.format_exc()
+        logger.error(f"Error calculating risk metrics: {e}\n{traceback.format_exc()}")
         return {
             "volatility": 0,
             "beta": 0,
@@ -259,20 +253,10 @@ def calculate_risk_metrics(
 def calculate_performance_attribution(
     user_id: str, start_date: str, end_date: str
 ) -> Dict:
-    """
-    Calculate performance attribution by asset/sector
-
-    Args:
-        user_id: User identifier
-        start_date: Analysis start date
-        end_date: Analysis end date
-
-    Returns:
-        Performance attribution breakdown
-    """
+    """Calculate performance attribution by asset/sector"""
     try:
         with get_db() as db:
-            # Get positions during the period
+            # Parse dates
             start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
             end_dt = (
                 datetime.fromisoformat(end_date.replace("Z", "+00:00"))
@@ -280,11 +264,18 @@ def calculate_performance_attribution(
                 else datetime.utcnow()
             )
 
-            positions = (
-                db.query(PositionModel)
+            # Get positions during the period with asset information
+            positions_with_assets = (
+                db.query(PositionModel, AssetModel)
+                .join(
+                    PortfolioSourceModel,
+                    PositionModel.source_id == PortfolioSourceModel.source_id,
+                )
+                .join(AssetModel, PositionModel.asset_id == AssetModel.asset_id)
                 .filter(
-                    PositionModel.user_id == user_id,
-                    PositionModel.created_at <= end_dt,
+                    PortfolioSourceModel.user_id == user_id,  # ✅ 正确的关联查询
+                    PortfolioSourceModel.is_active == True,
+                    PositionModel.updated_at <= end_dt,
                     PositionModel.quantity > 0,
                 )
                 .all()
@@ -293,8 +284,8 @@ def calculate_performance_attribution(
             attribution = {}
             total_contribution = 0.0
 
-            for position in positions:
-                asset_symbol = position.asset_symbol
+            for position, asset in positions_with_assets:  # ✅ 解包元组
+                asset_symbol = asset.symbol  # ✅ 从asset对象获取symbol
 
                 # Calculate asset contribution to portfolio return
                 start_price = get_asset_price_at_date(asset_symbol, start_dt)
@@ -327,8 +318,9 @@ def calculate_performance_attribution(
             }
 
     except Exception as e:
-        logger.error(f"Error calculating performance attribution: {e}")
-        traceback.format_exc()
+        logger.error(
+            f"Error calculating performance attribution: {e}\n{traceback.format_exc()}"
+        )
         return {"asset_attribution": {}, "total_contribution": 0.0}
 
 
@@ -491,7 +483,7 @@ def analyze_portfolio_performance(
                 else datetime.utcnow()
             )
         except ValueError:
-            traceback.format_exc()
+            logger.error(traceback.format_exc())
             return {
                 "error": "Invalid date format. Use ISO format (YYYY-MM-DD)",
                 "error_code": "INVALID_DATE",
@@ -520,7 +512,9 @@ def analyze_portfolio_performance(
             ) * 100
 
         # Get benchmark data for comparison
-        benchmark_data = get_benchmark_price_data(benchmark, days=period_days + 30)
+        benchmark_data = api_manager.get_benchmark_price_data(
+            benchmark, days=period_days + 30
+        )
         benchmark_return = 0
 
         if benchmark_data["success"] and benchmark_data["prices"]:
@@ -531,6 +525,23 @@ def analyze_portfolio_performance(
 
             for price_data in prices:
                 price_date = price_data["date"]
+
+                # Ensure both datetimes are timezone-aware for comparison
+                if price_date.tzinfo is None and start_dt.tzinfo is not None:
+                    # If price_date is naive but start_dt is aware, make price_date UTC-aware
+                    price_date = price_date.replace(tzinfo=start_dt.tzinfo)
+                elif price_date.tzinfo is not None and start_dt.tzinfo is None:
+                    # If price_date is aware but start_dt is naive, make start_dt UTC-aware
+                    start_dt = start_dt.replace(tzinfo=price_date.tzinfo)
+                    end_dt = end_dt.replace(tzinfo=price_date.tzinfo)
+                elif price_date.tzinfo is None and start_dt.tzinfo is None:
+                    # Both are naive, assume UTC
+                    from datetime import timezone
+
+                    price_date = price_date.replace(tzinfo=timezone.utc)
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+
                 if not start_price and price_date >= start_dt:
                     start_price = price_data["price"]
                 if price_date <= end_dt:
@@ -590,19 +601,16 @@ def analyze_portfolio_performance(
         }
 
     except ValueError as e:
-        logger.error(f"Data validation error: {e}")
-        traceback.format_exc()
+        logger.error(f"Data validation error: {e}\n{traceback.format_exc()}")
         return {
             "error": f"Data validation failed: {str(e)}",
             "error_code": "VALIDATION_ERROR",
         }
     except ConnectionError as e:
-        logger.error(f"Database connection error: {e}")
-        traceback.format_exc()
+        logger.error(f"Database connection error: {e}\n{traceback.format_exc()}")
         return {"error": "Database connection failed", "error_code": "DB_ERROR"}
     except Exception as e:
         logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        traceback.format_exc()
         return {
             "error": f"Failed to analyze portfolio performance: {str(e)}",
             "error_code": "UNKNOWN_ERROR",
@@ -641,8 +649,9 @@ def get_daily_portfolio_returns(
         return returns
 
     except Exception as e:
-        logger.error(f"Error calculating daily portfolio returns: {e}")
-        traceback.format_exc()
+        logger.error(
+            f"Error calculating daily portfolio returns: {e}\n{traceback.format_exc()}"
+        )
         return []
 
 
@@ -708,7 +717,9 @@ def compare_to_benchmarks(
         for benchmark in benchmarks:
             try:
                 # Get benchmark data
-                benchmark_data = get_benchmark_price_data(benchmark, days=365)
+                benchmark_data = api_manager.get_benchmark_price_data(
+                    benchmark, days=365
+                )
 
                 if not benchmark_data["success"]:
                     logger.warning(f"Failed to get data for benchmark {benchmark}")
@@ -801,8 +812,9 @@ def compare_to_benchmarks(
                 comparisons.append(comparison)
 
             except Exception as e:
-                logger.error(f"Error processing benchmark {benchmark}: {e}")
-                traceback.format_exc()
+                logger.error(
+                    f"Error processing benchmark {benchmark}: {e}\n{traceback.format_exc()}"
+                )
                 continue
 
         if not comparisons:
@@ -856,8 +868,7 @@ def compare_to_benchmarks(
         }
 
     except ValueError as e:
-        logger.error(f"Data validation error: {e}")
-        traceback.format_exc()
+        logger.error(f"Data validation error: {e}\n{traceback.format_exc()}")
         return {
             "error": f"Data validation failed: {str(e)}",
             "error_code": "VALIDATION_ERROR",
@@ -943,7 +954,7 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
                     # Get benchmark performance for comparison
                     benchmark_return = 0
                     try:
-                        benchmark_data = get_benchmark_price_data(
+                        benchmark_data = api_manager.get_benchmark_price_data(
                             "BTC", days=interval_days + 7
                         )
                         if (
@@ -965,8 +976,9 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
                             if bench_start and bench_end and bench_start > 0:
                                 benchmark_return = ((bench_end / bench_start) - 1) * 100
                     except Exception as be:
-                        logger.warning(f"Failed to get benchmark data for period: {be}")
-                        traceback.format_exc()
+                        logger.warning(
+                            f"Failed to get benchmark data for period: {be}\n{traceback.format_exc()}"
+                        )
 
                     performance_history.append(
                         {
@@ -1015,9 +1027,8 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
 
                 except Exception as pe:
                     logger.warning(
-                        f"Failed to calculate performance for period {period_start} to {period_end}: {pe}"
+                        f"Failed to calculate performance for period {period_start} to {period_end}: {pe}\n{traceback.format_exc()}"
                     )
-                    traceback.format_exc()
                     continue
 
             # Sort by period_start (most recent first)
@@ -1062,8 +1073,7 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
             return performance_history
 
     except ValueError as e:
-        logger.error(f"Data validation error: {e}")
-        traceback.format_exc()
+        logger.error(f"Data validation error: {e}\n{traceback.format_exc()}")
         return [
             {
                 "error": f"Data validation failed: {str(e)}",
@@ -1071,8 +1081,9 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
             }
         ]
     except Exception as e:
-        logger.error(f"Exception:{e}\n{traceback.format_exc()}")
-        traceback.format_exc()
+        logger.error(
+            f"Exception:{e}\n{traceback.format_exc()}\n{traceback.format_exc()}"
+        )
         return [
             {
                 "error": f"Failed to get historical performance: {str(e)}",

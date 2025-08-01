@@ -1,10 +1,6 @@
-from decimal import Decimal
-import time
 import numpy as np
-import pandas as pd
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime, timedelta
-import requests
+from typing import List, Dict, Tuple
+from datetime import datetime
 import os
 from langchain.agents import tool
 from mysql.db import get_db
@@ -12,20 +8,15 @@ from mysql.model import (
     AssetModel,
     PortfolioSourceModel,
     PositionModel,
-    TransactionModel,
-    TransactionType,
 )
 from loggers import logger
-from utils.api_decorators import (
-    api_call_with_cache_and_rate_limit,
-    cache_result,
-    rate_limit,
-    retry_on_429,
-)
 import traceback
 
 
 from utils.api_manager import api_manager
+
+fetch_current_market_data = api_manager.fetch_current_market_data_coincap
+get_coin_id_mapping = api_manager.get_coin_id_mapping_coincap
 
 # ========================================
 # Configuration and Constants
@@ -53,20 +44,13 @@ RISK_CONFIG = {
     "liquidity_thresholds": {"high": 80, "medium": 50, "low": 20},
 }
 
-# API endpoints (using CoinGecko as primary source)
-COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
-COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY")  # Optional for higher rate limits
-
 # ========================================
 # Data Fetching Functions
 # ========================================
 
+fetch_binance_market_data = api_manager.fetch_binance_market_data
 
-@api_call_with_cache_and_rate_limit(
-    cache_duration=600,  # 10 minutes cache
-    rate_limit_interval=0.5,
-    max_retries=3,
-)
+
 def fetch_historical_prices(symbols, days: int = 90) -> Dict:
     """
     Fetch historical price data for multiple symbols with automatic fallback
@@ -133,8 +117,7 @@ def fetch_current_market_data_improved(symbols: List[str]) -> Dict:
         coingecko_data = fetch_current_market_data(symbols)
         results.update(coingecko_data)
     except Exception as e:
-        traceback.format_exc()
-        logger.warning(f"CoinGecko market data failed: {e}")
+        logger.warning(f"CoinGecko market data failed: {e}\n{traceback.format_exc()}")
 
     # 对于失败的符号，尝试其他API
     missing_symbols = [s for s in symbols if s not in results]
@@ -145,134 +128,9 @@ def fetch_current_market_data_improved(symbols: List[str]) -> Dict:
             binance_data = fetch_binance_market_data(missing_symbols)
             results.update(binance_data)
         except Exception as e:
-            traceback.format_exc()
-            logger.warning(f"Binance market data failed: {e}")
+            logger.warning(f"Binance market data failed: {e}\n{traceback.format_exc()}")
 
     return results
-
-
-def fetch_binance_market_data(symbols: List[str]) -> Dict:
-    """
-    从Binance获取市场数据
-    """
-    results = {}
-
-    try:
-        api_manager._wait_for_rate_limit("binance")
-
-        # Binance 24hr ticker API
-        url = f"{api_manager.apis['binance']['base_url']}/ticker/24hr"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-
-        data = response.json()
-
-        # 创建符号映射
-        for item in data:
-            symbol = item["symbol"]
-            if symbol.endswith("USDT"):
-                base_symbol = symbol[:-4]  # 移除USDT
-                if base_symbol in symbols:
-                    results[base_symbol] = {
-                        "id": base_symbol.lower(),
-                        "symbol": base_symbol.lower(),
-                        "current_price": float(item["lastPrice"]),
-                        "market_cap": None,  # Binance不提供市值
-                        "total_volume": float(item["volume"])
-                        * float(item["lastPrice"]),
-                        "price_change_percentage_24h": float(
-                            item["priceChangePercent"]
-                        ),
-                    }
-
-    except Exception as e:
-        traceback.format_exc()
-        logger.error(f"Binance market data fetch failed: {e}")
-
-    return results
-
-
-@api_call_with_cache_and_rate_limit(cache_duration=300)
-def fetch_current_market_data(coin_ids: List[str]) -> Dict:
-    """
-    Fetch current market data including market cap, volume, etc.
-
-    Args:
-        coin_ids (List[str]): List of CoinGecko coin IDs
-
-    Returns:
-        Dict: Current market data
-    """
-    try:
-        headers = {}
-        if COINGECKO_API_KEY:
-            headers["X-CG-API-KEY"] = COINGECKO_API_KEY
-
-        # Split into batches of 250 (API limit)
-        batch_size = 250
-        all_data = {}
-
-        for i in range(0, len(coin_ids), batch_size):
-            batch = coin_ids[i : i + batch_size]
-
-            url = f"{COINGECKO_BASE_URL}/coins/markets"
-            params = {
-                "vs_currency": "usd",
-                "ids": ",".join(batch),
-                "order": "market_cap_desc",
-                "per_page": len(batch),
-                "page": 1,
-                "sparkline": False,
-                "price_change_percentage": "1h,24h,7d,30d",
-            }
-
-            response = requests.get(url, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
-
-            batch_data = response.json()
-            for item in batch_data:
-                all_data[item["id"]] = item
-
-        return all_data
-
-    except Exception as e:
-        traceback.format_exc()
-        logger.error(f"Failed to fetch market data: {e}")
-        return {}
-
-
-@cache_result(duration=3600)  # 1 hour cache
-def get_coin_id_mapping() -> Dict[str, str]:
-    """
-    Get mapping from symbol to CoinGecko coin ID.
-
-    Returns:
-        Dict: Mapping of symbol to coin ID
-    """
-    try:
-        headers = {}
-        if COINGECKO_API_KEY:
-            headers["X-CG-API-KEY"] = COINGECKO_API_KEY
-
-        url = f"{COINGECKO_BASE_URL}/coins/list"
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-
-        coins = response.json()
-        mapping = {}
-
-        for coin in coins:
-            symbol = coin["symbol"].upper()
-            # Prefer more popular coins for duplicate symbols
-            if symbol not in mapping:
-                mapping[symbol] = coin["id"]
-
-        return mapping
-
-    except Exception as e:
-        traceback.format_exc()
-        logger.error(f"Failed to fetch coin mapping: {e}")
-        return {}
 
 
 def classify_asset(symbol: str) -> str:
@@ -358,8 +216,7 @@ def calculate_portfolio_volatility(
             return 0.25
 
     except Exception as e:
-        traceback.format_exc()
-        logger.error(f"Error calculating portfolio volatility: {e}")
+        logger.error(f"Error calculating portfolio volatility: {e}\n{traceback.format_exc()}")
         return 0.25
 
 
@@ -410,8 +267,7 @@ def calculate_correlation_matrix(
         return correlation_matrix, valid_assets
 
     except Exception as e:
-        traceback.format_exc()
-        logger.error(f"Error calculating correlation matrix: {e}")
+        logger.error(f"Error calculating correlation matrix: {e}\n{traceback.format_exc()}")
         # Return default correlation matrix
         n = min(len(positions), 10)
         return np.eye(n), [pos["symbol"] for pos in positions[:n]]
@@ -456,8 +312,7 @@ def calculate_var_monte_carlo(
         return max(0, var_value)
 
     except Exception as e:
-        logger.error(f"Error calculating VaR: {e}")
-        traceback.format_exc()
+        logger.error(f"Error calculating VaR: {e}\n{traceback.format_exc()}")
         # Fallback to parametric VaR
         from scipy import stats
 
@@ -559,8 +414,7 @@ def assess_liquidity_risk(positions: List[Dict], market_data: Dict) -> Dict:
         }
 
     except Exception as e:
-        logger.error(f"Error assessing liquidity risk: {e}")
-        traceback.format_exc()
+        logger.error(f"Error assessing liquidity risk: {e}\n{traceback.format_exc()}")
         return {
             "overall_liquidity_score": 70,
             "illiquid_percentage": 30,
@@ -789,8 +643,7 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
         logger.error(
             f"Exception in analyze_portfolio_risk: {e}\n{traceback.format_exc()}"
         )
-        traceback.format_exc()
-        return {"error": f"Failed to analyze portfolio risk: {str(e)}"}
+        return {"error": f"Failed to analyze portfolio risk: {str(e)}\n{traceback.format_exc()}"}
 
 
 def generate_risk_recommendations(
@@ -1226,7 +1079,6 @@ def portfolio_stress_test(user_id: str, scenarios: List[Dict] = None) -> Dict:
         logger.error(
             f"Exception in portfolio_stress_test: {e}\n{traceback.format_exc()}"
         )
-        traceback.format_exc()
         return {"error": f"Failed to run stress test: {str(e)}"}
 
 
