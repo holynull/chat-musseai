@@ -70,84 +70,6 @@ def fast_api(rate_limit_interval=0.1):
     return decorator
 
 
-@cache_result(duration=86400)  # 24 hours cache
-@rate_limit(interval=1.2)
-@retry_on_429(max_retries=3, delay=2)
-def get_crypto_historical_data(
-    coin_id: str, vs_currency: str = "usd", days: int = 365
-) -> Dict:
-    """
-    Get cryptocurrency historical price data using multi-API fallback mechanism with caching
-
-    Args:
-        coin_id: Cryptocurrency ID or symbol
-        vs_currency: Base currency for prices
-        days: Number of days of historical data
-
-    Returns:
-        Dict: Dictionary containing price history data
-    """
-    # First try using the global API manager
-    global api_manager
-
-    symbol = coin_id
-    # Extract corresponding symbol for special names like bitcoin, ethereum
-    common_names = {
-        "bitcoin": "BTC",
-        "ethereum": "ETH",
-        "binancecoin": "BNB",
-        "ripple": "XRP",
-        "cardano": "ADA",
-        "solana": "SOL",
-        "polkadot": "DOT",
-    }
-
-    if coin_id in common_names:
-        symbol = common_names[coin_id]
-
-    # Use fallback mechanism to get data
-    result = api_manager.fetch_with_batch_cache_fallback(symbol, days)
-
-    if result and "prices" in result and len(result["prices"]) > 0:
-        # Convert to format needed by performance_analysis.py
-        prices_data = []
-        for i, price in enumerate(result["prices"]):
-            if i < len(result["dates"]):
-                date_str = result["dates"][i]
-                try:
-                    date_obj = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                except ValueError:
-                    logger.debug(traceback.format_exc())
-                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-
-                timestamp = int(
-                    date_obj.timestamp() * 1000
-                )  # Convert to millisecond timestamp
-
-                prices_data.append(
-                    {"timestamp": timestamp, "date": date_obj, "price": price}
-                )
-
-        response_data = {
-            "success": True,
-            "coin_id": coin_id,
-            "symbol": symbol,
-            "prices": prices_data,
-            "source": "multi_api_manager",
-        }
-
-        return response_data
-
-    # If unable to get data, return failure
-    failed_response = {
-        "success": False,
-        "error": "Could not fetch price data from any available API",
-        "coin_id": coin_id,
-    }
-
-    return failed_response
-
-
 class MultiAPIManager:
     def __init__(self):
         self.apis = {
@@ -191,16 +113,48 @@ class MultiAPIManager:
         self.rate_limited_apis = {}
         self.rate_limit_reset_time = {}
 
+        self.disabled_apis = {}  # API名称 -> 禁用原因
+        self.api_disable_time = {}  # API名称 -> 禁用时间
+
         # Configuration for global retries
         self.default_max_global_retries = 2
         self.global_retry_wait_base = 60  # Base wait time in seconds
+
+    def _mark_api_disabled(self, api_name: str, reason: str = "403_credits_exhausted"):
+        """Mark an API as permanently disabled due to 403 error (credits exhausted)"""
+        self.disabled_apis[api_name] = reason
+        self.api_disable_time[api_name] = time.time()
+        logger.error(f"API {api_name} disabled permanently due to: {reason}")
+
+    def _is_api_disabled(self, api_name: str) -> bool:
+        """Check if an API is permanently disabled"""
+        return api_name in self.disabled_apis
+
+    def _is_api_available(self, api_name: str) -> bool:
+        """Check if an API is available (not rate limited or disabled)"""
+        return not self._is_api_rate_limited(api_name) and not self._is_api_disabled(
+            api_name
+        )
+
+    def get_api_status(self) -> Dict:
+        """Get status of all APIs"""
+        status = {}
+        for api_name in self.apis.keys():
+            status[api_name] = {
+                "available": self._is_api_available(api_name),
+                "rate_limited": self._is_api_rate_limited(api_name),
+                "disabled": self._is_api_disabled(api_name),
+                "disabled_reason": self.disabled_apis.get(api_name),
+                "disabled_since": self.api_disable_time.get(api_name),
+            }
+        return status
 
     def fetch_with_batch_cache_fallback(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
         """Fetch data with batch cache fallback"""
         # First try batch cache
-        cached_data = self.batch_cache_manager.get_cached_data("crypto", symbol)
+        cached_data = self.get_cached_data("crypto", symbol)
         if cached_data and cached_data.get("historical_data"):
             cache_age = time.time() - cached_data.get("cached_at", 0)
             if cache_age < 3600:  # Use cached data if less than 1 hour old
@@ -209,7 +163,7 @@ class MultiAPIManager:
                 )
                 return cached_data["historical_data"]
 
-        # Fallback to individual API calls
+        # Fallback to individual API calls - use internal method
         logger.info(f"Batch cache miss for {symbol}, using individual API call")
         return self.fetch_with_fallback(symbol, days)
 
@@ -219,7 +173,7 @@ class MultiAPIManager:
     ) -> Dict:
         """Optimized Yahoo Finance with batch cache support"""
         # Check batch cache first
-        cached_data = self.batch_cache_manager.get_cached_data("traditional", symbol)
+        cached_data = self.get_cached_data("traditional", symbol)
         if cached_data and cached_data.get("data"):
             cache_age = time.time() - cached_data.get("cached_at", 0)
             if cache_age < 1800:  # Use cached data if less than 30 minutes old
@@ -357,6 +311,14 @@ class MultiAPIManager:
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
         """Fetch historical prices from CoinCap API 3.0 with authentication"""
+
+        # Check if CoinCap API is disabled
+        if self._is_api_disabled("coincap"):
+            logger.info("CoinCap API is disabled due to 403 error, skipping...")
+            raise ValueError(
+                "CoinCap API disabled due to 403 error (credits exhausted)"
+            )
+
         asset_id = self.symbol_mapping["coincap"].get(symbol.upper(), symbol.lower())
 
         end_time = int(time.time() * 1000)
@@ -369,11 +331,22 @@ class MultiAPIManager:
         if self.apis["coincap"].get("api_key"):
             headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
 
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
 
-        data = response.json()
-        return self._process_coincap_data(data)
+            data = response.json()
+            return self._process_coincap_data(data)
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                logger.error(
+                    f"CoinCap API returned 403 - credits likely exhausted for {symbol}"
+                )
+                self._mark_api_disabled("coincap", "403_credits_exhausted")
+                raise ValueError("CoinCap API credits exhausted (403)")
+            else:
+                raise
 
     @api_call_with_cache_and_rate_limit_no_429_retry(
         cache_duration=300, rate_limit_interval=0.1, api_name="binance"
@@ -465,10 +438,14 @@ class MultiAPIManager:
         for global_retry in range(max_global_retries + 1):
             available_apis = []
             rate_limited_count = 0
+            disabled_count = 0
 
-            # Filter out currently rate limited APIs
+            # Filter out currently rate limited and disabled APIs
             for api_name, api_method in api_methods:
-                if not self._is_api_rate_limited(api_name):
+                if self._is_api_disabled(api_name):
+                    disabled_count += 1
+                    logger.debug(f"Skipping disabled API: {api_name}")
+                elif not self._is_api_rate_limited(api_name):
                     available_apis.append((api_name, api_method))
                 else:
                     rate_limited_count += 1
@@ -478,12 +455,16 @@ class MultiAPIManager:
                 if global_retry < max_global_retries:
                     wait_time = 60 * (global_retry + 1)  # Wait 60s, 120s, etc.
                     logger.warning(
-                        f"All APIs rate limited, waiting {wait_time}s before retry {global_retry + 1}"
+                        f"All APIs unavailable (disabled: {disabled_count}, rate limited: {rate_limited_count}), "
+                        f"waiting {wait_time}s before retry {global_retry + 1}"
                     )
                     time.sleep(wait_time)
                     continue
                 else:
-                    logger.error("All APIs exhausted after maximum retries")
+                    logger.error(
+                        f"All APIs exhausted after maximum retries. "
+                        f"Disabled: {disabled_count}, Rate limited: {rate_limited_count}"
+                    )
                     return None
 
             # Try each available API
@@ -503,12 +484,29 @@ class MultiAPIManager:
                         )
 
                 except APIRateLimitException as e:
-                    logger.warning(f"API {api_name} rate limited: {e}")
+                    logger.warning(
+                        f"API {api_name} rate limited: {e}\n{traceback.format_exc()}"
+                    )
                     self._mark_api_rate_limited(api_name, reset_after_seconds=300)
                     continue  # Try next API immediately
 
+                except ValueError as e:
+                    # Check if it's a 403 disabled API error
+                    if "403" in str(e) or "disabled" in str(e):
+                        logger.warning(
+                            f"API {api_name} is disabled due to 403 error: {e}"
+                        )
+                        continue  # Try next API immediately
+                    else:
+                        logger.warning(
+                            f"API {api_name} failed for {symbol}: {e}\n{traceback.format_exc()}"
+                        )
+                        continue  # Try next API
+
                 except Exception as e:
-                    logger.warning(f"API {api_name} failed for {symbol}: {e}")
+                    logger.warning(
+                        f"API {api_name} failed for {symbol}: {e}\n{traceback.format_exc()}"
+                    )
                     continue  # Try next API
 
             # If we get here, all available APIs failed (not due to rate limits)
@@ -747,6 +745,11 @@ class MultiAPIManager:
         last_error = None
 
         for api_name, api_method in api_methods:
+            # Skip disabled APIs
+            if self._is_api_disabled(api_name):
+                logger.debug(f"Skipping disabled API: {api_name}")
+                continue
+
             # Skip rate-limited APIs
             if self._is_api_rate_limited(api_name):
                 logger.debug(f"Skipping rate-limited API: {api_name}")
@@ -767,13 +770,30 @@ class MultiAPIManager:
                     logger.warning(f"API {api_name} returned invalid data for {symbol}")
 
             except APIRateLimitException as e:
-                logger.warning(f"API {api_name} rate limited: {e}")
+                logger.warning(
+                    f"API {api_name} rate limited: {e}\n{traceback.format_exc()}"
+                )
                 self._mark_api_rate_limited(api_name, reset_after_seconds=300)
                 last_error = e
                 continue
 
+            except ValueError as e:
+                # Check if it's a 403 disabled API error
+                if "403" in str(e) or "disabled" in str(e):
+                    logger.warning(f"API {api_name} is disabled due to 403 error: {e}")
+                    last_error = e
+                    continue
+                else:
+                    logger.warning(
+                        f"API {api_name} failed for {symbol}: {e}\n{traceback.format_exc()}"
+                    )
+                    last_error = e
+                    continue
+
             except Exception as e:
-                logger.warning(f"API {api_name} failed for {symbol}: {e}")
+                logger.warning(
+                    f"API {api_name} failed for {symbol}: {e}\n{traceback.format_exc()}"
+                )
                 last_error = e
                 continue
 
@@ -904,7 +924,9 @@ class MultiAPIManager:
             }
 
         except Exception as e:
-            logger.error(f"CoinGecko market data API failed for {symbol}: {e}")
+            logger.error(
+                f"CoinGecko market data API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     def _fetch_coincap_market_data(self, symbol: str) -> Optional[Dict]:
@@ -917,6 +939,13 @@ class MultiAPIManager:
         Returns:
             Dict: Standardized market data
         """
+        # Check if CoinCap API is disabled
+        if self._is_api_disabled("coincap"):
+            logger.info("CoinCap API is disabled due to 403 error, skipping...")
+            raise ValueError(
+                "CoinCap API disabled due to 403 error (credits exhausted)"
+            )
+
         try:
             # Map symbol to CoinCap asset ID
             asset_id = self.symbol_mapping["coincap"].get(
@@ -975,8 +1004,22 @@ class MultiAPIManager:
                 "source": "coincap",
             }
 
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                logger.error(
+                    f"CoinCap API returned 403 - credits likely exhausted for {symbol}"
+                )
+                self._mark_api_disabled("coincap", "403_credits_exhausted")
+                raise ValueError("CoinCap API credits exhausted (403)")
+            else:
+                logger.error(
+                    f"CoinCap market data API failed for {symbol}: {e}\n{traceback.format_exc()}"
+                )
+                raise
         except Exception as e:
-            logger.error(f"CoinCap market data API failed for {symbol}: {e}")
+            logger.error(
+                f"CoinCap market data API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     def _fetch_binance_market_data(self, symbol: str) -> Optional[Dict]:
@@ -1042,7 +1085,9 @@ class MultiAPIManager:
             }
 
         except Exception as e:
-            logger.error(f"Binance market data API failed for {symbol}: {e}")
+            logger.error(
+                f"Binance market data API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     def _fetch_cryptocompare_market_data(self, symbol: str) -> Optional[Dict]:
@@ -1114,7 +1159,9 @@ class MultiAPIManager:
             }
 
         except Exception as e:
-            logger.error(f"CryptoCompare market data API failed for {symbol}: {e}")
+            logger.error(
+                f"CryptoCompare market data API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     # Enhanced batch fetch function
@@ -1143,7 +1190,9 @@ class MultiAPIManager:
                 time.sleep(0.1)
 
             except Exception as e:
-                logger.error(f"Failed to fetch market data for {symbol}: {e}")
+                logger.error(
+                    f"Failed to fetch market data for {symbol}: {e}\n{traceback.format_exc()}"
+                )
                 results[symbol] = {"success": False, "error": str(e)}
 
         return results
@@ -1195,7 +1244,9 @@ class MultiAPIManager:
             return self._process_coingecko_chart_data(data)
 
         except Exception as e:
-            logger.error(f"CoinGecko market chart API failed for {symbol}: {e}")
+            logger.error(
+                f"CoinGecko market chart API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     @api_call_with_cache_and_rate_limit_no_429_retry(
@@ -1207,6 +1258,13 @@ class MultiAPIManager:
         """
         Fetch market chart data from CoinCap API
         """
+        # Check if CoinCap API is disabled
+        if self._is_api_disabled("coincap"):
+            logger.info("CoinCap API is disabled due to 403 error, skipping...")
+            raise ValueError(
+                "CoinCap API disabled due to 403 error (credits exhausted)"
+            )
+
         try:
             asset_id = self.symbol_mapping["coincap"].get(
                 symbol.upper(), symbol.lower()
@@ -1237,8 +1295,22 @@ class MultiAPIManager:
             data = response.json()
             return self._process_coincap_chart_data(data)
 
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                logger.error(
+                    f"CoinCap API returned 403 - credits likely exhausted for {symbol}"
+                )
+                self._mark_api_disabled("coincap", "403_credits_exhausted")
+                raise ValueError("CoinCap API credits exhausted (403)")
+            else:
+                logger.error(
+                    f"CoinCap market chart API failed for {symbol}: {e}\n{traceback.format_exc()}"
+                )
+                raise
         except Exception as e:
-            logger.error(f"CoinCap market chart API failed for {symbol}: {e}")
+            logger.error(
+                f"CoinCap market chart API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     @api_call_with_cache_and_rate_limit_no_429_retry(
@@ -1274,7 +1346,9 @@ class MultiAPIManager:
             return self._process_binance_chart_data(data)
 
         except Exception as e:
-            logger.error(f"Binance market chart API failed for {symbol}: {e}")
+            logger.error(
+                f"Binance market chart API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     @api_call_with_cache_and_rate_limit_no_429_retry(
@@ -1305,7 +1379,9 @@ class MultiAPIManager:
             return self._process_cryptocompare_chart_data(data)
 
         except Exception as e:
-            logger.error(f"CryptoCompare market chart API failed for {symbol}: {e}")
+            logger.error(
+                f"CryptoCompare market chart API failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             raise
 
     @api_call_with_cache_and_rate_limit(
@@ -1349,10 +1425,14 @@ class MultiAPIManager:
         for global_retry in range(max_global_retries + 1):
             available_apis = []
             rate_limited_count = 0
+            disabled_count = 0
 
-            # Filter out currently rate limited APIs
+            # Filter out currently rate limited and disabled APIs
             for api_name, api_method in api_methods:
-                if not self._is_api_rate_limited(api_name):
+                if self._is_api_disabled(api_name):
+                    disabled_count += 1
+                    logger.debug(f"Skipping disabled API: {api_name}")
+                elif not self._is_api_rate_limited(api_name):
                     available_apis.append((api_name, api_method))
                 else:
                     rate_limited_count += 1
@@ -1362,7 +1442,8 @@ class MultiAPIManager:
                 if global_retry < max_global_retries:
                     wait_time = 60 * (global_retry + 1)  # Wait 60s, 120s, etc.
                     logger.warning(
-                        f"All APIs rate limited, waiting {wait_time}s before retry {global_retry + 1}"
+                        f"All APIs unavailable (disabled: {disabled_count}, rate limited: {rate_limited_count}), "
+                        f"waiting {wait_time}s before retry {global_retry + 1}"
                     )
                     time.sleep(wait_time)
                     continue
@@ -1391,12 +1472,29 @@ class MultiAPIManager:
                         )
 
                 except APIRateLimitException as e:
-                    logger.warning(f"API {api_name} rate limited: {e}")
+                    logger.warning(
+                        f"API {api_name} rate limited: {e}\n{traceback.format_exc()}"
+                    )
                     self._mark_api_rate_limited(api_name, reset_after_seconds=300)
                     continue  # Try next API immediately
 
+                except ValueError as e:
+                    # Check if it's a 403 disabled API error
+                    if "403" in str(e) or "disabled" in str(e):
+                        logger.warning(
+                            f"API {api_name} is disabled due to 403 error: {e}"
+                        )
+                        continue  # Try next API immediately
+                    else:
+                        logger.warning(
+                            f"API {api_name} failed for {symbol} chart: {e}\n{traceback.format_exc()}"
+                        )
+                        continue  # Try next API
+
                 except Exception as e:
-                    logger.warning(f"API {api_name} failed for {symbol} chart: {e}")
+                    logger.warning(
+                        f"API {api_name} failed for {symbol} chart: {e}\n{traceback.format_exc()}"
+                    )
                     continue  # Try next API
 
             # If we get here, all available APIs failed (not due to rate limits)
@@ -1429,18 +1527,30 @@ class MultiAPIManager:
 
             # Check for required fields with defensive programming
             if "timestamp" not in chart_data:
-                logger.warning(f"Yahoo Finance response missing timestamp field for {symbol}")
+                logger.warning(
+                    f"Yahoo Finance response missing timestamp field for {symbol}"
+                )
                 # Try alternative field names or provide fallback
-                timestamps = chart_data.get("timestamps") or chart_data.get("times") or []
+                timestamps = (
+                    chart_data.get("timestamps") or chart_data.get("times") or []
+                )
                 if not timestamps:
-                    raise ValueError("No timestamp data available in Yahoo Finance response")
+                    raise ValueError(
+                        "No timestamp data available in Yahoo Finance response"
+                    )
             else:
                 timestamps = chart_data["timestamp"]
 
             # Validate indicators data
             indicators = chart_data.get("indicators", {})
-            if not indicators or "quote" not in indicators or len(indicators["quote"]) == 0:
-                raise ValueError("Invalid Yahoo Finance response: missing quote indicators")
+            if (
+                not indicators
+                or "quote" not in indicators
+                or len(indicators["quote"]) == 0
+            ):
+                raise ValueError(
+                    "Invalid Yahoo Finance response: missing quote indicators"
+                )
 
             quote_data = indicators["quote"][0]
 
@@ -1448,20 +1558,28 @@ class MultiAPIManager:
             required_fields = ["close", "open", "high", "low"]
             for field in required_fields:
                 if field not in quote_data:
-                    logger.warning(f"Missing {field} data in Yahoo Finance response for {symbol}")
+                    logger.warning(
+                        f"Missing {field} data in Yahoo Finance response for {symbol}"
+                    )
 
             prices = []
             for i, timestamp in enumerate(timestamps):
-                if i < len(quote_data.get("close", [])) and quote_data["close"][i] is not None:
-                    prices.append({
-                        "timestamp": timestamp * 1000,  # Convert to milliseconds
-                        "date": datetime.fromtimestamp(timestamp),
-                        "price": quote_data["close"][i],
-                        "open": quote_data.get("open", [None] * len(timestamps))[i],
-                        "high": quote_data.get("high", [None] * len(timestamps))[i],
-                        "low": quote_data.get("low", [None] * len(timestamps))[i],
-                        "volume": quote_data.get("volume", [0] * len(timestamps))[i] or 0,
-                    })
+                if (
+                    i < len(quote_data.get("close", []))
+                    and quote_data["close"][i] is not None
+                ):
+                    prices.append(
+                        {
+                            "timestamp": timestamp * 1000,  # Convert to milliseconds
+                            "date": datetime.fromtimestamp(timestamp),
+                            "price": quote_data["close"][i],
+                            "open": quote_data.get("open", [None] * len(timestamps))[i],
+                            "high": quote_data.get("high", [None] * len(timestamps))[i],
+                            "low": quote_data.get("low", [None] * len(timestamps))[i],
+                            "volume": quote_data.get("volume", [0] * len(timestamps))[i]
+                            or 0,
+                        }
+                    )
 
             if not prices:
                 raise ValueError(f"No valid price data extracted for {symbol}")
@@ -1469,15 +1587,24 @@ class MultiAPIManager:
             return {"success": True, "symbol": symbol, "prices": prices}
 
         except KeyError as e:
-            logger.error(f"Missing required field in Yahoo Finance data for {symbol}: {e}")
-            logger.debug(f"Yahoo Finance raw response structure: {list(data.keys()) if data else 'None'}")
-            return {"success": False, "error": f"Missing required field: {e}", "symbol": symbol}
-    
+            logger.error(
+                f"Missing required field in Yahoo Finance data for {symbol}: {e}\n{traceback.format_exc()}"
+            )
+            logger.debug(
+                f"Yahoo Finance raw response structure: {list(data.keys()) if data else 'None'}"
+            )
+            return {
+                "success": False,
+                "error": f"Missing required field: {e}",
+                "symbol": symbol,
+            }
+
         except Exception as e:
-            logger.error(f"Error processing Yahoo Finance data for {symbol}: {e}")
+            logger.error(
+                f"Error processing Yahoo Finance data for {symbol}: {e}\n{traceback.format_exc()}"
+            )
             logger.debug(f"Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e), "symbol": symbol}
-
 
     def get_risk_free_rate(self) -> float:
         """
@@ -1522,7 +1649,7 @@ class MultiAPIManager:
             coin_id = benchmark_mapping.get(benchmark)
             if coin_id:
                 # Try crypto API first
-                result = get_crypto_historical_data(coin_id, "usd", days)
+                result = self.get_crypto_historical_data(coin_id, "usd", days)
                 if result["success"]:
                     return result
                 # If failed, try direct method
@@ -1563,7 +1690,7 @@ class MultiAPIManager:
                 coin_id = coin_mapping.get(symbol.upper(), symbol.lower())
 
                 # Try multi-API approach first
-                data = get_crypto_historical_data(coin_id, "usd", 30)
+                data = self.get_crypto_historical_data(coin_id, "usd", 30)
 
                 # If failed, try direct method
                 if not data["success"]:
@@ -1633,6 +1760,85 @@ class MultiAPIManager:
             logger.error(f"Error calculating benchmark returns: {e}")
             return []
 
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=86400,  # 24 hours cache
+        rate_limit_interval=1.2,
+        max_retries=3,
+        retry_delay=2,
+    )
+    def get_crypto_historical_data(
+        self, coin_id: str, vs_currency: str = "usd", days: int = 365
+    ) -> Dict:
+        """
+        Get cryptocurrency historical price data using multi-API fallback mechanism with caching
+
+        Args:
+            coin_id: Cryptocurrency ID or symbol
+            vs_currency: Base currency for prices
+            days: Number of days of historical data
+
+        Returns:
+            Dict: Dictionary containing price history data
+        """
+        symbol = coin_id
+        # Extract corresponding symbol for special names like bitcoin, ethereum
+        common_names = {
+            "bitcoin": "BTC",
+            "ethereum": "ETH",
+            "binancecoin": "BNB",
+            "ripple": "XRP",
+            "cardano": "ADA",
+            "solana": "SOL",
+            "polkadot": "DOT",
+        }
+
+        if coin_id in common_names:
+            symbol = common_names[coin_id]
+
+        # Use internal fallback mechanism - no external calls
+        result = self.fetch_with_fallback(symbol, days)
+
+        if result and "prices" in result and len(result["prices"]) > 0:
+            # Convert to format needed by performance_analysis.py
+            prices_data = []
+            for i, price in enumerate(result["prices"]):
+                if i < len(result["dates"]):
+                    date_str = result["dates"][i]
+                    try:
+                        date_obj = datetime.fromisoformat(
+                            date_str.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        logger.debug(traceback.format_exc())
+                        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+
+                    timestamp = int(
+                        date_obj.timestamp() * 1000
+                    )  # Convert to millisecond timestamp
+
+                    prices_data.append(
+                        {"timestamp": timestamp, "date": date_obj, "price": price}
+                    )
+
+            response_data = {
+                "success": True,
+                "coin_id": coin_id,
+                "symbol": symbol,
+                "prices": prices_data,
+                "source": "multi_api_manager",
+            }
+
+            return response_data
+
+        # If unable to get data, return failure
+        failed_response = {
+            "success": False,
+            "error": "Could not fetch price data from any available API",
+            "coin_id": coin_id,
+        }
+
+        return failed_response
+
     def fetch_multiple_assets_data(self, symbols: List[str], days: int = 365) -> Dict:
         """
         Batch fetch data for multiple assets with optimized API usage
@@ -1661,7 +1867,7 @@ class MultiAPIManager:
                 ]
 
                 if symbol.upper() in crypto_symbols:
-                    data = get_crypto_historical_data(symbol.lower(), "usd", days)
+                    data = self.get_crypto_historical_data(symbol.lower(), "usd", days)
                 else:
                     data = self.fetch_yahoo_finance_data_optimized(symbol, "1y")
 
@@ -1691,7 +1897,9 @@ class MultiAPIManager:
                 if result:
                     return result
             except Exception as e:
-                logger.warning(f"Fear & Greed API {api_name} failed: {e}")
+                logger.warning(
+                    f"Fear & Greed API {api_name} failed: {e}\n{traceback.format_exc()}"
+                )
                 continue
 
         # Fallback to estimated values based on market conditions
@@ -1773,6 +1981,7 @@ class MultiAPIManager:
             return index, classification, market_condition, market_sentiment
 
         except Exception:
+            logger.error(traceback.format_exc())
             # Ultimate fallback
             return 50, "Neutral", "sideways", "neutral"
 
@@ -1795,7 +2004,9 @@ class MultiAPIManager:
                 if result:
                     return result
             except Exception as e:
-                logger.warning(f"API {api_name} failed for global metrics: {e}")
+                logger.warning(
+                    f"API {api_name} failed for global metrics: {e}\n{traceback.format_exc()}"
+                )
                 continue
 
         raise ValueError("All APIs failed for global metrics")
@@ -1821,50 +2032,68 @@ class MultiAPIManager:
 
     def _fetch_coincap_global_metrics(self):
         """Fetch from CoinCap"""
-        headers = {}
-        if self.apis["coincap"].get("api_key"):
-            headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
-
-        url = f"{self.apis['coincap']['base_url']}/assets"
-        params = {"limit": 10}  # Get top 10 for dominance calculation
-
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        if not data.get("data"):
+        # Check if CoinCap API is disabled
+        if self._is_api_disabled("coincap"):
+            logger.info("CoinCap API is disabled due to 403 error, skipping...")
             return None
 
-        total_market_cap = sum(
-            float(asset.get("marketCapUsd", 0)) for asset in data["data"]
-        )
-        btc_data = next(
-            (asset for asset in data["data"] if asset["id"] == "bitcoin"), None
-        )
-        eth_data = next(
-            (asset for asset in data["data"] if asset["id"] == "ethereum"), None
-        )
+        try:
+            headers = {}
+            if self.apis["coincap"].get("api_key"):
+                headers["Authorization"] = f"Bearer {self.apis['coincap']['api_key']}"
 
-        btc_dominance = (
-            (float(btc_data["marketCapUsd"]) / total_market_cap * 100)
-            if btc_data
-            else 0
-        )
-        eth_dominance = (
-            (float(eth_data["marketCapUsd"]) / total_market_cap * 100)
-            if eth_data
-            else 0
-        )
+            url = f"{self.apis['coincap']['base_url']}/assets"
+            params = {"limit": 10}  # Get top 10 for dominance calculation
 
-        return {
-            "total_market_cap": total_market_cap,
-            "btc_dominance": btc_dominance,
-            "eth_dominance": eth_dominance,
-            "market_cap_change_24h": None,  # Not available in CoinCap
-            "active_cryptocurrencies": len(data["data"]),
-            "markets": None,
-            "source": "coincap",
-        }
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("data"):
+                return None
+
+            total_market_cap = sum(
+                float(asset.get("marketCapUsd", 0)) for asset in data["data"]
+            )
+            btc_data = next(
+                (asset for asset in data["data"] if asset["id"] == "bitcoin"), None
+            )
+            eth_data = next(
+                (asset for asset in data["data"] if asset["id"] == "ethereum"), None
+            )
+
+            btc_dominance = (
+                (float(btc_data["marketCapUsd"]) / total_market_cap * 100)
+                if btc_data
+                else 0
+            )
+            eth_dominance = (
+                (float(eth_data["marketCapUsd"]) / total_market_cap * 100)
+                if eth_data
+                else 0
+            )
+
+            return {
+                "total_market_cap": total_market_cap,
+                "btc_dominance": btc_dominance,
+                "eth_dominance": eth_dominance,
+                "market_cap_change_24h": None,  # Not available in CoinCap
+                "active_cryptocurrencies": len(data["data"]),
+                "markets": None,
+                "source": "coincap",
+            }
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                logger.error("CoinCap API returned 403 - credits likely exhausted")
+                self._mark_api_disabled("coincap", "403_credits_exhausted")
+                return None
+            else:
+                logger.error(f"CoinCap global metrics API failed: {e}")
+                return None
+        except Exception as e:
+            logger.error(f"CoinCap global metrics API failed: {e}")
+            return None
 
     @historical_data_api
     def analyze_btc_trend(self, days=30):
@@ -1975,6 +2204,11 @@ class MultiAPIManager:
         Returns:
             Dict: Current market data
         """
+        # Check if CoinCap API is disabled
+        if self._is_api_disabled("coincap"):
+            logger.info("CoinCap API is disabled due to 403 error, skipping...")
+            return {}
+
         try:
             headers = {}
             if self.apis["coincap"]["api_key"]:
@@ -2048,6 +2282,15 @@ class MultiAPIManager:
 
             return all_data
 
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                logger.error("CoinCap API returned 403 - credits likely exhausted")
+                self._mark_api_disabled("coincap", "403_credits_exhausted")
+                return {}
+            else:
+                logger.error(f"Failed to fetch market data from CoinCap: {e}")
+                logger.debug(traceback.format_exc())
+                return {}
         except Exception as e:
             logger.error(f"Failed to fetch market data from CoinCap: {e}")
             logger.debug(traceback.format_exc())
@@ -2061,6 +2304,13 @@ class MultiAPIManager:
         Returns:
             Dict: Mapping of symbol to asset ID
         """
+        # Check if CoinCap API is disabled
+        if self._is_api_disabled("coincap"):
+            logger.info(
+                "CoinCap API is disabled due to 403 error, using fallback mapping..."
+            )
+            return self._get_fallback_coin_mapping()
+
         try:
             headers = {}
             if self.apis["coincap"]["api_key"]:
@@ -2131,20 +2381,32 @@ class MultiAPIManager:
                 f"Successfully built CoinCap mapping with {len(mapping)} assets"
             )
             return mapping
+
         except requests.exceptions.HTTPError as e:
-            logger.error(f"HTTP error fetching CoinCap mapping: {e}")
-            if e.response.status_code == 401:
-                logger.warning("CoinCap API authentication failed - check API key")
-            elif e.response.status_code == 429:
-                logger.warning("CoinCap API rate limit exceeded")
-            return self._get_fallback_coin_mapping()
+            if e.response.status_code == 403:
+                logger.error("CoinCap API returned 403 - credits likely exhausted")
+                self._mark_api_disabled("coincap", "403_credits_exhausted")
+                return self._get_fallback_coin_mapping()
+            else:
+                logger.error(
+                    f"HTTP error fetching CoinCap mapping: {e}\n{traceback.format_exc()}"
+                )
+                if e.response.status_code == 401:
+                    logger.warning("CoinCap API authentication failed - check API key")
+                elif e.response.status_code == 429:
+                    logger.warning("CoinCap API rate limit exceeded")
+                return self._get_fallback_coin_mapping()
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Network error fetching CoinCap mapping: {e}")
+            logger.error(
+                f"Network error fetching CoinCap mapping: {e}\n{traceback.format_exc()}"
+            )
             return self._get_fallback_coin_mapping()
 
         except Exception as e:
-            logger.error(f"Unexpected error fetching CoinCap mapping: {e}")
+            logger.error(
+                f"Unexpected error fetching CoinCap mapping: {e}\n{traceback.format_exc()}"
+            )
             logger.debug(traceback.format_exc())
             return self._get_fallback_coin_mapping()
 
@@ -2224,7 +2486,9 @@ class MultiAPIManager:
                     logger.info(f"Successfully fetched yields from {source_name}")
                     break  # Use first successful source
             except Exception as e:
-                logger.warning(f"DeFi yields source {source_name} failed: {e}")
+                logger.warning(
+                    f"DeFi yields source {source_name} failed: {e}\n{traceback.format_exc()}"
+                )
                 continue
 
         return yields if yields else self._get_fallback_yields()
@@ -2431,12 +2695,15 @@ def get_latest_crypto_price(symbol: str) -> Dict:
     raise ValueError(f"No price data available for {symbol}")
 
 
-class BatchCacheManager:
-    """Batch cache manager for efficient data preloading and caching"""
+class BatchCacheAPIManager(MultiAPIManager):
+    """Enhanced batch cache manager with 429 protection"""
 
-    def __init__(self, api_manager):
-        self.api_manager = api_manager
+    def __init__(self):
+        super().__init__()
         self.batch_cache_duration = 86400  # 24 hours for batch data
+        self.batch_delay_base = 0.5
+        self.batch_delay_max = 10.0
+        self.consecutive_429_count = 0
         self.preload_symbols = [
             "BTC",
             "ETH",
@@ -2452,14 +2719,36 @@ class BatchCacheManager:
             "^DJI",
             "^TNX",
             "GC=F",
-            "DX-Y.NYB",  # Traditional assets
+            "DX-Y.NYB",
         ]
+
+    def warm_cache_on_startup(self):
+        """Warm cache on application startup with enhanced 429 protection"""
+        try:
+            logger.info("Warming cache on startup...")
+
+            # Mark batch operation start
+            if hasattr(self, "start_batch_operation"):
+                self.start_batch_operation()
+
+            # Preload all market data
+            self.preload_all_market_data()
+
+            logger.info("Cache warming completed successfully")
+
+        except Exception as e:
+            logger.error(f"Cache warming failed: {e}")
+            logger.debug(traceback.format_exc())
+        finally:
+            # Mark batch operation end
+            if hasattr(self.api_manager, "end_batch_operation"):
+                self.api_manager.end_batch_operation()
 
     @cache_result(duration=86400)  # 24-hour cache
     def preload_all_market_data(self) -> Dict:
-        """Preload and cache all commonly used market data at once"""
+        """Enhanced preload with comprehensive 429 protection"""
         logger.info("Starting batch preload of market data...")
-
+    
         batch_data = {
             "crypto_prices": {},
             "traditional_assets": {},
@@ -2468,39 +2757,347 @@ class BatchCacheManager:
             "risk_free_rate": None,
             "timestamp": time.time(),
         }
-
-        # Batch load crypto data
+    
+        # Batch load crypto data with enhanced 429 protection
         crypto_symbols = [
-            "BTC",
-            "ETH",
-            "BNB",
-            "ADA",
-            "SOL",
-            "DOT",
-            "LINK",
-            "UNI",
-            "AAVE",
+            "BTC", "ETH", "BNB", "ADA", "SOL", "DOT", "LINK", "UNI", "AAVE",
         ]
-        for symbol in crypto_symbols:
+    
+        for i, symbol in enumerate(crypto_symbols):
             try:
-                # Get both current price and historical data
-                market_data = self.api_manager.fetch_market_data(symbol)
-                historical_data = self.api_manager.fetch_with_fallback(symbol, days=365)
-
-                batch_data["crypto_prices"][symbol] = {
-                    "market_data": market_data,
-                    "historical_data": historical_data,
-                    "cached_at": time.time(),
-                }
-
-                # Small delay to respect rate limits
-                time.sleep(0.5)
-
+                # Check if too many APIs are rate limited
+                if self._should_pause_batch_operation():
+                    logger.warning(
+                        "Too many APIs rate limited, pausing batch operation"
+                    )
+                    time.sleep(60)  # Pause for 1 minute
+    
+                # Get both current price and historical data with safe methods
+                # Add delay between market data and historical data calls to prevent 429
+                market_data = self._safe_fetch_market_data(symbol)
+                
+                # CRITICAL: Add delay between the two API calls to prevent 429
+                if market_data:
+                    # If market data was successful, add a small delay before historical data
+                    api_delay = self._calculate_inter_call_delay()
+                    logger.debug(f"Inter-call delay for {symbol}: {api_delay}s")
+                    time.sleep(api_delay)
+                else:
+                    # If market data failed, add a longer delay before trying historical data
+                    time.sleep(1.0)
+                
+                historical_data = self._safe_fetch_historical_data(symbol)
+    
+                if market_data or historical_data:
+                    batch_data["crypto_prices"][symbol] = {
+                        "market_data": market_data,
+                        "historical_data": historical_data,
+                        "cached_at": time.time(),
+                    }
+    
+                    # Reset consecutive 429 count on success
+                    self.consecutive_429_count = 0
+                    logger.info(f"Successfully cached data for {symbol}")
+                else:
+                    logger.warning(f"Failed to get any data for {symbol}")
+    
+                # Dynamic delay based on API response and position in batch
+                delay = self._calculate_batch_delay(i, len(crypto_symbols))
+                time.sleep(delay)
+    
+            except APIRateLimitException as e:
+                logger.warning(f"429 error for {symbol}: {e}")
+                self.consecutive_429_count += 1
+    
+                # Exponential backoff for 429 errors
+                backoff_delay = min(2**self.consecutive_429_count, 60)
+                logger.info(f"429 backoff: waiting {backoff_delay}s before continuing")
+                time.sleep(backoff_delay)
+                continue
+            
             except Exception as e:
                 logger.warning(f"Failed to preload data for {symbol}: {e}")
+                time.sleep(1.0)
+                continue
+            
+        # Load traditional assets with 429 protection
+        self._preload_traditional_assets_safe(batch_data)
+    
+        # Load market metrics with 429 protection
+        self._preload_market_metrics_safe(batch_data)
+    
+        logger.info(
+            f"Batch preload completed. Cached {len(batch_data['crypto_prices'])} "
+            f"crypto assets and {len(batch_data['traditional_assets'])} traditional assets"
+        )
+        return batch_data
+    
+    def _calculate_inter_call_delay(self) -> float:
+        """Calculate delay between market_data and historical_data calls for same symbol"""
+        base_delay = 0.5  # 500ms base delay
+
+        # Increase delay based on recent 429 errors
+        if self.consecutive_429_count > 0:
+            # Exponential increase: 0.5s -> 1s -> 2s -> 4s (max)
+            multiplier = min(2 ** self.consecutive_429_count, 8)
+            calculated_delay = base_delay * multiplier
+        else:
+            calculated_delay = base_delay
+
+        # Check current API rate limit status
+        rate_limited_apis = sum(1 for api in self.apis.keys() if self._is_api_rate_limited(api))
+        total_apis = len(self.apis)
+
+        if total_apis > 0:
+            rate_limited_ratio = rate_limited_apis / total_apis
+            if rate_limited_ratio > 0.3:  # More than 30% APIs are rate limited
+                calculated_delay *= 2  # Double the delay
+
+        # Cap the maximum delay
+        return min(calculated_delay, 5.0)  # Maximum 5 seconds between calls
+
+    def _safe_fetch_market_data(self, symbol: str) -> Optional[Dict]:
+        """Safely fetch market data with enhanced 429 handling"""
+        try:
+            return super().fetch_market_data(symbol)
+        except APIRateLimitException as e:
+            logger.debug(f"Market data fetch rate limited for {symbol}: {e}")
+            # Mark this as a 429 occurrence for delay calculation
+            self.consecutive_429_count += 1
+            return None
+        except Exception as e:
+            logger.debug(f"Market data fetch failed for {symbol}: {e}")
+            return None
+
+    def _safe_fetch_historical_data(self, symbol: str) -> Optional[Dict]:
+        """Safely fetch historical data with enhanced 429 handling"""
+        try:
+            return super().fetch_with_fallback(symbol, days=365)
+        except APIRateLimitException as e:
+            logger.debug(f"Historical data fetch rate limited for {symbol}: {e}")
+            # Mark this as a 429 occurrence for delay calculation
+            self.consecutive_429_count += 1
+            return None
+        except Exception as e:
+            logger.debug(f"Historical data fetch failed for {symbol}: {e}")
+            return None
+
+    def _should_pause_batch_operation(self) -> bool:
+        """Enhanced check if batch operation should be paused due to too many 429s"""
+        rate_limited_count = len(getattr(self, "rate_limited_apis", {}))
+        disabled_count = len(getattr(self, "disabled_apis", {}))
+        total_apis = len(getattr(self, "apis", {}))
+
+        if total_apis == 0:
+            return False
+
+        # Pause if more than 60% of APIs are rate limited or disabled
+        unavailable_ratio = (rate_limited_count + disabled_count) / total_apis
+        should_pause = unavailable_ratio > 0.6
+
+        if should_pause:
+            logger.warning(
+                f"Pausing batch operation: {rate_limited_count} rate limited, "
+                f"{disabled_count} disabled out of {total_apis} total APIs "
+                f"(unavailable ratio: {unavailable_ratio:.1%})"
+            )
+
+        return should_pause
+
+    def _calculate_batch_delay(self, current_index: int, total_symbols: int) -> float:
+        """Enhanced dynamic delay calculation for batch operations"""
+        base_delay = self.batch_delay_base
+
+        # Increase delay if we've had recent 429s
+        if self.consecutive_429_count > 0:
+            base_delay *= 1.5 ** min(self.consecutive_429_count, 5)
+
+        # Increase delay as we progress through batch to be more conservative
+        progress_factor = 1 + (current_index / total_symbols) * 0.5
+        calculated_delay = base_delay * progress_factor
+
+        # Additional delay based on API availability
+        available_apis = sum(1 for api in self.apis.keys() if self._is_api_available(api))
+        total_apis = len(self.apis)
+
+        if total_apis > 0:
+            availability_ratio = available_apis / total_apis
+            if availability_ratio < 0.5:  # Less than 50% APIs available
+                calculated_delay *= 2  # Double the delay when APIs are struggling
+
+        return min(calculated_delay, self.batch_delay_max)
+
+    def _preload_traditional_assets_safe(self, batch_data: Dict):
+        """Safely preload traditional assets with enhanced 429 protection"""
+        traditional_symbols = {
+            "^GSPC": "SP500",
+            "^IXIC": "NASDAQ", 
+            "^DJI": "DOW",
+            "^TNX": "10Y_TREASURY",
+            "GC=F": "GOLD",
+            "DX-Y.NYB": "USD_INDEX",
+        }
+
+        for i, (symbol, name) in enumerate(traditional_symbols.items()):
+            try:
+                if self._should_pause_batch_operation():
+                    logger.warning(
+                        "Pausing traditional assets loading due to rate limits"
+                    )
+                    time.sleep(30)
+
+                # Yahoo Finance data with enhanced error handling
+                data = self._safe_fetch_yahoo_data(symbol)
+                if data and data.get("success"):
+                    batch_data["traditional_assets"][name] = {
+                        "data": data,
+                        "symbol": symbol,
+                        "cached_at": time.time(),
+                    }
+                    logger.info(f"Successfully cached {name} ({symbol})")
+
+                # Yahoo Finance needs longer delays due to stricter rate limiting
+                yahoo_delay = max(
+                    2.0,  # Minimum 2 seconds for Yahoo Finance
+                    self._calculate_batch_delay(i, len(traditional_symbols))
+                )
+                time.sleep(yahoo_delay)
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to preload {name} ({symbol}): {e}"
+                )
+                time.sleep(2.0)
                 continue
 
-        # Batch load traditional assets
+    def _safe_fetch_yahoo_data(self, symbol: str) -> Optional[Dict]:
+        """Safely fetch Yahoo Finance data with 429 protection"""
+        try:
+            return self.fetch_yahoo_finance_data(symbol, "1y")
+        except APIRateLimitException as e:
+            logger.debug(f"Yahoo Finance rate limited for {symbol}: {e}")
+            self.consecutive_429_count += 1
+            return None
+        except Exception as e:
+            logger.debug(f"Yahoo Finance fetch failed for {symbol}: {e}")
+            return None
+
+    def _preload_market_metrics_safe(self, batch_data: Dict):
+        """Safely preload market metrics with enhanced 429 protection"""
+        try:
+            # Add delays between different metric calls
+            batch_data["market_metrics"] = self._safe_get_market_metrics()
+            time.sleep(1.0)  # Delay between metric calls
+
+            batch_data["fear_greed_index"] = self._safe_get_fear_greed_index()
+            time.sleep(1.0)  # Delay between metric calls
+
+            batch_data["risk_free_rate"] = self._safe_get_risk_free_rate()
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to load market metrics: {e}"
+            )
+            # Set fallback values
+            batch_data["market_metrics"] = {}
+            batch_data["fear_greed_index"] = (50, "Neutral", "sideways", "neutral")
+            batch_data["risk_free_rate"] = 0.045
+
+    def _safe_get_market_metrics(self) -> Dict:
+        """Safely get market metrics with enhanced timeout and 429 handling"""
+        try:
+            return self.get_market_metrics()
+        except APIRateLimitException as e:
+            logger.debug(f"Market metrics rate limited: {e}")
+            self.consecutive_429_count += 1
+            return {}
+        except Exception as e:
+            logger.debug(f"Market metrics fetch failed: {e}")
+            return {}
+
+    def _safe_get_fear_greed_index(self):
+        """Safely get fear & greed index with enhanced timeout and 429 handling"""
+        try:
+            return self.get_fear_greed_index()
+        except APIRateLimitException as e:
+            logger.debug(f"Fear & greed index rate limited: {e}")
+            self.consecutive_429_count += 1
+            return (50, "Neutral", "sideways", "neutral")
+        except Exception as e:
+            logger.debug(f"Fear & greed index fetch failed: {e}")
+            return (50, "Neutral", "sideways", "neutral")
+
+    def _safe_get_risk_free_rate(self) -> float:
+        """Safely get risk-free rate with enhanced timeout and 429 handling"""
+        try:
+            return self.get_risk_free_rate()
+        except APIRateLimitException as e:
+            logger.debug(f"Risk-free rate rate limited: {e}")
+            self.consecutive_429_count += 1
+            return 0.045
+        except Exception as e:
+            logger.debug(f"Risk-free rate fetch failed: {e}")
+            return 0.045
+
+
+
+    def _safe_fetch_market_data(self, symbol: str) -> Optional[Dict]:
+        """Safely fetch market data with 429 handling"""
+        try:
+            return super().fetch_market_data(symbol)
+        except APIRateLimitException:
+            logger.debug(
+                f"Market data fetch rate limited for {symbol}\n{traceback.format_exc()}"
+            )
+            return None
+        except Exception as e:
+            logger.debug(
+                f"Market data fetch failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
+            return None
+
+    def _safe_fetch_historical_data(self, symbol: str) -> Optional[Dict]:
+        """Safely fetch historical data with 429 handling"""
+        try:
+            return super().fetch_with_fallback(symbol, days=365)
+        except APIRateLimitException:
+            logger.debug(
+                f"Historical data fetch rate limited for {symbol}\n{traceback.format_exc()}"
+            )
+            return None
+        except Exception as e:
+            logger.debug(
+                f"Historical data fetch failed for {symbol}: {e}\n{traceback.format_exc()}"
+            )
+            return None
+
+    def _should_pause_batch_operation(self) -> bool:
+        """Check if batch operation should be paused due to too many 429s"""
+        rate_limited_count = len(getattr(self, "rate_limited_apis", {}))
+        total_apis = len(getattr(self, "apis", {}))
+
+        if total_apis == 0:
+            return False
+
+        # Pause if more than 50% of APIs are rate limited
+        return rate_limited_count > (total_apis * 0.5)
+
+    def _calculate_batch_delay(self, current_index: int, total_symbols: int) -> float:
+        """Calculate dynamic delay based on batch progress and recent 429s"""
+        base_delay = self.batch_delay_base
+
+        # Increase delay if we've had recent 429s
+        if self.consecutive_429_count > 0:
+            base_delay *= 1.5 ** min(self.consecutive_429_count, 5)
+
+        # Increase delay as we progress through batch
+        progress_factor = 1 + (current_index / total_symbols) * 0.5
+        calculated_delay = base_delay * progress_factor
+
+        return min(calculated_delay, self.batch_delay_max)
+
+    def _preload_traditional_assets_safe(self, batch_data: Dict):
+        """Safely preload traditional assets with enhanced 429 protection"""
         traditional_symbols = {
             "^GSPC": "SP500",
             "^IXIC": "NASDAQ",
@@ -2510,65 +3107,106 @@ class BatchCacheManager:
             "DX-Y.NYB": "USD_INDEX",
         }
 
-        for symbol, name in traditional_symbols.items():
+        for i, (symbol, name) in enumerate(traditional_symbols.items()):
             try:
-                data = self.api_manager.fetch_yahoo_finance_data(symbol, "1y")
-                batch_data["traditional_assets"][name] = {
-                    "data": data,
-                    "symbol": symbol,
-                    "cached_at": time.time(),
-                }
-                time.sleep(1.0)  # Yahoo Finance needs more delay
+                if self._should_pause_batch_operation():
+                    logger.warning(
+                        "Pausing traditional assets loading due to rate limits"
+                    )
+                    time.sleep(30)
+
+                data = self.fetch_yahoo_finance_data(symbol, "1y")
+                if data and data.get("success"):
+                    batch_data["traditional_assets"][name] = {
+                        "data": data,
+                        "symbol": symbol,
+                        "cached_at": time.time(),
+                    }
+                    logger.info(f"Successfully cached {name} ({symbol})")
+
+                # Yahoo Finance needs longer delays
+                yahoo_delay = max(
+                    1.0, self._calculate_batch_delay(i, len(traditional_symbols))
+                )
+                time.sleep(yahoo_delay)
 
             except Exception as e:
-                logger.warning(f"Failed to preload {name} ({symbol}): {e}")
+                logger.warning(
+                    f"Failed to preload {name} ({symbol}): {e}\n{traceback.format_exc()}"
+                )
+                time.sleep(2.0)
                 continue
 
-        # Load market metrics
+    def _preload_market_metrics_safe(self, batch_data: Dict):
+        """Safely preload market metrics with 429 protection"""
         try:
-            batch_data["market_metrics"] = self.api_manager.get_market_metrics()
-            batch_data["fear_greed_index"] = self.api_manager.get_fear_greed_index()
-            batch_data["risk_free_rate"] = self.api_manager.get_risk_free_rate()
+            batch_data["market_metrics"] = self._safe_get_market_metrics()
+            batch_data["fear_greed_index"] = self._safe_get_fear_greed_index()
+            batch_data["risk_free_rate"] = self._safe_get_risk_free_rate()
         except Exception as e:
-            logger.warning(f"Failed to load market metrics: {e}")
+            logger.warning(
+                f"Failed to load market metrics: {e}\n{traceback.format_exc()}"
+            )
+            # Set fallback values
+            batch_data["market_metrics"] = {}
+            batch_data["fear_greed_index"] = (50, "Neutral", "sideways", "neutral")
+            batch_data["risk_free_rate"] = 0.045
 
-        logger.info(
-            f"Batch preload completed. Cached {len(batch_data['crypto_prices'])} crypto assets and {len(batch_data['traditional_assets'])} traditional assets"
-        )
-        return batch_data
+    def _safe_get_market_metrics(self) -> Dict:
+        """Safely get market metrics with timeout"""
+        try:
+            return self.get_market_metrics()
+        except Exception as e:
+            logger.debug(f"Market metrics fetch failed: {e}\n{traceback.format_exc()}")
+            return {}
+
+    def _safe_get_fear_greed_index(self):
+        """Safely get fear & greed index with timeout"""
+        try:
+            return self.get_fear_greed_index()
+        except Exception as e:
+            logger.debug(
+                f"Fear & greed index fetch failed: {e}\n{traceback.format_exc()}"
+            )
+            return (50, "Neutral", "sideways", "neutral")
+
+    def _safe_get_risk_free_rate(self) -> float:
+        """Safely get risk-free rate with timeout"""
+        try:
+            return self.get_risk_free_rate()
+        except Exception as e:
+            logger.debug(f"Risk-free rate fetch failed: {e}\n{traceback.format_exc()}")
+            return 0.045
 
     def get_cached_data(self, asset_type: str, symbol: str) -> Optional[Dict]:
-        """Get data from batch cache"""
-        cache_key = "preload_all_market_data_"
-        cached_batch = _cache_backend.get(cache_key)
-
-        if not cached_batch:
-            logger.info("No batch cache found, triggering preload...")
-            batch_data = self.preload_all_market_data()
-        else:
-            batch_data, timestamp = cached_batch
-            # Check if cache is still valid (within 24 hours)
-            if time.time() - timestamp > self.batch_cache_duration:
-                logger.info("Batch cache expired, reloading...")
-                batch_data = self.preload_all_market_data()
-
-        if asset_type == "crypto" and symbol in batch_data.get("crypto_prices", {}):
-            return batch_data["crypto_prices"][symbol]
-        elif asset_type == "traditional":
-            for name, data in batch_data.get("traditional_assets", {}).items():
-                if data.get("symbol") == symbol or name == symbol:
-                    return data
-
-        return None
-
-    def warm_cache_on_startup(self):
-        """Warm cache on application startup"""
+        """Get data from batch cache with enhanced error handling"""
         try:
-            logger.info("Warming cache on startup...")
-            self.preload_all_market_data()
-            logger.info("Cache warming completed successfully")
+            cache_key = "preload_all_market_data_"
+            cached_batch = _cache_backend.get(cache_key)
+
+            if not cached_batch:
+                logger.info("No batch cache found, triggering preload...")
+                batch_data = self.preload_all_market_data()
+            else:
+                batch_data, timestamp = cached_batch
+                # Check if cache is still valid (within 24 hours)
+                if time.time() - timestamp > self.batch_cache_duration:
+                    logger.info("Batch cache expired, reloading...")
+                    batch_data = self.preload_all_market_data()
+
+            if asset_type == "crypto" and symbol in batch_data.get("crypto_prices", {}):
+                return batch_data["crypto_prices"][symbol]
+            elif asset_type == "traditional":
+                for name, data in batch_data.get("traditional_assets", {}).items():
+                    if data.get("symbol") == symbol or name == symbol:
+                        return data
+
+            return None
         except Exception as e:
-            logger.error(f"Cache warming failed: {e}")
+            logger.error(
+                f"Error getting cached data for {asset_type}:{symbol}: {e}\n{traceback.format_exc()}"
+            )
+            return None
 
 
 class CacheRefreshScheduler:
@@ -2610,7 +3248,9 @@ class CacheRefreshScheduler:
                     logger.info("Scheduled cache refresh completed")
 
             except Exception as e:
-                logger.error(f"Scheduled cache refresh failed: {e}")
+                logger.error(
+                    f"Scheduled cache refresh failed: {e}\n{traceback.format_exc()}"
+                )
                 # Continue running even if refresh fails
                 time.sleep(300)  # Wait 5 minutes before retrying
 
@@ -2652,7 +3292,9 @@ class SmartCacheInvalidator:
             return False
 
         except Exception as e:
-            logger.warning(f"Failed to check market volatility: {e}")
+            logger.warning(
+                f"Failed to check market volatility: {e}\n{traceback.format_exc()}"
+            )
             return False
 
     def conditional_cache_refresh(self):
@@ -2668,14 +3310,13 @@ class SmartCacheInvalidator:
 # 在 api_manager.py 中添加的完整集成代码
 
 
-class EnhancedMultiAPIManager(MultiAPIManager):
+class EnhancedMultiAPIManager(BatchCacheAPIManager):
     """Enhanced API Manager with comprehensive caching strategy"""
 
     def __init__(self):
         super().__init__()
         # Initialize batch caching components
-        self.batch_cache_manager = BatchCacheManager(self)
-        self.cache_scheduler = CacheRefreshScheduler(self.batch_cache_manager)
+        self.cache_scheduler = CacheRefreshScheduler(self)
         self.cache_invalidator = SmartCacheInvalidator(self)
 
         # Start background processes
@@ -2687,9 +3328,7 @@ class EnhancedMultiAPIManager(MultiAPIManager):
 
         try:
             # Warm cache on startup
-            threading.Thread(
-                target=self.batch_cache_manager.warm_cache_on_startup, daemon=True
-            ).start()
+            threading.Thread(target=self.warm_cache_on_startup, daemon=True).start()
 
             # Start refresh scheduler
             self.cache_scheduler.start_scheduler()
@@ -2700,7 +3339,9 @@ class EnhancedMultiAPIManager(MultiAPIManager):
             logger.info("Enhanced caching system initialized successfully")
 
         except Exception as e:
-            logger.error(f"Failed to initialize caching system: {e}")
+            logger.error(
+                f"Failed to initialize caching system: {e}\n{traceback.format_exc()}"
+            )
 
     def _volatility_monitor_loop(self):
         """Background loop to monitor market volatility"""
@@ -2709,7 +3350,7 @@ class EnhancedMultiAPIManager(MultiAPIManager):
                 time.sleep(300)  # Check every 5 minutes
                 self.cache_invalidator.conditional_cache_refresh()
             except Exception as e:
-                logger.error(f"Volatility monitor error: {e}")
+                logger.error(f"Volatility monitor error: {e}\n{traceback.format_exc()}")
                 time.sleep(60)  # Wait 1 minute on error
 
     # Override key methods to use batch cache
@@ -2718,7 +3359,7 @@ class EnhancedMultiAPIManager(MultiAPIManager):
     ) -> Optional[Dict]:
         """Enhanced fallback with batch cache priority"""
         # First try batch cache
-        result = self.batch_cache_manager.get_cached_data("crypto", symbol)
+        result = self.get_cached_data("crypto", symbol)
         if result and result.get("historical_data"):
             cache_age = time.time() - result.get("cached_at", 0)
             if cache_age < 1800:  # 30 minutes freshness
@@ -2732,7 +3373,7 @@ class EnhancedMultiAPIManager(MultiAPIManager):
     def fetch_yahoo_finance_data(self, symbol: str, period: str = "1y") -> Dict:
         """Enhanced Yahoo Finance with batch cache support"""
         # Check batch cache first
-        result = self.batch_cache_manager.get_cached_data("traditional", symbol)
+        result = self.get_cached_data("traditional", symbol)
         if result and result.get("data"):
             cache_age = time.time() - result.get("cached_at", 0)
             if cache_age < 1800:  # 30 minutes freshness
@@ -2783,7 +3424,7 @@ class EnhancedMultiAPIManager(MultiAPIManager):
         """Manually trigger full cache refresh"""
         logger.info("Manual cache refresh triggered")
         clear_cache("*")
-        self.batch_cache_manager.preload_all_market_data()
+        self.preload_all_market_data()
         logger.info("Manual cache refresh completed")
 
     def shutdown(self):
