@@ -1,7 +1,6 @@
 import numpy as np
 from typing import List, Dict, Tuple
 from datetime import datetime
-import os
 from langchain.agents import tool
 from mysql.db import get_db
 from mysql.model import (
@@ -13,10 +12,7 @@ from loggers import logger
 import traceback
 
 
-from utils.api_manager import api_manager
-
-fetch_current_market_data = api_manager.fetch_current_market_data_coincap
-get_coin_id_mapping = api_manager.get_coin_id_mapping_coincap
+from utils.enhance_multi_api_manager import api_manager
 
 # ========================================
 # Configuration and Constants
@@ -43,94 +39,6 @@ RISK_CONFIG = {
     "max_position_risk_threshold": 25,  # Percentage
     "liquidity_thresholds": {"high": 80, "medium": 50, "low": 20},
 }
-
-# ========================================
-# Data Fetching Functions
-# ========================================
-
-fetch_binance_market_data = api_manager.fetch_binance_market_data
-
-
-def fetch_historical_prices(symbols, days: int = 90) -> Dict:
-    """
-    Fetch historical price data for multiple symbols with automatic fallback
-
-    Args:
-        symbols: Single symbol (str) or list of symbols (List[str])
-        days: Number of days of historical data to fetch
-
-    Returns:
-        Dict: Historical data for all symbols
-    """
-    try:
-        # Handle both single symbol and list of symbols
-        if isinstance(symbols, str):
-            symbol_list = [symbols]
-            single_symbol = True
-        else:
-            symbol_list = symbols
-            single_symbol = False
-
-        results = {}
-
-        # Fetch data for each symbol
-        for symbol in symbol_list:
-            try:
-                # Use multi-API manager for each symbol
-                result = api_manager.fetch_with_fallback(symbol, days)
-
-                if result:
-                    results[symbol.upper()] = result
-                    logger.info(
-                        f"Successfully fetched {len(result.get('prices', []))} days of data for {symbol}"
-                    )
-                else:
-                    logger.warning(f"No data available for {symbol}")
-
-            except Exception as e:
-                logger.error(f"Failed to fetch data for {symbol}: {e}")
-                continue
-
-        # Return single result if single symbol was requested
-        if single_symbol and symbol_list[0].upper() in results:
-            return results[symbol_list[0].upper()]
-        elif single_symbol:
-            return None
-
-        return results
-
-    except Exception as e:
-        logger.error(f"Failed to fetch historical prices: {e}")
-        traceback.print_exc()
-        return {} if not isinstance(symbols, str) else None
-
-
-# 改进的市场数据获取函数
-def fetch_current_market_data_improved(symbols: List[str]) -> Dict:
-    """
-    改进的市场数据获取，使用多API源
-    """
-    results = {}
-
-    # 尝试从CoinGecko获取
-    try:
-        coingecko_data = fetch_current_market_data(symbols)
-        results.update(coingecko_data)
-    except Exception as e:
-        logger.warning(f"CoinGecko market data failed: {e}\n{traceback.format_exc()}")
-
-    # 对于失败的符号，尝试其他API
-    missing_symbols = [s for s in symbols if s not in results]
-
-    if missing_symbols:
-        # 尝试从Binance获取价格数据
-        try:
-            binance_data = fetch_binance_market_data(missing_symbols)
-            results.update(binance_data)
-        except Exception as e:
-            logger.warning(f"Binance market data failed: {e}\n{traceback.format_exc()}")
-
-    return results
 
 
 def classify_asset(symbol: str) -> str:
@@ -216,7 +124,9 @@ def calculate_portfolio_volatility(
             return 0.25
 
     except Exception as e:
-        logger.error(f"Error calculating portfolio volatility: {e}\n{traceback.format_exc()}")
+        logger.error(
+            f"Error calculating portfolio volatility: {e}\n{traceback.format_exc()}"
+        )
         return 0.25
 
 
@@ -267,7 +177,9 @@ def calculate_correlation_matrix(
         return correlation_matrix, valid_assets
 
     except Exception as e:
-        logger.error(f"Error calculating correlation matrix: {e}\n{traceback.format_exc()}")
+        logger.error(
+            f"Error calculating correlation matrix: {e}\n{traceback.format_exc()}"
+        )
         # Return default correlation matrix
         n = min(len(positions), 10)
         return np.eye(n), [pos["symbol"] for pos in positions[:n]]
@@ -333,7 +245,6 @@ def assess_liquidity_risk(positions: List[Dict], market_data: Dict) -> Dict:
         Dict: Liquidity risk assessment
     """
     try:
-        coin_mapping = get_coin_id_mapping()
         total_value = sum(pos["total_value"] for pos in positions)
 
         liquidity_scores = []
@@ -344,14 +255,13 @@ def assess_liquidity_risk(positions: List[Dict], market_data: Dict) -> Dict:
             pos_value = pos["total_value"]
 
             # Get coin ID
-            coin_id = coin_mapping.get(symbol)
-            if not coin_id or coin_id not in market_data:
+            if not symbol or symbol not in market_data:
                 # Assume low liquidity for unknown assets
                 liquidity_scores.append(30)
                 illiquid_value += pos_value * 0.7
                 continue
 
-            market_info = market_data[coin_id]
+            market_info = market_data[symbol]
             market_cap = market_info.get("market_cap", 0)
             volume_24h = market_info.get("total_volume", 0)
 
@@ -493,11 +403,46 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
 
             # 批量获取历史数据
             logger.info(f"Fetching historical data for {len(symbols)} symbols")
-            historical_data = fetch_historical_prices(symbols, days=90)
+            historical_data = {}
+            for symbol in symbols:
+                try:
+                    # 使用api_manager的多API fallback机制
+                    symbol_data = api_manager.fetch_with_fallback(symbol, days=90)
+                    if symbol_data and symbol_data.get("prices"):
+                        historical_data[symbol.upper()] = symbol_data
+                        logger.debug(f"Successfully fetched data for {symbol}")
+                    else:
+                        logger.warning(f"No data available for {symbol}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch data for {symbol}: {e}")
+                    continue
+
+            logger.info(
+                f"Successfully fetched data for {len(historical_data)}/{len(symbols)} symbols"
+            )
 
             # 获取当前市场数据
             logger.info("Fetching current market data")
-            market_data = fetch_current_market_data_improved(symbols)
+            market_data = {}
+            try:
+                # 使用批量市场数据获取
+                batch_market_data = api_manager.fetch_multiple_market_data(symbols)
+                if batch_market_data:
+                    # 转换格式以匹配现有代码期望
+                    for symbol in symbols:
+                        if symbol and symbol in batch_market_data:
+                            market_data[symbol] = batch_market_data[symbol]
+                        elif symbol.upper() in batch_market_data:
+                            market_data[symbol.upper()] = batch_market_data[
+                                symbol.upper()
+                            ]
+
+                logger.info(
+                    f"Successfully fetched market data for {len(market_data)} assets"
+                )
+            except Exception as e:
+                logger.error(f"Failed to fetch market data: {e}")
+                market_data = {}
 
             # 计算风险指标（保持原有逻辑）
             portfolio_volatility = calculate_portfolio_volatility(
@@ -643,7 +588,9 @@ def analyze_portfolio_risk(user_id: str) -> Dict:
         logger.error(
             f"Exception in analyze_portfolio_risk: {e}\n{traceback.format_exc()}"
         )
-        return {"error": f"Failed to analyze portfolio risk: {str(e)}\n{traceback.format_exc()}"}
+        return {
+            "error": f"Failed to analyze portfolio risk: {str(e)}\n{traceback.format_exc()}"
+        }
 
 
 def generate_risk_recommendations(
@@ -1112,9 +1059,6 @@ def analyze_asset_correlations(user_id: str, period_days: int = 90) -> Dict:
         if len(positions) < 2:
             return {"error": "Need at least 2 assets for correlation analysis"}
 
-        # Get coin mapping and fetch historical data
-        coin_mapping = get_coin_id_mapping()
-
         # Limit to top 15 positions for API efficiency
         top_positions = sorted(positions, key=lambda x: x["total_value"], reverse=True)[
             :15
@@ -1125,16 +1069,48 @@ def analyze_asset_correlations(user_id: str, period_days: int = 90) -> Dict:
 
         for pos in top_positions:
             symbol = pos["symbol"].upper()
-            coin_id = coin_mapping.get(symbol)
+            coin_id = symbol
 
             if coin_id:
-                hist_data = fetch_historical_prices(coin_id, days=period_days)
-                if (
-                    hist_data and len(hist_data["returns"]) > 30
-                ):  # Minimum data requirement
-                    historical_data[symbol] = hist_data
-                    valid_assets.append(symbol)
+                historical_data = {}
+                valid_assets = []
 
+                # Extract symbols for batch processing
+                symbols_to_fetch = [pos["symbol"].upper() for pos in top_positions]
+
+                logger.info(
+                    f"Fetching historical data for {len(symbols_to_fetch)} symbols over {period_days} days"
+                )
+
+                # Use improved batch fetching with multiple API fallbacks
+                # Primary: Use batch API call with cache
+                batch_historical_data={}
+                for symbol in symbols_to_fetch:
+                    try:
+                        # 使用 fetch_with_fallback 方法替代错误的 get_crypto_historical_data 调用
+                        symbol_data = api_manager.fetch_with_fallback(symbol, days=period_days)
+                        if symbol_data and symbol_data.get("prices"):
+                            batch_historical_data[symbol] = symbol_data
+                            logger.debug(f"Successfully fetched data for {symbol}")
+                        else:
+                            logger.warning(f"No data available for {symbol}")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch data for {symbol}: {e}")
+                        continue
+
+                # Process batch results
+                for pos in top_positions:
+                    symbol = pos["symbol"].upper()
+
+                    if symbol in batch_historical_data:
+                        hist_data = batch_historical_data[symbol]
+                        if (
+                            hist_data and len(hist_data["returns"]) > 30
+                        ):  # Minimum data requirement
+                            historical_data[symbol] = hist_data
+                            valid_assets.append(symbol)
+                    else:
+                        logger.warning(f"No historical data available for {symbol}")
         if len(valid_assets) < 2:
             return {"error": "Insufficient historical data for correlation analysis"}
 

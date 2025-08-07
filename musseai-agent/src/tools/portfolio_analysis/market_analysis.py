@@ -6,11 +6,12 @@ from loggers import logger
 import traceback
 
 from .portfolio_overview import get_comprehensive_market_condition
-from utils.api_manager import api_manager
+from utils.enhance_multi_api_manager import api_manager
 
 # ========================================
 # Market Analysis Tools
 # ========================================
+
 
 @tool
 def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
@@ -26,8 +27,6 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
 
     def _analyze_market_conditions(assets):
         try:
-            from utils.api_manager import api_manager
-
             # Get base market condition data
             market_data = get_comprehensive_market_condition()
 
@@ -59,9 +58,7 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                     logger.info(
                         f"Fetching market data for {len(asset_symbols)} assets using batch method"
                     )
-                    market_data_batch = api_manager.fetch_multiple_market_data(
-                        asset_symbols
-                    )
+                    market_data_batch = api_manager.fetch_market_data(asset_symbols)
 
                     for symbol in asset_symbols:
                         symbol_upper = symbol.upper()
@@ -468,8 +465,6 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
 def fetch_technical_indicators_enhanced(symbol):
     """Enhanced version of fetch_technical_indicators using api_manager"""
     try:
-        from utils.api_manager import api_manager
-
         # Use api_manager to get historical data with multi-API fallback
         historical_data = api_manager.fetch_market_chart_multi_api(symbol, days="30")
 
@@ -557,7 +552,6 @@ def fetch_technical_indicators_enhanced(symbol):
 def calculate_asset_correlations_enhanced(asset_symbols):
     """Enhanced version of calculate_asset_correlations using api_manager"""
     try:
-        from utils.api_manager import api_manager
 
         # Get historical price data for correlation calculation using batch method
         historical_prices = {}

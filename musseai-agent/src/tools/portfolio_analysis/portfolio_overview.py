@@ -14,9 +14,8 @@ from loggers import logger
 import traceback
 from collections import defaultdict
 
-from utils.api_manager import (
-    api_manager,  # 添加全局实例
-)
+from utils.enhance_multi_api_manager import api_manager
+
 
 
 # ========================================
