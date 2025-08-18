@@ -166,3 +166,48 @@ Assuming everything is running correctly, you should see a response like:
 ```json
 {"ok":true}
 ```
+
+# 1. 初始化monitor环境
+make setup_monitor
+
+# 2. 配置环境变量
+cp .env.monitor.example .env
+
+# 编辑 .env 文件，配置您的通知设置
+
+# 3. 测试配置
+make test_monitor_config
+
+# 启动monitor服务
+make start_monitor
+
+# 检查状态
+make status_monitor
+
+# 查看日志
+make logs_monitor
+
+# 实时跟踪日志
+make logs_monitor_follow
+
+# 健康检查
+make health_monitor
+
+# 重启服务
+make restart_monitor
+
+# 停止服务
+make stop_monitor
+
+# 清理artifacts
+make clean_monitor
+
+# 创建环境模板
+make create_monitor_env
+
+# 简化命令（可选）
+make monitor-start
+make monitor-stop  
+make monitor-status
+make monitor-logs
+make monitor-health

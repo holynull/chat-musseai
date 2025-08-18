@@ -227,3 +227,62 @@ class PriceSnapshotModel(Base):
         Index("idx_asset_time", "asset_id", "timestamp", postgresql_using="btree"),
         {"comment": "价格快照表"},
     )
+
+# ========================================
+# Alert Types and Models
+# ========================================
+
+class AlertType(enum.Enum):
+    """Alert type enumeration"""
+    PRICE = "PRICE"
+    PORTFOLIO_VALUE = "PORTFOLIO_VALUE"
+    RISK = "RISK"
+    PERFORMANCE = "PERFORMANCE"
+    REBALANCING = "REBALANCING"
+    VOLUME = "VOLUME"
+    VOLATILITY = "VOLATILITY"
+
+class AlertStatus(enum.Enum):
+    """Alert status enumeration"""
+    ACTIVE = "ACTIVE"
+    TRIGGERED = "TRIGGERED"
+    INACTIVE = "INACTIVE"
+    EXPIRED = "EXPIRED"
+
+class NotificationMethod(enum.Enum):
+    """Notification method enumeration"""
+    EMAIL = "EMAIL"
+    SMS = "SMS"
+    PUSH = "PUSH"
+    WEBHOOK = "WEBHOOK"
+
+class PortfolioAlertModel(Base):
+    """Portfolio alert configuration model"""
+    __tablename__ = "portfolio_alerts"
+    
+    alert_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(100), nullable=False, comment="User identifier")
+    alert_type = Column(Enum(AlertType), nullable=False, comment="Alert type")
+    alert_name = Column(String(200), nullable=False, comment="User-defined alert name")
+    conditions = Column(JSON, nullable=False, comment="Alert conditions")
+    notification_methods = Column(JSON, nullable=False, comment="Notification methods")
+    status = Column(Enum(AlertStatus), default=AlertStatus.ACTIVE, comment="Alert status")
+    created_at = Column(TIMESTAMP, server_default=func.now(), comment="Creation time")
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now(), comment="Update time")
+    last_checked_at = Column(TIMESTAMP, nullable=True, comment="Last check time")
+    last_triggered_at = Column(TIMESTAMP, nullable=True, comment="Last trigger time")
+    trigger_count = Column(Integer, default=0, comment="Total trigger count")
+    expiry_date = Column(TIMESTAMP, nullable=True, comment="Alert expiry date")
+
+
+class AlertHistoryModel(Base):
+    """Alert trigger history model"""
+    __tablename__ = "alert_history"
+    
+    history_id = Column(Integer, primary_key=True, autoincrement=True)
+    alert_id = Column(Integer, ForeignKey("portfolio_alerts.alert_id", ondelete="CASCADE"), nullable=False)
+    triggered_at = Column(TIMESTAMP, nullable=False, comment="Trigger time")
+    trigger_value = Column(JSON, nullable=False, comment="Values that triggered the alert")
+    message = Column(Text, nullable=False, comment="Alert message")
+    notification_sent = Column(Boolean, default=False, comment="Whether notification was sent")
+    created_at = Column(TIMESTAMP, server_default=func.now(), comment="Record creation time")

@@ -43,6 +43,8 @@ langgraph-api = "^0.2.61"
 pandas = "^2.3.1"
 scipy = "^1.16.0"
 redis = "^6.2.0"
+schedule = "^1.2.2"
+twilio = "^9.7.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = ">=1.11.1"
@@ -53,7 +55,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.setuptools]
-packages = ["graphs","prompts","tools","mysql"]
+packages = ["graphs","prompts","tools","mysql","utils","alerts_monitor"]
 
 [tool.setuptools.package-dir]
 "graphs" = "src/graphs"
@@ -61,6 +63,7 @@ packages = ["graphs","prompts","tools","mysql"]
 "tools" = "src/tools"
 "mysql" = "src/mysql"
 "utils" = "src/utils"
+"alerts_monitor" = "src/alerts_monitor"
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
