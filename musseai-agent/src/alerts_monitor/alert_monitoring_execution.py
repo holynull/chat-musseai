@@ -5,28 +5,21 @@ This module provides real-time monitoring and notification execution for portfol
 It includes scheduled checking, notification delivery, and status management.
 """
 
-import asyncio
 import json
 import logging
 import os
-import smtplib
 import threading
 import time
-from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import traceback
-from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass, field
+from datetime import datetime 
+from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
 from alerts_monitor.alert_conditions import check_alert_conditions
 from alerts_monitor.monitor_status_manager import MonitoringStatusManager
 from alerts_monitor.notification_sender import NotificationSender
 from alerts_monitor.types import MonitoringConfig, AlertCheckResult, NotificationResult
-import requests
 import schedule
-from jinja2 import Template
+from alerts_monitor.utils.cmc import getLatestQuote
+import json
 
 # Import from existing modules
 from mysql.db import get_db
@@ -36,8 +29,10 @@ from mysql.model import (
     AlertType,
     NotificationMethod,
     AlertHistoryModel,
+    PortfolioSourceModel,
+    PositionModel,
+    AssetModel,
 )
-import numpy as np
 
 
 # ========================================
@@ -146,8 +141,12 @@ class PortfolioAlertMonitor:
 
             self.monitor_logger.info(f"Checking {len(active_alerts)} active alerts")
 
-            # Check alerts concurrently
-            check_results = self._check_alerts_batch(active_alerts)
+            # NEW: Pre-fetch all required asset prices
+            all_symbols = self._get_unique_symbols_from_alerts(active_alerts)
+            global_price_data = self._fetch_batch_prices(all_symbols)
+
+            # Check alerts concurrently with pre-fetched prices
+            check_results = self._check_alerts_batch(active_alerts, global_price_data)
 
             # Process triggered alerts
             triggered_count = 0
@@ -168,39 +167,110 @@ class PortfolioAlertMonitor:
             self.monitor_logger.error(f"Scheduled check failed: {e}")
             self.monitor_logger.error(f"Scheduled alert check error: {e}")
 
-    def _get_active_alerts(self) -> List[Dict]:
-        """Retrieve all active alerts from database"""
+    def _get_unique_symbols_from_alerts(self, alerts: List[Dict]) -> List[str]:
+        """Extract unique asset symbols from all alerts"""
+        symbols = set()
+
         try:
-            with get_db() as db:
-                active_alerts = (
-                    db.query(PortfolioAlertModel)
-                    .filter(PortfolioAlertModel.status == AlertStatus.ACTIVE)
-                    .all()
-                )
+            for alert in alerts:
+                user_id = alert["user_id"]
 
-                return [
-                    {
-                        "alert_id": alert.alert_id,
-                        "user_id": alert.user_id,
-                        "alert_type": alert.alert_type.value,
-                        "alert_name": alert.alert_name,
-                        "conditions": alert.conditions,
-                        "notification_methods": alert.notification_methods,
-                        "last_checked_at": alert.last_checked_at,
-                    }
-                    for alert in active_alerts
-                ]
+                # Get user's portfolio positions to find all symbols
+                with get_db() as db:
+
+                    user_positions = (
+                        db.query(AssetModel.symbol)
+                        .join(
+                            PositionModel, PositionModel.asset_id == AssetModel.asset_id
+                        )
+                        .join(
+                            PortfolioSourceModel,
+                            PortfolioSourceModel.source_id == PositionModel.source_id,
+                        )
+                        .filter(PortfolioSourceModel.user_id == user_id)
+                        .filter(
+                            PositionModel.quantity > 0
+                        )  # Only positions with actual holdings
+                        .distinct()
+                        .all()
+                    )
+
+                    for (symbol,) in user_positions:
+                        symbols.add(symbol)
+
         except Exception as e:
-            self.monitor_logger.error(f"Failed to get active alerts: {e}")
-            return []
+            self.monitor_logger.error(f"Error extracting symbols from alerts: {e}")
 
-    def _check_alerts_batch(self, alerts: List[Dict]) -> List[AlertCheckResult]:
-        """Check multiple alerts concurrently"""
+        return list(symbols)
+
+    def _fetch_batch_prices(self, symbols: List[str]) -> Dict:
+        """Fetch prices for all symbols in one CMC API call"""
+        if not symbols:
+            return {}
+
+        try:
+
+            # Join symbols with comma for batch API call
+            symbols_str = ",".join(symbols)
+            self.monitor_logger.info(
+                f"Fetching batch prices for symbols: {symbols_str}"
+            )
+
+            # Single API call to get all prices
+            quote_response = getLatestQuote(symbols_str, logger=self.monitor_logger)
+
+            if not isinstance(quote_response, str):
+                self.monitor_logger.error(f"Invalid CMC API response: {quote_response}")
+                return {}
+
+            quote_data = json.loads(quote_response)
+
+            # Parse and structure price data
+            price_data = {}
+            if "data" in quote_data:
+                for symbol in symbols:
+                    symbol_upper = symbol.upper()
+                    if (
+                        symbol_upper in quote_data["data"]
+                        and len(quote_data["data"][symbol_upper]) > 0
+                    ):
+
+                        token_data = quote_data["data"][symbol_upper][0]
+                        price = token_data["quote"]["USD"]["price"]
+
+                        price_data[symbol] = {
+                            "price": float(price),
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "source": "CMC_API_BATCH",
+                            "symbol": symbol,
+                            # Additional market data from CMC
+                            "market_cap": token_data["quote"]["USD"].get("market_cap"),
+                            "volume_24h": token_data["quote"]["USD"].get("volume_24h"),
+                            "percent_change_24h": token_data["quote"]["USD"].get(
+                                "percent_change_24h"
+                            ),
+                        }
+
+            self.monitor_logger.info(
+                f"Successfully fetched prices for {len(price_data)} symbols"
+            )
+            return price_data
+
+        except Exception as e:
+            self.monitor_logger.error(f"Error fetching batch prices: {e}")
+            return {}
+
+    def _check_alerts_batch(
+        self, alerts: List[Dict], global_price_data: Dict = None
+    ) -> List[AlertCheckResult]:
+        """Check multiple alerts concurrently with pre-fetched price data"""
         results = []
 
         # Submit all alert checks to thread pool
         future_to_alert = {
-            self.executor.submit(self._check_single_alert, alert): alert
+            self.executor.submit(
+                self._check_single_alert, alert, global_price_data
+            ): alert
             for alert in alerts
         }
 
@@ -225,19 +295,22 @@ class PortfolioAlertMonitor:
 
         return results
 
-    def _check_single_alert(self, alert: Dict) -> AlertCheckResult:
-        """Check a single alert condition"""
+    def _check_single_alert(
+        self, alert: Dict, global_price_data: Dict = None
+    ) -> AlertCheckResult:
+        """Check a single alert condition with optional pre-fetched price data"""
         try:
-            # Use existing check_alert_conditions function
+            # Pass global price data to the alert checking function
             check_result = check_alert_conditions(
                 user_id=alert["user_id"],
+                portfolio_summary=None,  # Will be fetched inside with optimized price data
+                latest_prices=global_price_data,  # Pass pre-fetched prices
                 alert_id=str(alert["alert_id"]),
                 logger=self.monitor_logger,
             )
 
             if isinstance(check_result, dict) and "error" not in check_result:
                 triggered_alerts = check_result.get("triggered_alerts", [])
-
                 if triggered_alerts:
                     # Alert was triggered
                     trigger_data = triggered_alerts[0]
@@ -278,6 +351,32 @@ class PortfolioAlertMonitor:
                 triggered=False,
                 error=f"Check execution failed: {str(e)}",
             )
+
+    def _get_active_alerts(self) -> List[Dict]:
+        """Retrieve all active alerts from database"""
+        try:
+            with get_db() as db:
+                active_alerts = (
+                    db.query(PortfolioAlertModel)
+                    .filter(PortfolioAlertModel.status == AlertStatus.ACTIVE)
+                    .all()
+                )
+
+                return [
+                    {
+                        "alert_id": alert.alert_id,
+                        "user_id": alert.user_id,
+                        "alert_type": alert.alert_type.value,
+                        "alert_name": alert.alert_name,
+                        "conditions": alert.conditions,
+                        "notification_methods": alert.notification_methods,
+                        "last_checked_at": alert.last_checked_at,
+                    }
+                    for alert in active_alerts
+                ]
+        except Exception as e:
+            self.monitor_logger.error(f"Failed to get active alerts: {e}")
+            return []
 
     def _handle_triggered_alert(self, result: AlertCheckResult):
         """Handle a triggered alert by sending notifications and updating status"""
@@ -416,64 +515,64 @@ class PortfolioAlertMonitor:
         except Exception as e:
             self.monitor_logger.error(f"Failed to update check timestamp: {e}")
 
-    def check_user_alerts(self, user_id: str) -> Dict:
-        """Manually trigger alert check for a specific user"""
-        try:
-            self.monitor_logger.info(f"Manual alert check for user {user_id}")
+    # def check_user_alerts(self, user_id: str) -> Dict:
+    #     """Manually trigger alert check for a specific user"""
+    #     try:
+    #         self.monitor_logger.info(f"Manual alert check for user {user_id}")
 
-            with get_db() as db:
-                user_alerts = (
-                    db.query(PortfolioAlertModel)
-                    .filter(
-                        PortfolioAlertModel.user_id == user_id,
-                        PortfolioAlertModel.status == AlertStatus.ACTIVE,
-                    )
-                    .all()
-                )
+    #         with get_db() as db:
+    #             user_alerts = (
+    #                 db.query(PortfolioAlertModel)
+    #                 .filter(
+    #                     PortfolioAlertModel.user_id == user_id,
+    #                     PortfolioAlertModel.status == AlertStatus.ACTIVE,
+    #                 )
+    #                 .all()
+    #             )
 
-                alerts_data = [
-                    {
-                        "alert_id": alert.alert_id,
-                        "user_id": alert.user_id,
-                        "alert_type": alert.alert_type.value,
-                        "alert_name": alert.alert_name,
-                        "conditions": alert.conditions,
-                        "notification_methods": alert.notification_methods,
-                    }
-                    for alert in user_alerts
-                ]
+    #             alerts_data = [
+    #                 {
+    #                     "alert_id": alert.alert_id,
+    #                     "user_id": alert.user_id,
+    #                     "alert_type": alert.alert_type.value,
+    #                     "alert_name": alert.alert_name,
+    #                     "conditions": alert.conditions,
+    #                     "notification_methods": alert.notification_methods,
+    #                 }
+    #                 for alert in user_alerts
+    #             ]
 
-                if not alerts_data:
-                    return {
-                        "success": True,
-                        "message": f"No active alerts found for user {user_id}",
-                        "alerts_checked": 0,
-                        "alerts_triggered": 0,
-                    }
+    #             if not alerts_data:
+    #                 return {
+    #                     "success": True,
+    #                     "message": f"No active alerts found for user {user_id}",
+    #                     "alerts_checked": 0,
+    #                     "alerts_triggered": 0,
+    #                 }
 
-                # Check alerts
-                results = self._check_alerts_batch(alerts_data)
+    #             # Check alerts
+    #             results = self._check_alerts_batch(alerts_data)
 
-                # Process triggered alerts
-                triggered_count = 0
-                for result in results:
-                    if result.triggered:
-                        triggered_count += 1
-                        self._handle_triggered_alert(result)
+    #             # Process triggered alerts
+    #             triggered_count = 0
+    #             for result in results:
+    #                 if result.triggered:
+    #                     triggered_count += 1
+    #                     self._handle_triggered_alert(result)
 
-                    self._update_alert_check_timestamp(result.alert_id)
+    #                 self._update_alert_check_timestamp(result.alert_id)
 
-                return {
-                    "success": True,
-                    "message": f"Checked {len(results)} alerts for user {user_id}",
-                    "alerts_checked": len(results),
-                    "alerts_triggered": triggered_count,
-                    "check_timestamp": datetime.utcnow().isoformat(),
-                }
+    #             return {
+    #                 "success": True,
+    #                 "message": f"Checked {len(results)} alerts for user {user_id}",
+    #                 "alerts_checked": len(results),
+    #                 "alerts_triggered": triggered_count,
+    #                 "check_timestamp": datetime.utcnow().isoformat(),
+    #             }
 
-        except Exception as e:
-            self.monitor_logger.error(f"Manual user alert check failed: {e}")
-            return {"success": False, "error": f"Failed to check user alerts: {str(e)}"}
+    #     except Exception as e:
+    #         self.monitor_logger.error(f"Manual user alert check failed: {e}")
+    #         return {"success": False, "error": f"Failed to check user alerts: {str(e)}"}
 
     def get_monitoring_status(self) -> Dict:
         """Get current monitoring system status"""

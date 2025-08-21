@@ -1,31 +1,7 @@
-import asyncio
-import json
 import logging
-import smtplib
-import threading
-import time
-from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import traceback
-from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass, field
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
-import requests
-import schedule
-from jinja2 import Template
+from datetime import datetime
+from typing import Dict, Optional
 
-# Import from existing modules
-from mysql.db import get_db
-from mysql.model import (
-    PortfolioAlertModel,
-    AlertStatus,
-    AlertType,
-    NotificationMethod,
-    AlertHistoryModel,
-)
-from loggers import logger
 # ========================================
 # Monitoring Service API
 # ========================================
@@ -110,15 +86,15 @@ class AlertMonitoringService:
         
         return self.monitor.get_monitoring_status()
     
-    def check_user_alerts(self, user_id: str) -> Dict:
-        """Manually trigger alert check for a specific user"""
-        if not self.monitor:
-            return {
-                "success": False,
-                "error": "Monitoring service not initialized"
-            }
+    # def check_user_alerts(self, user_id: str) -> Dict:
+    #     """Manually trigger alert check for a specific user"""
+    #     if not self.monitor:
+    #         return {
+    #             "success": False,
+    #             "error": "Monitoring service not initialized"
+    #         }
         
-        return self.monitor.check_user_alerts(user_id)
+    #     return self.monitor.check_user_alerts(user_id)
     
     def test_notification(self, user_id: str, method: str, alert_type: str = "TEST") -> Dict:
         """Test notification delivery for a user"""

@@ -1,32 +1,18 @@
-import asyncio
-import json
 import logging
 import smtplib
-import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import traceback
-from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass, field
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
-from alerts_monitor.types import MonitoringConfig, AlertCheckResult, NotificationResult
+from typing import Dict, Optional
+from alerts_monitor.types import MonitoringConfig,  NotificationResult
 import requests
-import schedule
 from jinja2 import Template
 
 # Import from existing modules
-from mysql.db import get_db
 from mysql.model import (
-    PortfolioAlertModel,
-    AlertStatus,
-    AlertType,
     NotificationMethod,
-    AlertHistoryModel,
 )
-from loggers import logger
 
 # ========================================
 # Notification Sender

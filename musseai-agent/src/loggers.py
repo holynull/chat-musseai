@@ -3,6 +3,29 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from dotenv import load_dotenv
+
+project_root = Path(__file__).parent.parent
+env_file_path = project_root / ".env"
+
+# Load .env file with verbose output for debugging
+env_loaded = load_dotenv(env_file_path, verbose=True)
+
+if not env_loaded:
+    print(f"Warning: Could not load .env file from {env_file_path}")
+    # Try to find .env file in alternative locations
+    alternative_paths = [
+        Path(__file__).parent / ".env",  # src directory
+        Path.cwd() / ".env",  # current working directory
+    ]
+    
+    for alt_path in alternative_paths:
+        if alt_path.exists():
+            print(f"Found alternative .env file at: {alt_path}")
+            load_dotenv(alt_path, verbose=True)
+            break
+    else:
+        print("No .env file found in any expected location")
 
 # 默认日志级别
 DEFAULT_LOG_LEVEL = logging.INFO

@@ -2,6 +2,7 @@
 """
 Enhanced API decorators with Redis caching support
 """
+import logging
 import time
 import hashlib
 import threading
@@ -27,35 +28,34 @@ class APIRateLimitException(Exception):
         self.api_name = api_name
 
 def cache_result(duration: int = DEFAULT_CACHE_DURATION):
-    """
-    Enhanced cache decorator with Redis support and memory fallback
-    
-    Args:
-        duration: Cache duration in seconds (default: 300 seconds)
-        
-    Returns:
-        Decorated function with Redis caching capability
-    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Create cache key based on function name and arguments
-            cache_key = f"{func.__name__}_{hashlib.md5(str(args + tuple(kwargs.items())).encode()).hexdigest()}"
+            # Filter out logger and other non-cacheable parameters
+            filtered_kwargs = {
+                k: v for k, v in kwargs.items() 
+                if not isinstance(v, (logging.Logger, type(logging.getLogger())))
+            }
             
-            # Check cache
+            # Create cache key based on function name and filtered arguments
+            cache_data = str(args) + str(sorted(filtered_kwargs.items()))
+            cache_key = f"{func.__name__}_{hashlib.md5(cache_data.encode()).hexdigest()}"
+            
+            # Rest of the caching logic remains the same
             cached_result = _cache_backend.get(cache_key)
             if cached_result:
                 cached_data, timestamp = cached_result
                 if time.time() - timestamp < duration:
                     logger.debug(f"Cache hit for {func.__name__} (age: {time.time() - timestamp:.1f}s)")
                     return cached_data
+                else:
+                    logger.debug(f"Cache expired (age: {time.time() - timestamp:.1f}s) for {func.__name__}, executing function")
             
-            # Execute the function
             logger.debug(f"Cache miss for {func.__name__}, executing function")
             result = func(*args, **kwargs)
             
-            # Cache the result if not None
-            if result is not None:
+            # Only cache successful results (not exceptions or None)
+            if result is not None and not isinstance(result, Exception):
                 _cache_backend.set(cache_key, result, time.time(), duration)
                 logger.debug(f"Cached result for {func.__name__}")
             

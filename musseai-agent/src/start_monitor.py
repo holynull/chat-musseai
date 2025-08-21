@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 # Add src to Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from alerts_monitor.monitoring_service_api import AlertMonitoringService
 from alerts_monitor.monitor_cli import setup_monitoring_from_env

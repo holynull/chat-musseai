@@ -40,11 +40,17 @@ class RedisCacheBackend:
 
             # Create connection pool for better performance
             self.connection_pool = redis.ConnectionPool(
-                **redis_config, max_connections=20, retry_on_timeout=True
+                **redis_config,
+                max_connections=20,
+                retry_on_timeout=True,
+                decode_responses=True,
             )
 
             self.redis_client = redis.Redis(
-                connection_pool=self.connection_pool, decode_responses=True
+                connection_pool=self.connection_pool,
+                decode_responses=True,
+                encoding="utf-8",  # 明确指定编码
+                encoding_errors="strict",  # 编码错误处理
             )
 
             # Test connection
@@ -233,6 +239,7 @@ class RedisCacheBackend:
         if self.redis_client:
             try:
                 cached_data = self.redis_client.hgetall(redis_key)
+                logger.debug(f"Real key: {redis_key} ")
                 if (
                     cached_data
                     and "value" in cached_data
@@ -240,7 +247,10 @@ class RedisCacheBackend:
                 ):
                     value = self._deserialize_value(cached_data["value"])
                     timestamp = float(cached_data["timestamp"])
+                    logger.debug(f"Hits cached Redis: {key} ")
                     return (value, timestamp)
+                else:
+                    logger.debug(f"Miss cached. cached_data: {cached_data}")
             except (ConnectionError, TimeoutError, RedisError) as e:
                 logger.warning(f"Redis get failed, falling back to memory: {e}")
                 self._setup_redis()  # Try to reconnect
@@ -275,6 +285,7 @@ class RedisCacheBackend:
                 pipe.execute()
 
                 logger.debug(f"Cached to Redis: {key} (expires in {duration}s)")
+                logger.debug(f"Real key: {redis_key} (expires in {duration}s)")
                 return True
 
             except (ConnectionError, TimeoutError, RedisError) as e:

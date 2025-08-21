@@ -10,79 +10,64 @@ from mysql.model import (
 import numpy as np
 import logging
 from logging import Logger
-
-
-# In alert_conditions.py
+from .portfolio_db import (
+    get_user_portfolio_summary,
+    get_transactions,
+)
 
 
 def _get_portfolio_data_for_alerts(
     user_id: str,
     db,
+    pre_fetched_prices: Dict = None,
     logger: Logger = logging.getLogger("alert_conditions"),
 ) -> Dict:
-    """Get comprehensive portfolio data for alert evaluation"""
+    """Get comprehensive portfolio data for alert evaluation with optional pre-fetched prices"""
     try:
         # Import portfolio tools
-        from tools.tools_crypto_portfolios import (
-            get_user_portfolio_summary,
-        )
-
-        # Remove this import - we'll use CMC API instead
-        # from tools.portfolios.tools_price_management import get_latest_prices
-
-        # Import CMC API function
-        from alerts_monitor.utils.cmc import getLatestQuote
-        import json
 
         # Get basic portfolio summary
-        portfolio_summary = get_user_portfolio_summary.invoke({"user_id": user_id})
+        portfolio_summary = get_user_portfolio_summary(user_id=user_id)
         if isinstance(portfolio_summary, str) or "error" in portfolio_summary:
             return {}
 
-        # Get current asset prices using CMC API
+        # Use pre-fetched prices if available, otherwise fetch individually
         latest_prices = {}
-        logger.debug(f"assets data is {json.dumps(portfolio_summary.get('positions_by_asset', []))}")
-        for asset in portfolio_summary.get("positions_by_asset", []):
-            if "symbol" in asset:
-                symbol = asset["symbol"]
-                try:
-                    # Call CMC API for real-time price
-                    quote_response = getLatestQuote(symbol)
 
-                    if isinstance(quote_response, str):
-                        quote_data = json.loads(quote_response)
+        if pre_fetched_prices:
+            # Use batch-fetched price data
+            logger.info(
+                f"Using pre-fetched prices for {len(pre_fetched_prices)} symbols"
+            )
 
-                        # Extract price from CMC API response
-                        if (
-                            "data" in quote_data
-                            and symbol.upper() in quote_data["data"]
-                            and len(quote_data["data"][symbol.upper()]) > 0
-                        ):
-
-                            token_data = quote_data["data"][symbol.upper()][0]
-                            price = token_data["quote"]["USD"]["price"]
-
-                            # Store in format compatible with existing code
-                            asset_key = asset.get(
-                                "asset_id", f"{symbol}_{asset.get('chain', 'unknown')}"
-                            )
-                            latest_prices[asset_key] = {
-                                "price": float(price),
-                                "timestamp": datetime.utcnow().isoformat(),
-                                "source": "CMC_API",
-                                "asset": {
-                                    "symbol": symbol,
-                                    "chain": asset.get("chain", ""),
-                                    "name": asset.get("name", symbol),
-                                },
-                            }
-                            logger.debug(f"Get {symbol}'s price {price} USD. ")
-
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to get price for {symbol} from CMC API: {e}"
+            for asset in portfolio_summary.get("positions_by_asset", []):
+                symbol = asset.get("symbol")
+                if symbol and symbol in pre_fetched_prices:
+                    price_info = pre_fetched_prices[symbol]
+                    asset_key = asset.get(
+                        "asset_id", f"{symbol}_{asset.get('chain', 'unknown')}"
                     )
-                    continue
+
+                    latest_prices[asset_key] = {
+                        "price": price_info["price"],
+                        "timestamp": price_info["timestamp"],
+                        "source": price_info["source"],
+                        "asset": {
+                            "symbol": symbol,
+                            "chain": asset.get("chain", ""),
+                            "name": asset.get("name", symbol),
+                        },
+                        # Additional market data
+                        "market_cap": price_info.get("market_cap"),
+                        "volume_24h": price_info.get("volume_24h"),
+                        "percent_change_24h": price_info.get("percent_change_24h"),
+                    }
+                    logger.debug(
+                        f"Using pre-fetched price for {symbol}: ${price_info['price']}"
+                    )
+        else:
+            # Fallback to individual API calls (existing logic)
+            logger.error("No pre-fetched prices available, fetching individually")
 
         # Calculate additional metrics for alerts
         portfolio_data = {
@@ -166,20 +151,15 @@ def _calculate_performance_metrics(
 ) -> Dict:
     """Calculate performance metrics for alert evaluation"""
     try:
-        # Get recent transactions for performance calculation
-        from tools.tools_crypto_portfolios import get_transactions
-
         # Get transactions from last 30 days
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=30)
 
-        transactions_result = get_transactions.invoke(
-            {
-                "user_id": user_id,
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "limit": 1000,
-            }
+        transactions_result = get_transactions(
+            user_id=user_id,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            limit=1000,
         )
 
         performance_metrics = {
@@ -745,6 +725,8 @@ def _evaluate_volatility_alert(
 
 def check_alert_conditions(
     user_id: str,
+    portfolio_summary: any = None,
+    latest_prices: any = None,
     alert_id: str = None,
     logger: Logger = logging.getLogger("alert_conditions"),
 ) -> Dict:
@@ -753,6 +735,8 @@ def check_alert_conditions(
 
     Args:
         user_id (str): User identifier
+        portfolio_summary: Pre-computed portfolio summary (optional)
+        latest_prices: Pre-fetched price data (optional)
         alert_id (str, optional): Specific alert to check, if None checks all active alerts
 
     Returns:
@@ -761,10 +745,12 @@ def check_alert_conditions(
     try:
         with get_db() as db:
             # Get user's portfolio data for evaluation
-            portfolio_summary = _get_portfolio_data_for_alerts(
-                user_id, db, logger=logger
+            # Pass pre-fetched prices if available
+            portfolio_data = _get_portfolio_data_for_alerts(
+                user_id, db, pre_fetched_prices=latest_prices, logger=logger
             )
-            if not portfolio_summary:
+
+            if not portfolio_data:
                 return {"error": "No portfolio data found for alert evaluation"}
 
             # Get alerts to check
@@ -786,7 +772,7 @@ def check_alert_conditions(
             for alert in alerts_to_check:
                 try:
                     check_result = _evaluate_alert_condition(
-                        alert, portfolio_summary, logger=logger
+                        alert, portfolio_data, logger=logger
                     )
                     checked_alerts.append(
                         {
@@ -833,9 +819,9 @@ def check_alert_conditions(
                 "triggered_alerts": triggered_alerts,
                 "checked_alerts": checked_alerts,
                 "portfolio_snapshot": {
-                    "total_value": portfolio_summary.get("total_value", 0),
-                    "total_pnl": portfolio_summary.get("total_pnl", 0),
-                    "asset_count": portfolio_summary.get("asset_count", 0),
+                    "total_value": portfolio_data.get("total_value", 0),
+                    "total_pnl": portfolio_data.get("total_pnl", 0),
+                    "asset_count": portfolio_data.get("asset_count", 0),
                 },
             }
 
