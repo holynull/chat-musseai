@@ -1007,7 +1007,7 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
         self.cache_invalidator = SmartCacheInvalidator(self)
 
         # Start background processes
-        # self._initialize_caching_system()
+        self._initialize_caching_system()
 
     def _initialize_caching_system(self):
         """Initialize the comprehensive caching system"""
