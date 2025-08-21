@@ -78,10 +78,10 @@ class BatchCacheAPIManager(MultiAPIManager):
         except Exception as e:
             logger.error(f"Cache warming failed: {e}")
             logger.debug(traceback.format_exc())
-        finally:
+        # finally:
             # Mark batch operation end
-            if hasattr(self, "end_batch_operation"):
-                self.api_manager.end_batch_operation()
+            # if hasattr(self, "end_batch_operation"):
+                # self.api_manager.end_batch_operation()
 
     @cache_result(duration=86400)  # 24-hour cache
     def preload_all_market_data(self) -> Dict:

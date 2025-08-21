@@ -221,40 +221,100 @@ def get_latest_prices(asset_ids: List[int] = None) -> Dict:
         return {"error": f"Failed to get latest prices: {str(e)}"}
 
 
-def fetch_price_from_api(symbol: str, chain: str = None) -> float:
+def fetch_price_from_api(symbols: str, chain: str = None) -> Dict:
     """
-    从外部API获取加密货币价格
+    Fetch cryptocurrency prices from external API
 
     Args:
-        symbol (str): 加密货币符号
-        chain (str, optional): 区块链名称（暂时未使用）
+        symbols (str): Comma-separated cryptocurrency symbols. Example: "BTC,ETH"
+        chain (str, optional): Blockchain name (currently not used)
 
     Returns:
-        float: 价格（美元），如果获取失败返回 None
+        Dict: Dictionary containing prices for each symbol, or None for failed requests
+            Format: {"BTC": 45000.0, "ETH": 3000.0}
     """
     try:
-        # 导入 getLatestQuote 函数
+        # Import getLatestQuote function
         from tools.tools_quote import getLatestQuote
         import json
 
-        # 调用 getLatestQuote 获取价格数据
-        quote_data = getLatestQuote.invoke({"symbol": symbol})
+        # Clean and validate input symbols
+        if not symbols or not symbols.strip():
+            logger.error("Empty symbols parameter provided")
+            return {}
 
-        # 如果返回的是字符串，解析 JSON
+        # Remove whitespace and ensure uppercase
+        clean_symbols = ",".join([s.strip().upper() for s in symbols.split(",")])
+
+        logger.info(f"Fetching prices for symbols: {clean_symbols}")
+
+        # Call getLatestQuote to fetch price data
+        quote_data = getLatestQuote.invoke({"symbols": clean_symbols})
+
+        prices = {}
+
+        # Parse JSON response if returned as string
         if isinstance(quote_data, str):
-            data = json.loads(quote_data)
+            try:
+                data = json.loads(quote_data)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON response: {e}")
+                return {}
 
-            # 从 CoinMarketCap API 响应中提取价格
-            if "data" in data and symbol.upper() in data["data"]:
-                token_data = data["data"][symbol.upper()][0]  # 取第一个匹配项
-                price = token_data["quote"]["USD"]["price"]
-                return float(price)
+            # Extract prices from CoinMarketCap API response
+            if "data" in data and isinstance(data["data"], dict):
+                for symbol in clean_symbols.split(","):
+                    if symbol in data["data"] and data["data"][symbol]:
+                        try:
+                            # Get the first matching item
+                            token_data = data["data"][symbol][0]
+                            price = token_data["quote"]["USD"]["price"]
+                            prices[symbol] = float(price)
+                            logger.info(
+                                f"Successfully fetched price for {symbol}: ${price}"
+                            )
+                        except (KeyError, IndexError, TypeError, ValueError) as e:
+                            logger.warning(f"Failed to extract price for {symbol}: {e}")
+                            prices[symbol] = None
+                    else:
+                        logger.warning(f"No data found for symbol: {symbol}")
+                        prices[symbol] = None
+            else:
+                logger.error(
+                    "Invalid API response structure - missing or invalid 'data' field"
+                )
+                return {}
 
-        return None
+        elif isinstance(quote_data, dict):
+            # Handle direct dictionary response
+            if "data" in quote_data:
+                for symbol in clean_symbols.split(","):
+                    if symbol in quote_data["data"] and quote_data["data"][symbol]:
+                        try:
+                            token_data = quote_data["data"][symbol][0]
+                            price = token_data["quote"]["USD"]["price"]
+                            prices[symbol] = float(price)
+                            logger.info(
+                                f"Successfully fetched price for {symbol}: ${price}"
+                            )
+                        except (KeyError, IndexError, TypeError, ValueError) as e:
+                            logger.warning(f"Failed to extract price for {symbol}: {e}")
+                            prices[symbol] = None
+                    else:
+                        logger.warning(f"No data found for symbol: {symbol}")
+                        prices[symbol] = None
+            else:
+                logger.error("Invalid response structure - missing 'data' field")
+                return {}
+        else:
+            logger.error(f"Unexpected response type: {type(quote_data)}")
+            return {}
+
+        return prices
 
     except Exception as e:
-        logger.error(f"获取 {symbol} 价格失败: {e}")
-        return None
+        logger.error(f"Failed to fetch prices for {symbols}: {e}")
+        return {}
 
 
 @tool
@@ -284,12 +344,16 @@ def refresh_all_portfolio_asset_prices(user_id: str) -> Dict:
                 .all()
             )
 
-            price_updates = []
+            # Collect all unique symbols
+            symbols_to_fetch = list(set(asset.symbol for asset in user_assets))
+            symbols_string = ",".join(symbols_to_fetch)
 
-            # 这里需要集成实际的价格数据源
+            # Batch fetch all prices at once
+            all_prices = fetch_price_from_api(symbols_string)
+
+            price_updates = []
             for asset in user_assets:
-                # 示例：从外部 API 获取价格
-                current_price = fetch_price_from_api(asset.symbol, asset.chain)
+                current_price = all_prices.get(asset.symbol) if all_prices else None
                 if current_price:
                     price_updates.append(
                         {

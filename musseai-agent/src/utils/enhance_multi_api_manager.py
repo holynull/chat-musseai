@@ -7,6 +7,7 @@ from loggers import logger
 import traceback
 from utils.api_decorators import (
     api_call_with_cache_and_rate_limit,
+    cache_result,
     clear_cache,
     get_cache_stats,
 )
@@ -88,7 +89,7 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
             self.cache_scheduler.start_scheduler()
 
             # Set up periodic volatility checks
-            threading.Thread(target=self._volatility_monitor_loop, daemon=True).start()
+            # threading.Thread(target=self._volatility_monitor_loop, daemon=True).start()
 
             logger.info("Enhanced caching system initialized successfully")
 
@@ -108,79 +109,79 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
                 time.sleep(60)  # Wait 1 minute on error
 
     # Override key methods to use batch cache
-    def fetch_with_fallback(
-        self, symbol: str, days: int = 90, max_global_retries: int = None
-    ) -> Optional[Dict]:
-        """Enhanced fallback with batch cache priority"""
-        # First try batch cache
-        result = self.get_cached_data("crypto_prices", symbol)
-        if result and result.get("historical_data"):
-            cache_age = time.time() - result.get("cached_at", 0)
-            if cache_age < 1800:  # 30 minutes freshness
-                logger.info(f"Batch cache hit for {symbol} (age: {cache_age:.1f}s)")
-            else:
-                logger.warning(
-                    f"Batch cache not hit for {symbol} (age: {cache_age:.1f}s)"
-                )
-            return result["historical_data"]
-        else:
-            logger.warning(f"No key {symbol} historical_data in the cache.")
+    # def fetch_with_fallback(
+    #     self, symbol: str, days: int = 90, max_global_retries: int = None
+    # ) -> Optional[Dict]:
+    #     """Enhanced fallback with batch cache priority"""
+    #     # First try batch cache
+    #     result = self.get_cached_data("crypto_prices", symbol)
+    #     if result and result.get("historical_data"):
+    #         cache_age = time.time() - result.get("cached_at", 0)
+    #         if cache_age < 1800:  # 30 minutes freshness
+    #             logger.info(f"Batch cache hit for {symbol} (age: {cache_age:.1f}s)")
+    #         else:
+    #             logger.warning(
+    #                 f"Batch cache not hit for {symbol} (age: {cache_age:.1f}s)"
+    #             )
+    #         return result["historical_data"]
+    #     else:
+    #         logger.warning(f"No key {symbol} historical_data in the cache.")
 
-        # Fallback to original method
-        # logger.info(f"Using individual API fallback for {symbol}")
-        # return super().fetch_with_fallback(symbol, days, max_global_retries)
+    # Fallback to original method
+    # logger.info(f"Using individual API fallback for {symbol}")
+    # return super().fetch_with_fallback(symbol, days, max_global_retries)
 
     # @market_data_api
-    def fetch_market_data(self, symbol: str) -> Optional[Dict]:
-        """
-        Enhanced fetch_market_data with batch cache priority
+    # def fetch_market_data(self, symbol: str) -> Optional[Dict]:
+    #     """
+    #     Enhanced fetch_market_data with batch cache priority
 
-        Strategy:
-        1. First check batch cache for recent market data
-        2. If cache miss or expired, fallback to parent's multi-API method
-        3. Cache successful results for future use
+    #     Strategy:
+    #     1. First check batch cache for recent market data
+    #     2. If cache miss or expired, fallback to parent's multi-API method
+    #     3. Cache successful results for future use
 
-        Args:
-            symbol: Cryptocurrency symbol or coin ID
+    #     Args:
+    #         symbol: Cryptocurrency symbol or coin ID
 
-        Returns:
-            Dict: Market data in standardized format
-        """
-        logger.info(f"Enhanced market data fetch for {symbol}")
+    #     Returns:
+    #         Dict: Market data in standardized format
+    #     """
+    #     logger.info(f"Enhanced market data fetch for {symbol}")
 
-        # Step 1: Check batch cache first
-        cached_result = self.get_cached_data("crypto_prices", symbol)
-        if cached_result and cached_result.get("market_data"):
-            market_data = cached_result["market_data"]
-            cache_age = time.time() - cached_result.get("cached_at", 0)
+    #     # Step 1: Check batch cache first
+    #     cached_result = self.get_cached_data("crypto_prices", symbol)
+    #     if cached_result and cached_result.get("market_data"):
+    #         market_data = cached_result["market_data"]
+    #         cache_age = time.time() - cached_result.get("cached_at", 0)
 
-            # Use cached data if less than 5 minutes old (300 seconds)
-            if cache_age < 300:
-                logger.info(
-                    f"Batch cache hit for {symbol} market data (age: {cache_age:.1f}s)"
-                )
-                # market_data = cached_result["market_data"]
-                # Add cache metadata
-                if isinstance(market_data, dict):
-                    market_data["cache_hit"] = True
-                    market_data["cache_age"] = cache_age
-                    market_data["source"] = (
-                        f"{market_data.get('source', 'unknown')}_cached"
-                    )
-            else:
-                logger.warning(
-                    f"Batch cache expired for {symbol} (age: {cache_age:.1f}s), fetching fresh data"
-                )
-            return market_data
-        else:
-            logger.warning(
-                f"Fetching fresh market data for {symbol} using multi-API fallback"
-            )
+    #         # Use cached data if less than 5 minutes old (300 seconds)
+    #         if cache_age < 300:
+    #             logger.info(
+    #                 f"Batch cache hit for {symbol} market data (age: {cache_age:.1f}s)"
+    #             )
+    #             # market_data = cached_result["market_data"]
+    #             # Add cache metadata
+    #             if isinstance(market_data, dict):
+    #                 market_data["cache_hit"] = True
+    #                 market_data["cache_age"] = cache_age
+    #                 market_data["source"] = (
+    #                     f"{market_data.get('source', 'unknown')}_cached"
+    #                 )
+    #         else:
+    #             logger.warning(
+    #                 f"Batch cache expired for {symbol} (age: {cache_age:.1f}s), fetching fresh data"
+    #             )
+    #         return market_data
+    #     else:
+    #         logger.warning(
+    #             f"Fetching fresh market data for {symbol} using multi-API fallback"
+    #         )
 
-        # Step 2: Cache miss or expired - use parent's multi-API method
-        # logger.info(f"Fetching fresh market data for {symbol} using multi-API fallback")
+    # Step 2: Cache miss or expired - use parent's multi-API method
+    # logger.info(f"Fetching fresh market data for {symbol} using multi-API fallback")
 
-        # return super().fetch_market_data(symbol)
+    # return super().fetch_market_data(symbol)
 
     # @api_call_with_cache_and_rate_limit(
     #     cache_duration=300,
@@ -188,68 +189,68 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
     #     max_retries=0,
     #     retry_delay=2,
     # )
-    def get_market_metrics(self, max_global_retries: int = None) -> Optional[Dict]:
-        """
-        Enhanced get market metrics with multi-API fallback mechanism similar to fetch_with_fallback
+    # def get_market_metrics(self, max_global_retries: int = None) -> Optional[Dict]:
+    #     """
+    #     Enhanced get market metrics with multi-API fallback mechanism similar to fetch_with_fallback
 
-        Strategy:
-        1. First check batch cache for recent market metrics
-        2. If cache miss or expired, use multi-API fallback approach
-        3. Try each API in priority order with proper error handling
-        4. Handle rate limiting and API failures gracefully
+    #     Strategy:
+    #     1. First check batch cache for recent market metrics
+    #     2. If cache miss or expired, use multi-API fallback approach
+    #     3. Try each API in priority order with proper error handling
+    #     4. Handle rate limiting and API failures gracefully
 
-        Args:
-            max_global_retries: Maximum global retry attempts (default: 2)
+    #     Args:
+    #         max_global_retries: Maximum global retry attempts (default: 2)
 
-        Returns:
-            Dict: Market metrics data in standardized format
-        """
-        if max_global_retries is None:
-            max_global_retries = self.default_max_global_retries
+    #     Returns:
+    #         Dict: Market metrics data in standardized format
+    #     """
+    #     if max_global_retries is None:
+    #         max_global_retries = self.default_max_global_retries
 
-        logger.info("Starting enhanced market metrics fetch with multi-API fallback")
+    #     logger.info("Starting enhanced market metrics fetch with multi-API fallback")
 
-        # Step 1: Check batch cache first
-        cache_key = "preload_all_market_data_"
-        cached_batch = _cache_backend.get(cache_key)
+    #     # Step 1: Check batch cache first
+    #     cache_key = "preload_all_market_data_"
+    #     cached_batch = _cache_backend.get(cache_key)
 
-        if cached_batch:
-            batch_data, timestamp = cached_batch
-            cache_age = time.time() - timestamp
+    #     if cached_batch:
+    #         batch_data, timestamp = cached_batch
+    #         cache_age = time.time() - timestamp
 
-            # Use cached market metrics if less than 5 minutes old
-            if cache_age < 300 and batch_data.get("global_metrics"):
-                logger.info(
-                    f"Batch cache hit for market metrics (age: {cache_age:.1f}s)"
-                )
-                metrics = batch_data["global_metrics"]
+    #         # Use cached market metrics if less than 5 minutes old
+    #         if cache_age < 300 and batch_data.get("global_metrics"):
+    #             logger.info(
+    #                 f"Batch cache hit for market metrics (age: {cache_age:.1f}s)"
+    #             )
+    #             metrics = batch_data["global_metrics"]
 
-                # Add cache metadata
-                if isinstance(metrics, dict):
-                    metrics["cache_hit"] = True
-                    metrics["cache_age"] = cache_age
-                    metrics["source"] = f"{metrics.get('source', 'unknown')}_cached"
-            else:
-                logger.warning(
-                    f"Batch cache expired for market metrics (age: {cache_age:.1f}s)"
-                )
-            return metrics
+    #             # Add cache metadata
+    #             if isinstance(metrics, dict):
+    #                 metrics["cache_hit"] = True
+    #                 metrics["cache_age"] = cache_age
+    #                 metrics["source"] = f"{metrics.get('source', 'unknown')}_cached"
+    #         else:
+    #             logger.warning(
+    #                 f"Batch cache expired for market metrics (age: {cache_age:.1f}s)"
+    #             )
+    #         return metrics
 
-    def fetch_yahoo_finance_data(self, symbol: str, period: str = "1y") -> Dict:
-        """Enhanced Yahoo Finance with batch cache support"""
-        # Check batch cache first
-        result = self.get_cached_data("traditional", symbol)
-        if result and result.get("data"):
-            cache_age = time.time() - result.get("cached_at", 0)
-            if cache_age < 1800:  # 30 minutes freshness
-                logger.info(
-                    f"Batch cache hit for Yahoo Finance {symbol} (age: {cache_age:.1f}s)"
-                )
-            return result["data"]
+    # def fetch_yahoo_finance_data(self, symbol: str, period: str = "1y") -> Dict:
+    #     """Enhanced Yahoo Finance with batch cache support"""
+    #     # Check batch cache first
+    #     result = self.get_cached_data("traditional", symbol)
+    #     if result and result.get("data"):
+    #         cache_age = time.time() - result.get("cached_at", 0)
+    #         if cache_age < 1800:  # 30 minutes freshness
+    #             logger.info(
+    #                 f"Batch cache hit for Yahoo Finance {symbol} (age: {cache_age:.1f}s)"
+    #             )
+    #         return result["data"]
 
-        # If not in batch cache or expired, use original method with improved caching
-        logger.info(f"Using individual Yahoo Finance call for {symbol}")
-        return self.fetch_yahoo_finance_data_optimized(symbol, period)
+    #     # If not in batch cache or expired, use original method with improved caching
+    #     logger.info(f"Using individual Yahoo Finance call for {symbol}")
+    #     return self.fetch_yahoo_finance_data_optimized(symbol, period)
 
     # Override the fetch_market_chart_multi_api method to use cache first
     # @api_call_with_cache_and_rate_limit(
@@ -258,41 +259,41 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
     #     max_retries=0,
     #     retry_delay=2,
     # )
-    def fetch_market_chart_multi_api(
-        self,
-        symbol: str,
-        days: str = "30",
-        interval: str = "daily",
-        max_global_retries: int = None,
-    ) -> Optional[Dict]:
-        """
-        Enhanced fetch market chart data with batch cache priority
+    # def fetch_market_chart_multi_api(
+    #     self,
+    #     symbol: str,
+    #     days: str = "30",
+    #     interval: str = "daily",
+    #     max_global_retries: int = None,
+    # ) -> Optional[Dict]:
+    #     """
+    #     Enhanced fetch market chart data with batch cache priority
 
-        Strategy:
-        1. First check batch cache for recent chart data
-        2. If cache miss or expired, fallback to original multi-API method
-        3. Cache successful results for future use
+    #     Strategy:
+    #     1. First check batch cache for recent chart data
+    #     2. If cache miss or expired, fallback to original multi-API method
+    #     3. Cache successful results for future use
 
-        Args:
-            symbol: Cryptocurrency symbol
-            days: Number of days of data (default: "30")
-            interval: Data interval - "daily", "hourly", or "weekly" (default: "daily")
-            max_global_retries: Maximum global retry attempts
+    #     Args:
+    #         symbol: Cryptocurrency symbol
+    #         days: Number of days of data (default: "30")
+    #         interval: Data interval - "daily", "hourly", or "weekly" (default: "daily")
+    #         max_global_retries: Maximum global retry attempts
 
-        Returns:
-            Dict: Market chart data in standardized format with prices, market_caps, and total_volumes
-        """
-        logger.info(f"Enhanced market chart fetch for {symbol}")
-        crypto_prices = self.get_cached_data("crypto_prices", symbol)
-        if crypto_prices and crypto_prices.get("chart_data"):
-            return crypto_prices["chart_data"]
-        else:
-            logger.warning(f"No chart data for symbole {symbol}")
-        # Step 2: Cache miss or expired - use original multi-API method
-        # logger.info(f"Fetching fresh chart data for {symbol} using multi-API fallback")
-        # return super().fetch_market_chart_multi_api(
-        #     symbol, days, interval, max_global_retries
-        # )
+    #     Returns:
+    #         Dict: Market chart data in standardized format with prices, market_caps, and total_volumes
+    #     """
+    #     logger.info(f"Enhanced market chart fetch for {symbol}")
+    #     crypto_prices = self.get_cached_data("crypto_prices", symbol)
+    #     if crypto_prices and crypto_prices.get("chart_data"):
+    #         return crypto_prices["chart_data"]
+    #     else:
+    #         logger.warning(f"No chart data for symbole {symbol}")
+    # Step 2: Cache miss or expired - use original multi-API method
+    # logger.info(f"Fetching fresh chart data for {symbol} using multi-API fallback")
+    # return super().fetch_market_chart_multi_api(
+    #     symbol, days, interval, max_global_retries
+    # )
 
     def get_cache_status(self) -> Dict:
         """Get comprehensive cache status"""
@@ -389,243 +390,249 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
 
     def get_asset_price_at_date(self, symbol: str, target_date: datetime) -> float:
         """
-        Enhanced get asset price at specific date with batch cache priority
+        Enhanced get asset price at specific date using batch cache data exclusively
 
-        Strategy:
-        1. First check batch cache for historical data
-        2. If cache hit, use cached data for price lookup
-        3. If cache miss, fallback to individual API calls
-        4. Support both crypto and traditional assets
+        This function now relies entirely on preloaded batch data, eliminating
+        redundant API calls and improving performance consistency.
 
         Args:
             symbol: Asset symbol
             target_date: Target date
 
         Returns:
-            Price at the date
+            Price at the date, or 0.0 if not available in batch cache
         """
         try:
-            logger.info(f"Getting price for {symbol} at {target_date}")
+            logger.info(f"Getting price for {symbol} at {target_date} from batch cache")
 
-            # Step 1: Check if it's crypto or traditional asset
-            crypto_symbols = [
-                "BTC",
-                "ETH",
-                "ADA",
-                "DOT",
-                "LINK",
-                "UNI",
-                "AAVE",
-                "SOL",
-                "BNB",
-                "XRP",
-                "DOGE",
-                "AVAX",
-                "MATIC",
-                "ATOM",
-                "NEAR",
-            ]
+            # Step 1: Get preloaded batch data (should already be cached)
+            batch_data = self.preload_all_market_data()
 
-            is_crypto = symbol.upper() in crypto_symbols
-
-            # Step 2: Try batch cache first
-            if is_crypto:
-                cached_result = self.get_cached_data("crypto_prices", symbol)
-                if cached_result and cached_result.get("historical_data"):
-                    cache_age = time.time() - cached_result.get("cached_at", 0)
-
-                    # Use cached data if less than 1 hour old
-                    if cache_age < 3600:
-                        logger.info(
-                            f"Using batch cached historical data for {symbol} (age: {cache_age:.1f}s)"
-                        )
-                        historical_data = cached_result["historical_data"]
-
-                        # Extract price at target date from cached data
-                        price = self._extract_price_from_cached_data(
-                            historical_data, target_date
-                        )
-                        if price > 0:
-                            return price
-                        else:
-                            logger.warning(
-                                f"Could not find price for {symbol} at {target_date} in cached data"
-                            )
-                    else:
-                        logger.debug(
-                            f"Cached data too old for {symbol} (age: {cache_age:.1f}s)"
-                        )
-            else:
-                # Traditional asset - check batch cache
-                cached_result = self.get_cached_data("traditional", symbol)
-                if cached_result and cached_result.get("data"):
-                    cache_age = time.time() - cached_result.get("cached_at", 0)
-
-                    # Use cached data if less than 1 hour old
-                    if cache_age < 3600:
-                        logger.info(
-                            f"Using batch cached traditional data for {symbol} (age: {cache_age:.1f}s)"
-                        )
-                        traditional_data = cached_result["data"]
-
-                        # Extract price from traditional asset data
-                        price = self._extract_price_from_yahoo_data(
-                            traditional_data, target_date
-                        )
-                        if price > 0:
-                            return price
-                        else:
-                            logger.warning(
-                                f"Could not find price for {symbol} at {target_date} in cached traditional data"
-                            )
-                    else:
-                        logger.debug(
-                            f"Cached traditional data too old for {symbol} (age: {cache_age:.1f}s)"
-                        )
-
-            # Step 3: Cache miss or expired - fallback to individual API calls
-            logger.info(f"Cache miss for {symbol}, using individual API calls")
-
-            if is_crypto:
-                # Map symbol to coin_id for crypto assets
-                coin_mapping = {
-                    "BTC": "bitcoin",
-                    "ETH": "ethereum",
-                    "ADA": "cardano",
-                    "DOT": "polkadot",
-                    "LINK": "chainlink",
-                    "UNI": "uniswap",
-                    "AAVE": "aave",
-                    "SOL": "solana",
-                    "BNB": "binancecoin",
-                    "XRP": "ripple",
-                    "DOGE": "dogecoin",
-                    "AVAX": "avalanche-2",
-                    "MATIC": "polygon",
-                    "ATOM": "cosmos",
-                    "NEAR": "near",
-                }
-                coin_id = coin_mapping.get(symbol.upper(), symbol.lower())
-
-                # Try multi-API approach for crypto
-                data = self.get_crypto_historical_data(coin_id, "usd", 90)
-
-                # If multi-API failed, try direct fallback method
-                if not data.get("success"):
-                    logger.warning(
-                        f"Multi-API crypto fetch failed for {symbol}, trying direct fallback"
-                    )
-                    data = self.fetch_with_fallback(symbol, 90)
-                    if data and "prices" in data:
-                        # Convert format to match expected structure
-                        prices_data = []
-                        for i, price in enumerate(data["prices"]):
-                            if i < len(data.get("dates", [])):
-                                date_str = data["dates"][i]
-                                try:
-                                    # Handle different date formats
-                                    if isinstance(date_str, str):
-                                        if "T" in date_str:
-                                            date_obj = datetime.fromisoformat(
-                                                date_str.replace("Z", "+00:00")
-                                            )
-                                        else:
-                                            date_obj = datetime.strptime(
-                                                date_str, "%Y-%m-%d"
-                                            )
-                                    else:
-                                        continue
-
-                                    timestamp = int(date_obj.timestamp() * 1000)
-                                    prices_data.append(
-                                        {
-                                            "timestamp": timestamp,
-                                            "date": date_obj,
-                                            "price": price,
-                                        }
-                                    )
-                                except (ValueError, AttributeError) as e:
-                                    logger.debug(
-                                        f"Date parsing error for {date_str}: {e}"
-                                    )
-                                    continue
-
-                        data = {"success": True, "prices": prices_data}
-            else:
-                # Traditional asset - use Yahoo Finance
-                data = self.fetch_yahoo_finance_data_optimized(symbol, period="3m")
-
-            # Step 4: Extract price from fresh data
-            if not data or not data.get("success"):
-                logger.error(f"Failed to get any data for {symbol}")
+            if not batch_data:
+                logger.warning("No batch preload data available")
                 return 0.0
 
-            # Find price closest to target date
-            target_timestamp = target_date.timestamp()
-            closest_price = 0.0
-            min_diff = float("inf")
-
-            prices_data = data.get("prices", [])
-            if not prices_data:
-                logger.error(f"No price data available for {symbol}")
-                return 0.0
-
-            for price_item in prices_data:
-                try:
-                    # Handle different data formats
-                    if isinstance(price_item, dict):
-                        if "timestamp" in price_item:
-                            # Format from crypto APIs
-                            price_timestamp = (
-                                price_item["timestamp"] / 1000
-                            )  # Convert to seconds
-                            price_value = price_item["price"]
-                        elif "date" in price_item:
-                            # Format from Yahoo Finance
-                            if isinstance(price_item["date"], datetime):
-                                price_timestamp = price_item["date"].timestamp()
-                            else:
-                                continue
-                            price_value = price_item["price"]
-                        else:
-                            continue
-                    else:
-                        # Handle list format [timestamp, price]
-                        if len(price_item) >= 2:
-                            price_timestamp = (
-                                price_item[0] / 1000
-                                if price_item[0] > 1e10
-                                else price_item[0]
-                            )
-                            price_value = price_item[1]
-                        else:
-                            continue
-
-                    diff = abs(price_timestamp - target_timestamp)
-
-                    if diff < min_diff:
-                        min_diff = diff
-                        closest_price = float(price_value)
-
-                except (KeyError, ValueError, TypeError) as e:
-                    logger.debug(f"Error processing price data item: {e}")
-                    continue
-
-            if closest_price > 0:
-                # Log how close we got to the target date
-                closest_date = datetime.fromtimestamp(target_timestamp + min_diff)
-                logger.info(
-                    f"Found price {closest_price} for {symbol} on {closest_date} (diff: {min_diff/86400:.1f} days)"
+            # Step 2: Check crypto assets first (most common case)
+            crypto_data = batch_data.get("crypto_prices", {}).get(symbol.upper())
+            if crypto_data:
+                return self._extract_price_from_crypto_cache(
+                    crypto_data, target_date, symbol
                 )
-                return closest_price
-            else:
-                logger.error(f"No valid price found for {symbol} near {target_date}")
-                return 0.0
+
+            # Step 3: Check traditional assets
+            traditional_data = self._find_traditional_asset_data(batch_data, symbol)
+            if traditional_data:
+                return self._extract_price_from_traditional_cache(
+                    traditional_data, target_date, symbol
+                )
+
+            # Step 4: No data found in batch cache
+            logger.warning(f"Symbol {symbol} not found in batch cache")
+            return 0.0
 
         except Exception as e:
             logger.error(
                 f"Error getting asset price for {symbol} at {target_date}: {e}"
             )
+            logger.debug(traceback.format_exc())
+            return 0.0
+
+    def _extract_price_from_crypto_cache(
+        self, crypto_data: Dict, target_date: datetime, symbol: str
+    ) -> float:
+        """Extract price from crypto cache data with validation"""
+        try:
+            # Check cache freshness
+            cache_age = time.time() - crypto_data.get("cached_at", 0)
+            if cache_age > 86400:  # 24 hours
+                logger.warning(
+                    f"Cached crypto data for {symbol} is stale ({cache_age/3600:.1f} hours)"
+                )
+                return 0.0
+
+            logger.info(
+                f"Using fresh cached crypto data for {symbol} (age: {cache_age/60:.1f} minutes)"
+            )
+
+            # Try historical data first (most comprehensive)
+            historical_data = crypto_data.get("historical_data")
+            if historical_data:
+                price = self._extract_price_from_cached_data(
+                    historical_data, target_date
+                )
+                if price > 0:
+                    logger.info(
+                        f"Found price {price} from historical data for {symbol}"
+                    )
+                    return price
+
+            # Try chart data as fallback
+            chart_data = crypto_data.get("chart_data")
+            if chart_data:
+                price = self._extract_price_from_chart_data(chart_data, target_date)
+                if price > 0:
+                    logger.info(f"Found price {price} from chart data for {symbol}")
+                    return price
+
+            logger.warning(f"No suitable price data found in crypto cache for {symbol}")
+            return 0.0
+
+        except Exception as e:
+            logger.error(f"Error extracting crypto price for {symbol}: {e}")
+            logger.debug(traceback.format_exc())
+            return 0.0
+
+    def _find_traditional_asset_data(
+        self, batch_data: Dict, symbol: str
+    ) -> Optional[Dict]:
+        """Find traditional asset data from batch cache with symbol mapping"""
+        try:
+            traditional_assets = batch_data.get("traditional_assets", {})
+
+            # Direct symbol lookup
+            if symbol in traditional_assets:
+                return traditional_assets[symbol]
+
+            # Common symbol mappings for traditional assets
+            symbol_mappings = {
+                "^GSPC": "SP500",
+                "^IXIC": "NASDAQ",
+                "^DJI": "DOW",
+                "^TNX": "10Y_TREASURY",
+                "GC=F": "GOLD",
+                "DX-Y.NYB": "USD_INDEX",
+                "SPY": "SP500",  # ETF equivalents
+                "QQQ": "NASDAQ",
+                "DIA": "DOW",
+            }
+
+            # Try mapped names
+            mapped_name = symbol_mappings.get(symbol)
+            if mapped_name and mapped_name in traditional_assets:
+                return traditional_assets[mapped_name]
+
+            # Reverse mapping (name to symbol)
+            reverse_mappings = {v: k for k, v in symbol_mappings.items()}
+            if symbol in reverse_mappings:
+                mapped_symbol = reverse_mappings[symbol]
+                mapped_name = symbol_mappings.get(mapped_symbol)
+                if mapped_name and mapped_name in traditional_assets:
+                    return traditional_assets[mapped_name]
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error finding traditional asset data for {symbol}: {e}")
+            return None
+
+    def _extract_price_from_traditional_cache(
+        self, traditional_data: Dict, target_date: datetime, symbol: str
+    ) -> float:
+        """Extract price from traditional asset cache data"""
+        try:
+            # Check cache freshness
+            cache_age = time.time() - traditional_data.get("cached_at", 0)
+            if cache_age > 86400:  # 24 hours
+                logger.warning(
+                    f"Cached traditional data for {symbol} is stale ({cache_age/3600:.1f} hours)"
+                )
+                return 0.0
+
+            logger.info(
+                f"Using fresh cached traditional data for {symbol} (age: {cache_age/60:.1f} minutes)"
+            )
+
+            # Extract Yahoo Finance data
+            yahoo_data = traditional_data.get("data")
+            if yahoo_data:
+                price = self._extract_price_from_yahoo_data(yahoo_data, target_date)
+                if price > 0:
+                    logger.info(
+                        f"Found price {price} from traditional data for {symbol}"
+                    )
+                    return price
+
+            logger.warning(
+                f"No suitable price data found in traditional cache for {symbol}"
+            )
+            return 0.0
+
+        except Exception as e:
+            logger.error(f"Error extracting traditional price for {symbol}: {e}")
+            logger.debug(traceback.format_exc())
+            return 0.0
+
+    def _extract_price_from_chart_data(
+        self, chart_data: Dict, target_date: datetime
+    ) -> float:
+        """Extract price from chart data format"""
+        try:
+            if not chart_data or not chart_data.get("success"):
+                return 0.0
+
+            target_timestamp = target_date.timestamp()
+            closest_price = 0.0
+            min_diff = float("inf")
+
+            # Handle different chart data formats
+            prices_data = []
+
+            if "prices" in chart_data:
+                prices_data = chart_data["prices"]
+            elif isinstance(chart_data, dict) and "data" in chart_data:
+                prices_data = chart_data["data"]
+            else:
+                return 0.0
+
+            for price_item in prices_data:
+                try:
+                    # Handle different chart data formats
+                    if isinstance(price_item, dict):
+                        if "timestamp" in price_item and "price" in price_item:
+                            # Format: {"timestamp": 1234567890000, "price": 45000}
+                            price_timestamp = (
+                                price_item["timestamp"] / 1000
+                            )  # Convert to seconds
+                            price_value = price_item["price"]
+                        elif "date" in price_item and "price" in price_item:
+                            # Format: {"date": "2023-01-01", "price": 45000}
+                            if isinstance(price_item["date"], datetime):
+                                price_timestamp = price_item["date"].timestamp()
+                            elif isinstance(price_item["date"], str):
+                                date_obj = datetime.fromisoformat(
+                                    price_item["date"].replace("Z", "+00:00")
+                                )
+                                price_timestamp = date_obj.timestamp()
+                            else:
+                                continue
+                            price_value = price_item["price"]
+                        else:
+                            continue
+                    elif isinstance(price_item, (list, tuple)) and len(price_item) >= 2:
+                        # Format: [timestamp, price]
+                        price_timestamp = (
+                            price_item[0] / 1000
+                            if price_item[0] > 1e10
+                            else price_item[0]
+                        )
+                        price_value = price_item[1]
+                    else:
+                        continue
+
+                    # Find closest timestamp
+                    diff = abs(price_timestamp - target_timestamp)
+                    if diff < min_diff:
+                        min_diff = diff
+                        closest_price = float(price_value)
+
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.debug(f"Error processing chart price item: {e}")
+                    continue
+
+            return closest_price
+
+        except Exception as e:
+            logger.error(f"Error extracting price from chart data: {e}")
             logger.debug(traceback.format_exc())
             return 0.0
 
@@ -762,19 +769,19 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
             return 0.0
 
     # @cache_result(duration=3600)  # 1-hour cache for individual calls
-    def fetch_yahoo_finance_data_optimized(
-        self, symbol: str, period: str = "1y"
-    ) -> Dict:
-        """Optimized Yahoo Finance with batch cache support"""
-        # Check batch cache first
-        cached_data = self.get_cached_data("traditional", symbol)
-        if cached_data and cached_data.get("data"):
-            cache_age = time.time() - cached_data.get("cached_at", 0)
-            if cache_age < 1800:  # Use cached data if less than 30 minutes old
-                logger.info(
-                    f"Using batch cached Yahoo data for {symbol} (age: {cache_age:.1f}s)"
-                )
-            return cached_data["data"]
+    # def fetch_yahoo_finance_data_optimized(
+    #     self, symbol: str, period: str = "1y"
+    # ) -> Dict:
+    #     """Optimized Yahoo Finance with batch cache support"""
+    #     # Check batch cache first
+    #     cached_data = self.get_cached_data("traditional", symbol)
+    #     if cached_data and cached_data.get("data"):
+    #         cache_age = time.time() - cached_data.get("cached_at", 0)
+    #         if cache_age < 1800:  # Use cached data if less than 30 minutes old
+    #             logger.info(
+    #                 f"Using batch cached Yahoo data for {symbol} (age: {cache_age:.1f}s)"
+    #             )
+    #         return cached_data["data"]
 
         # If not in batch cache or expired, make individual call
         # return self._fetch_yahoo_finance_individual(symbol, period)
@@ -787,7 +794,7 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
             Risk-free rate as decimal (e.g., 0.045 for 4.5%)
         """
         try:
-            data = self.fetch_yahoo_finance_data_optimized("^TNX", "5d")
+            data = self.fetch_yahoo_finance_data("^TNX", "5d")
             if data and data.get("success") and data.get("prices"):
                 latest_yield = data["prices"][-1]["price"]
                 return latest_yield / 100  # Convert percentage to decimal
@@ -908,7 +915,7 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
                 # return self.fetchpri(benchmark, days)
         else:
             symbol = benchmark_mapping.get(benchmark, benchmark)
-            return self.fetch_yahoo_finance_data_optimized(symbol)
+            return self.fetch_yahoo_finance_data(symbol)
 
         return {"success": False, "error": f"Unknown benchmark: {benchmark}"}
 

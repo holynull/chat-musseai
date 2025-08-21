@@ -320,7 +320,7 @@ class MultiAPIManager:
         return self._process_yahoo_data(data, symbol)
 
     @api_call_with_cache_and_rate_limit(
-        cache_duration=300,
+        cache_duration=86400,
         rate_limit_interval=1.2,
         max_retries=0,
         retry_delay=2,  # 不重试
@@ -625,6 +625,12 @@ class MultiAPIManager:
                         "LINK": "chainlink",
                     }
 
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=86400,
+        rate_limit_interval=1.2,  # 1.2秒间隔
+        max_retries=2,
+        retry_delay=1,
+    )
     def fetch_market_data(self, symbol: str) -> Optional[Dict]:
         """
         Fetch current market data from multiple APIs with fallback mechanism
@@ -1604,6 +1610,12 @@ class MultiAPIManager:
             # Ultimate fallback
             return 50, "Neutral", "sideways", "neutral"
 
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=3600,
+        rate_limit_interval=1.2,  # 1.2秒间隔
+        max_retries=2,
+        retry_delay=1,
+    )
     def get_market_metrics(self):
         """Get market metrics from multiple APIs with fallback"""
         # Define API methods in priority order

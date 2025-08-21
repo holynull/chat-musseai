@@ -9,7 +9,7 @@ from utils.api_decorators import api_call_with_cache_and_rate_limit
 
 
 @api_call_with_cache_and_rate_limit(
-    cache_duration=300,  # 5分钟缓存
+    cache_duration=3600,  
     rate_limit_interval=1.2,  # 1.2秒间隔
     max_retries=2,
     retry_delay=1,

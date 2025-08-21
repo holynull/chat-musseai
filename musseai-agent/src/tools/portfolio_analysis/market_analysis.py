@@ -58,7 +58,18 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                     logger.info(
                         f"Fetching market data for {len(asset_symbols)} assets using batch method"
                     )
-                    market_data_batch = api_manager.fetch_market_data(asset_symbols)
+                    market_data_batch = {}
+                    for symbol in asset_symbols:
+                        try:
+                            logger.info(f"Fetching market data for {symbol}")
+                            symbol_data = api_manager.fetch_market_data(symbol)
+                            if symbol_data:
+                                market_data_batch[symbol] = symbol_data
+                            else:
+                                logger.warning(f"No data returned for {symbol}")
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch data for {symbol}: {e}")
+                            market_data_batch[symbol] = {"error": str(e)}
 
                     for symbol in asset_symbols:
                         symbol_upper = symbol.upper()
