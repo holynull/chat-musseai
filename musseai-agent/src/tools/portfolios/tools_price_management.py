@@ -224,33 +224,19 @@ def get_latest_prices(asset_ids: List[int] = None) -> Dict:
 def fetch_price_from_api(symbols: str, chain: str = None) -> Dict:
     """
     Fetch cryptocurrency prices from external API
-
-    Args:
-        symbols (str): Comma-separated cryptocurrency symbols. Example: "BTC,ETH"
-        chain (str, optional): Blockchain name (currently not used)
-
-    Returns:
-        Dict: Dictionary containing prices for each symbol, or None for failed requests
-            Format: {"BTC": 45000.0, "ETH": 3000.0}
     """
     try:
-        # Import getLatestQuote function
-        from tools.tools_quote import getLatestQuote
+        from utils.api.cryptocompare import getLatestQuote
         import json
 
-        # Clean and validate input symbols
         if not symbols or not symbols.strip():
             logger.error("Empty symbols parameter provided")
             return {}
 
-        # Remove whitespace and ensure uppercase
         clean_symbols = ",".join([s.strip().upper() for s in symbols.split(",")])
-
         logger.info(f"Fetching prices for symbols: {clean_symbols}")
 
-        # Call getLatestQuote to fetch price data
-        quote_data = getLatestQuote.invoke({"symbols": clean_symbols})
-
+        quote_data = getLatestQuote(symbols=clean_symbols)
         prices = {}
 
         # Parse JSON response if returned as string
@@ -261,43 +247,70 @@ def fetch_price_from_api(symbols: str, chain: str = None) -> Dict:
                 logger.error(f"Failed to parse JSON response: {e}")
                 return {}
 
-            # Extract prices from CoinMarketCap API response
+            # Handle error response
+            if data.get("error", False):
+                logger.error(f"API error: {data.get('message', 'Unknown error')}")
+                return {}
+
+            # Extract prices from CryptoCompare API response (CORRECTED)
             if "data" in data and isinstance(data["data"], dict):
                 for symbol in clean_symbols.split(","):
-                    if symbol in data["data"] and data["data"][symbol]:
+                    symbol = symbol.strip().upper()
+                    if symbol in data["data"]:
+                        symbol_data = data["data"][symbol]
+                        
+                        # Check if this is an error entry
+                        if "error" in symbol_data:
+                            logger.warning(f"Error for symbol {symbol}: {symbol_data['error']}")
+                            prices[symbol] = None
+                            continue
+
                         try:
-                            # Get the first matching item
-                            token_data = data["data"][symbol][0]
-                            price = token_data["quote"]["USD"]["price"]
-                            prices[symbol] = float(price)
-                            logger.info(
-                                f"Successfully fetched price for {symbol}: ${price}"
-                            )
-                        except (KeyError, IndexError, TypeError, ValueError) as e:
+                            # CORRECT path for CryptoCompare: data[symbol].prices.USD.price_raw
+                            if "prices" in symbol_data and "USD" in symbol_data["prices"]:
+                                price_raw = symbol_data["prices"]["USD"]["price_raw"]
+                                prices[symbol] = float(price_raw)
+                                logger.info(f"Successfully fetched price for {symbol}: ${price_raw}")
+                            else:
+                                logger.warning(f"USD price not available for {symbol}")
+                                prices[symbol] = None
+                        except (KeyError, TypeError, ValueError) as e:
                             logger.warning(f"Failed to extract price for {symbol}: {e}")
                             prices[symbol] = None
                     else:
                         logger.warning(f"No data found for symbol: {symbol}")
                         prices[symbol] = None
             else:
-                logger.error(
-                    "Invalid API response structure - missing or invalid 'data' field"
-                )
+                logger.error("Invalid API response structure - missing or invalid 'data' field")
                 return {}
 
         elif isinstance(quote_data, dict):
-            # Handle direct dictionary response
+            # Handle direct dictionary response (same logic as above)
+            if quote_data.get("error", False):
+                logger.error(f"API error: {quote_data.get('message', 'Unknown error')}")
+                return {}
+
             if "data" in quote_data:
                 for symbol in clean_symbols.split(","):
-                    if symbol in quote_data["data"] and quote_data["data"][symbol]:
+                    symbol = symbol.strip().upper()
+                    if symbol in quote_data["data"]:
+                        symbol_data = quote_data["data"][symbol]
+                        
+                        if "error" in symbol_data:
+                            logger.warning(f"Error for symbol {symbol}: {symbol_data['error']}")
+                            prices[symbol] = None
+                            continue
+
                         try:
-                            token_data = quote_data["data"][symbol][0]
-                            price = token_data["quote"]["USD"]["price"]
-                            prices[symbol] = float(price)
-                            logger.info(
-                                f"Successfully fetched price for {symbol}: ${price}"
-                            )
-                        except (KeyError, IndexError, TypeError, ValueError) as e:
+                            # CORRECT path for CryptoCompare
+                            if "prices" in symbol_data and "USD" in symbol_data["prices"]:
+                                price_raw = symbol_data["prices"]["USD"]["price_raw"]
+                                prices[symbol] = float(price_raw)
+                                logger.info(f"Successfully fetched price for {symbol}: ${price_raw}")
+                            else:
+                                logger.warning(f"USD price not available for {symbol}")
+                                prices[symbol] = None
+                        except (KeyError, TypeError, ValueError) as e:
                             logger.warning(f"Failed to extract price for {symbol}: {e}")
                             prices[symbol] = None
                     else:
@@ -315,6 +328,7 @@ def fetch_price_from_api(symbols: str, chain: str = None) -> Dict:
     except Exception as e:
         logger.error(f"Failed to fetch prices for {symbols}: {e}")
         return {}
+
 
 
 @tool

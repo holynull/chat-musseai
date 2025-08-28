@@ -18,7 +18,7 @@ from alerts_monitor.monitor_status_manager import MonitoringStatusManager
 from alerts_monitor.notification_sender import NotificationSender
 from alerts_monitor.types import MonitoringConfig, AlertCheckResult, NotificationResult
 import schedule
-from alerts_monitor.utils.cmc import getLatestQuote
+from utils.api.cryptocompare import getLatestQuote
 import json
 
 # Import from existing modules
@@ -264,52 +264,66 @@ class PortfolioAlertMonitor:
         return list(symbols)
 
     def _fetch_batch_prices(self, symbols: List[str]) -> Dict:
-        """Fetch prices for all symbols in one CMC API call"""
+        """Fetch prices for all symbols in one API call"""
         if not symbols:
             return {}
 
         try:
-
-            # Join symbols with comma for batch API call
             symbols_str = ",".join(symbols)
             self.monitor_logger.info(
                 f"Fetching batch prices for symbols: {symbols_str}"
             )
 
-            # Single API call to get all prices
             quote_response = getLatestQuote(symbols_str, logger=self.monitor_logger)
 
             if not isinstance(quote_response, str):
-                self.monitor_logger.error(f"Invalid CMC API response: {quote_response}")
+                self.monitor_logger.error(f"Invalid API response: {quote_response}")
                 return {}
 
             quote_data = json.loads(quote_response)
 
-            # Parse and structure price data
+            # Check for error in response
+            if quote_data.get("error"):
+                self.monitor_logger.error(
+                    f"API error: {quote_data.get('message', 'Unknown error')}"
+                )
+                return {}
+
             price_data = {}
+
+            # Parse CryptoCompare format (correct structure)
             if "data" in quote_data:
                 for symbol in symbols:
                     symbol_upper = symbol.upper()
-                    if (
-                        symbol_upper in quote_data["data"]
-                        and len(quote_data["data"][symbol_upper]) > 0
-                    ):
+                    if symbol_upper in quote_data["data"]:
+                        crypto_data = quote_data["data"][symbol_upper]
 
-                        token_data = quote_data["data"][symbol_upper][0]
-                        price = token_data["quote"]["USD"]["price"]
+                        # Check if it's an error response for this symbol
+                        if "error" in crypto_data:
+                            self.monitor_logger.warning(
+                                f"Symbol {symbol} error: {crypto_data['error']}"
+                            )
+                            continue
 
-                        price_data[symbol] = {
-                            "price": float(price),
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "source": "CMC_API_BATCH",
-                            "symbol": symbol,
-                            # Additional market data from CMC
-                            "market_cap": token_data["quote"]["USD"].get("market_cap"),
-                            "volume_24h": token_data["quote"]["USD"].get("volume_24h"),
-                            "percent_change_24h": token_data["quote"]["USD"].get(
-                                "percent_change_24h"
-                            ),
-                        }
+                        # Extract price from CryptoCompare structure
+                        usd_price_data = crypto_data.get("prices", {}).get("USD", {})
+                        price_raw = usd_price_data.get("price_raw", 0)
+
+                        if price_raw > 0:
+                            price_data[symbol] = {
+                                "price": float(price_raw),
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "source": "CRYPTOCOMPARE_API_BATCH",
+                                "symbol": symbol,
+                                # Additional market data from CryptoCompare
+                                "market_cap": usd_price_data.get("market_cap_raw", 0),
+                                "volume_24h": crypto_data.get("volume", {})
+                                .get("USD", {})
+                                .get("volume_24h_raw", 0),
+                                "percent_change_24h": crypto_data.get("changes", {})
+                                .get("USD", {})
+                                .get("change_24h_pct_raw", 0),
+                            }
 
             self.monitor_logger.info(
                 f"Successfully fetched prices for {len(price_data)} symbols"

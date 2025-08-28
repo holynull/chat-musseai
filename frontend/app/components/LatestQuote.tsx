@@ -2,78 +2,66 @@
 import { useAssistantToolUI } from "@assistant-ui/react";
 import { useState, useEffect, useRef } from "react";
 
-// Type definitions
-interface CryptoQuote {
-	price: number;
-	volume_24h: number;
-	volume_change_24h: number;
-	percent_change_1h: number;
-	percent_change_24h: number;
-	percent_change_7d: number;
-	percent_change_30d: number;
-	percent_change_60d: number;
-	percent_change_90d: number;
-	market_cap: number;
-	market_cap_dominance: number;
-	fully_diluted_market_cap: number;
-	tvl: number | null;
-	last_updated: string;
+// Type definitions for CryptoCompare API response
+interface PriceData {
+	price: string;
+	price_raw: number;
+	market_cap: string;
+	market_cap_raw: number;
 }
 
-interface Platform {
-	id: number;
-	name: string;
-	symbol: string;
-	slug: string;
-	token_address: string;
-}
-
-interface Tag {
-	slug: string;
-	name: string;
-	category: string;
-}
-
-interface QuoteData {
-	id: number;
-	name: string;
-	symbol: string;
-	slug: string;
-	num_market_pairs: number;
-	date_added: string;
-	tags: Tag[];
-	max_supply: number | null;
+interface MarketData {
 	circulating_supply: number;
 	total_supply: number;
-	platform: Platform;
-	is_active: number;
-	infinite_supply: boolean;
-	cmc_rank: number;
-	is_fiat: number;
-	self_reported_circulating_supply: number;
-	self_reported_market_cap: number;
-	tvl_ratio: number | null;
-	last_updated: string;
-	quote: {
-		USD: CryptoQuote;
+	last_update: number;
+	high_24h: number;
+	low_24h: number;
+	open_24h: number;
+}
+
+interface ChangeData {
+	change_24h: string;
+	change_24h_pct: string;
+	change_24h_raw: number;
+	change_24h_pct_raw: number;
+}
+
+interface VolumeData {
+	volume_24h: string;
+	volume_24h_to: string;
+	volume_24h_raw: number;
+	volume_24h_to_raw: number;
+}
+
+interface CryptoCurrencyData {
+	symbol: string;
+	prices: {
+		USD: PriceData;
+		EUR: PriceData;
+		BTC: PriceData;
 	};
+	market_data: MarketData;
+	changes: {
+		USD: ChangeData;
+		EUR: ChangeData;
+		BTC: ChangeData;
+	};
+	volume: {
+		USD: VolumeData;
+		EUR: VolumeData;
+		BTC: VolumeData;
+	};
+	supply: Record<string, any>;
 }
 
-interface ResponseStatus {
+interface CryptoCompareResponse {
+	source: string;
 	timestamp: string;
-	error_code: number;
-	error_message: null | string;
-	elapsed: number;
-	credit_count: number;
-	notice: null | string;
+	symbols_requested: string[];
+	data: Record<string, CryptoCurrencyData>;
 }
 
-interface QuoteResponse {
-	status: ResponseStatus;
-	data: Record<string, QuoteData[]>;
-}
-
-// TradingView Symbol Search API Response Types
+// TradingView Symbol Search API Response Types (keeping existing)
 interface TradingViewSymbol {
 	symbol: string;
 	description: string;
@@ -107,7 +95,7 @@ interface TradingViewSymbolResult {
 	type: 'stock' | 'futures' | 'bitcoin' | 'forex' | 'index';
 }
 
-// 添加TradingView类型定义
+// Add TradingView type definitions
 declare global {
 	interface Window {
 		TradingView: {
@@ -121,19 +109,19 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 	const scriptLoaded = useRef<boolean>(false);
 	const [chartHeight, setChartHeight] = useState<string>("400px");
 
-	// 响应式调整图表高度
+	// Responsive chart height adjustment
 	useEffect(() => {
 		const handleResize = () => {
-			if (window.innerWidth < 640) { // sm断点
+			if (window.innerWidth < 640) { // sm breakpoint
 				setChartHeight("300px");
-			} else if (window.innerWidth < 768) { // md断点
+			} else if (window.innerWidth < 768) { // md breakpoint
 				setChartHeight("350px");
 			} else {
 				setChartHeight("400px");
 			}
 		};
 
-		handleResize(); // 初始化时调用一次
+		handleResize(); // Call once on initialization
 		window.addEventListener("resize", handleResize);
 
 		return () => {
@@ -142,9 +130,9 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 	}, []);
 
 	useEffect(() => {
-		// 在effect开始时捕获当前的ref值
+		// Capture current ref value at the beginning of effect
 		const currentContainer = container.current;
-		// 加载TradingView Widget脚本
+		// Load TradingView Widget script
 		if (!scriptLoaded.current) {
 			const script = document.createElement('script');
 			script.src = 'https://s3.tradingview.com/tv.js';
@@ -161,11 +149,11 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 		}
 
 		function renderChart() {
-			// 清空容器以防止重复渲染
+			// Clear container to prevent duplicate rendering
 			if (currentContainer) {
 				currentContainer.innerHTML = '';
 
-				// 实现获取symbols数据的功能
+				// Implement symbol data fetching functionality
 				fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tradingview/symbol_search?text=${symbol}`, { headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` } })
 					.then(response => {
 						if (!response.ok) {
@@ -174,34 +162,34 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 						return response.json();
 					})
 					.then((symbolData: any) => {
-						// 从symbolData中提取有效的TradingView符号
+						// Extract valid TradingView symbol from symbolData
 						let tvSymbol = "";
 
-						// 处理symbolData.symbols，从中找到匹配的交易对
+						// Process symbolData.symbols to find matching trading pairs
 						if (symbolData && symbolData.symbols && symbolData.symbols.length > 0) {
-							// 去除symbol名称中的HTML标签，确保匹配纯文本
+							// Remove HTML tags from symbol name to ensure pure text matching
 							const cleanSymbol = symbol.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
-							// 筛选出匹配的交易对
+							// Filter matching trading pairs
 							const matchingSymbols = symbolData.symbols.filter((s: TradingViewSymbol) => {
-								// 清理<em>标签
+								// Clean <em> tags
 								const cleanedSymbolName = s.symbol.replace(/<\/?em>/g, '');
 								return cleanedSymbolName.includes(cleanSymbol);
 							});
 
 							if (matchingSymbols.length > 0) {
-								// 定义交易所优先级
+								// Define exchange priority
 								const exchangePriority = ['BINANCE', 'COINBASE', 'OKX', 'POLONIEX', 'KRAKEN', 'KUCOIN'];
-								// 定义计价货币优先级
+								// Define base currency priority
 								const currencyPriority = ['USDT', 'USD', 'USDC', 'BTC', 'ETH'];
 
-								// 按交易所和计价货币优先级排序
+								// Sort by exchange and base currency priority
 								const sortedSymbols = [...matchingSymbols].sort((a, b) => {
-									// 首先按类型排序 - 优先选择spot类型的交易对
+									// First sort by type - prioritize spot type trading pairs
 									if (a.type === 'spot' && b.type !== 'spot') return -1;
 									if (a.type !== 'spot' && b.type === 'spot') return 1;
 
-									// 然后按交易所优先级排序
+									// Then sort by exchange priority
 									const aExchangePriority = exchangePriority.indexOf(a.exchange);
 									const bExchangePriority = exchangePriority.indexOf(b.exchange);
 
@@ -215,7 +203,7 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 										return 1;
 									}
 
-									// 最后按计价货币优先级排序
+									// Finally sort by base currency priority
 									const aCurrencyMatch = currencyPriority.findIndex(c =>
 										a.symbol.replace(/<\/?em>/g, '').endsWith(c));
 									const bCurrencyMatch = currencyPriority.findIndex(c =>
@@ -232,21 +220,21 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 									return 0;
 								});
 
-								// 选择排序后的第一个交易对
+								// Select the first trading pair after sorting
 								if (sortedSymbols.length > 0) {
 									const bestMatch = sortedSymbols[0];
-									// 构造TradingView所需的符号格式
+									// Construct TradingView required symbol format
 									const cleanSymbolName = bestMatch.symbol.replace(/<\/?em>/g, '');
 
-									// 如果有前缀，则使用前缀构造完整符号
+									// If has prefix, use prefix to construct full symbol
 									if (bestMatch.prefix) {
 										tvSymbol = `${bestMatch.prefix}:${cleanSymbolName}`;
 									}
-									// 否则使用交易所名称构造
+									// Otherwise use exchange name to construct
 									else if (bestMatch.exchange) {
 										tvSymbol = `${bestMatch.exchange}:${cleanSymbolName}`;
 									}
-									// 如果都没有，直接使用符号
+									// If neither, use symbol directly
 									else {
 										tvSymbol = cleanSymbolName;
 									}
@@ -254,28 +242,28 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 							}
 						}
 
-						// 如果没有找到匹配的交易对，使用默认格式
+						// If no matching trading pair found, use default format
 						if (!tvSymbol) {
 							tvSymbol = `BINANCE:${symbol}USDT`;
 						}
 						if (container && container.current) {
-							// 创建TradingView小部件
+							// Create TradingView widget
 							new window.TradingView.widget({
 								autosize: true,
 								symbol: tvSymbol,
 								interval: 'D',
 								timezone: 'Etc/UTC',
-								theme: 'dark', // 修改为深色主题以匹配BuySellSignal
+								theme: 'dark', // Change to dark theme to match BuySellSignal
 								style: '1',
 								locale: 'en',
-								toolbar_bg: '#2D3748', // 修改为深色工具栏背景
+								toolbar_bg: '#2D3748', // Change to dark toolbar background
 								enable_publishing: false,
 								allow_symbol_change: true,
 								container_id: container.current?.id || '',
-								// 适配移动端的配置
-								hide_side_toolbar: window.innerWidth < 768, // 在移动设备上隐藏侧边工具栏
-								hide_top_toolbar: window.innerWidth < 640, // 在小屏设备上隐藏顶部工具栏
-								// 以下设置简化移动端UI
+								// Mobile adaptation configuration
+								hide_side_toolbar: window.innerWidth < 768, // Hide side toolbar on mobile devices
+								hide_top_toolbar: window.innerWidth < 640, // Hide top toolbar on small screen devices
+								// Following settings simplify mobile UI
 								hide_legend: window.innerWidth < 480,
 								studies: []
 							});
@@ -289,14 +277,14 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 								symbol: `BINANCE:${symbol}USD`,
 								interval: 'D',
 								timezone: 'Etc/UTC',
-								theme: 'dark', // 修改为深色主题
+								theme: 'dark', // Change to dark theme
 								style: '1',
 								locale: 'en',
-								toolbar_bg: '#2D3748', // 修改为深色工具栏背景
+								toolbar_bg: '#2D3748', // Change to dark toolbar background
 								enable_publishing: false,
 								allow_symbol_change: true,
 								container_id: container.current?.id || '',
-								// 适配移动端的配置
+								// Mobile adaptation configuration
 								hide_side_toolbar: window.innerWidth < 768,
 								hide_top_toolbar: window.innerWidth < 640,
 								hide_legend: window.innerWidth < 480,
@@ -307,7 +295,7 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 			}
 		}
 
-		// 清理函数
+		// Cleanup function
 		return () => {
 			if (currentContainer) {
 				currentContainer.innerHTML = '';
@@ -319,12 +307,12 @@ const TradingViewChart = ({ symbol }: { symbol: string }) => {
 };
 
 // Create a proper React component for the quote display
-const QuoteDisplay: React.FC<{ input: { args: { data: QuoteResponse } } }> = ({ input }) => {
+const QuoteDisplay: React.FC<{ input: { args: { data: CryptoCompareResponse } } }> = ({ input }) => {
 	const [isLoading, setIsLoading] = useState(true);
-	const responseData = input.args.data as QuoteResponse;
+	const responseData = input.args.data as CryptoCompareResponse;
 
 	useEffect(() => {
-		// 模拟数据加载
+		// Simulate data loading
 		const timer = setTimeout(() => {
 			setIsLoading(false);
 		}, 500);
@@ -332,9 +320,9 @@ const QuoteDisplay: React.FC<{ input: { args: { data: QuoteResponse } } }> = ({ 
 	}, []);
 
 	// Extract the first cryptocurrency data from the response
-	// The data is in format: data.SYMBOL[0]
+	// The data is in format: data[SYMBOL]
 	const symbol = Object.keys(responseData ? responseData.data : {})[0];
-	const cryptoData = responseData?.data[symbol ? symbol : ''][0];
+	const cryptoData = responseData?.data[symbol];
 
 	// Number formatting function
 	const formatNumber = (num: number, decimals = 2) => {
@@ -356,19 +344,24 @@ const QuoteDisplay: React.FC<{ input: { args: { data: QuoteResponse } } }> = ({ 
 		return formatNumber(num);
 	};
 
-	// Format date
-	const formatDate = (dateString: string) => {
+	// Format date from timestamp
+	const formatDate = (timestamp: number) => {
 		try {
-			const date = new Date(dateString);
+			const date = new Date(timestamp * 1000); // Convert Unix timestamp to milliseconds
 			return date.toLocaleString('en-US');
 		} catch (e) {
-			return dateString;
+			return 'N/A';
 		}
 	};
 
 	// Get CSS class based on price change
 	const getPercentChangeClass = (value: number) => {
 		return value >= 0 ? 'text-green-500' : 'text-red-500';
+	};
+
+	// Parse percentage from string format
+	const parsePercentage = (percentStr: string) => {
+		return parseFloat(percentStr) || 0;
 	};
 
 	if (isLoading) {
@@ -384,59 +377,122 @@ const QuoteDisplay: React.FC<{ input: { args: { data: QuoteResponse } } }> = ({ 
 	return cryptoData && (
 		<div className="flex flex-col space-y-4 sm:space-y-6 p-3 sm:p-4 rounded-lg border border-gray-700 bg-gray-800 text-white 
         w-full max-w-3xl sm:mt-6 md:mt-8 overflow-hidden">
-			<h2 className="text-xl sm:text-2xl font-bold text-center">{cryptoData.name} ({cryptoData.symbol}) Market Data</h2>
+			<h2 className="text-xl sm:text-2xl font-bold text-center">{cryptoData.symbol} Market Data</h2>
 
 			{/* Price Information */}
 			<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
 				<div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
 					<div>
-						<div className="text-2xlsm:text-3xl font-bold">
-							{formatNumber(cryptoData.quote.USD.price, 6)}
+						<div className="text-2xl sm:text-3xl font-bold">
+							${formatNumber(cryptoData.prices.USD.price_raw, 6)}
 						</div>
-						<div className={`text-sm font-medium flex items-center gap-1 ${getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}`}>
-							{cryptoData.quote.USD.percent_change_24h > 0 ? '↑' : '↓'} {Math.abs(cryptoData.quote.USD.percent_change_24h).toFixed(2)}% (24h)
+						<div className={`text-sm font-medium flex items-center gap-1 ${getPercentChangeClass(parsePercentage(cryptoData.changes.USD.change_24h_pct))}`}>
+							{parsePercentage(cryptoData.changes.USD.change_24h_pct) > 0 ? '↑' : '↓'} 
+							{Math.abs(parsePercentage(cryptoData.changes.USD.change_24h_pct)).toFixed(2)}% (24h)
 						</div>
 					</div>
 					<div className="flex flex-row sm:flex-col justify-between sm:items-end text-xs sm:text-sm gap-2 sm:gap-0">
-						<div>Market Cap:{formatLargeNumber(cryptoData.quote.USD.market_cap)}</div>
-						<div>24hVol:{formatLargeNumber(cryptoData.quote.USD.market_cap)}</div>
-						<div>24hVol:{formatLargeNumber(cryptoData.quote.USD.volume_24h)}</div>
+						<div>Market Cap: {formatLargeNumber(cryptoData.prices.USD.market_cap_raw)}</div>
+						<div>24h Vol: {formatLargeNumber(cryptoData.volume.USD.volume_24h_to_raw)}</div>
+						<div>Circulating: {formatLargeNumber(cryptoData.market_data.circulating_supply)}</div>
 					</div>
 				</div>
 			</div>
+
 			{/* TradingView Chart */}
 			<div className="bg-gray-900 rounded-lg p-2 sm:p-4">
 				<TradingViewChart symbol={cryptoData.symbol} />
 			</div>
 
-			{/* Price Changes */}
+			{/* Price Changes and Market Data */}
 			<div className="bg-gray-900 rounded-lg p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm">
 				<div>
-					<div className="text-gray-400">1h Change</div>
-					<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_1h)}>
-						{cryptoData.quote.USD.percent_change_1h > 0 ? '+' : ''}
-						{formatNumber(cryptoData.quote.USD.percent_change_1h)}%
+					<div className="text-gray-400">24h Change</div>
+					<div className={getPercentChangeClass(parsePercentage(cryptoData.changes.USD.change_24h_pct))}>
+						{parsePercentage(cryptoData.changes.USD.change_24h_pct) > 0 ? '+' : ''}
+						{formatNumber(parsePercentage(cryptoData.changes.USD.change_24h_pct))}%
+					</div>
+					<div className="text-xs text-gray-500">
+						${formatNumber(cryptoData.changes.USD.change_24h_raw)}
 					</div>
 				</div>
 				<div>
-					<div className="text-gray-400">24h Change</div>
-					<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_24h)}>
-						{cryptoData.quote.USD.percent_change_24h > 0 ? '+' : ''}
-						{formatNumber(cryptoData.quote.USD.percent_change_24h)}%
+					<div className="text-gray-400">24h High</div>
+					<div className="text-green-400">
+						${formatNumber(cryptoData.market_data.high_24h)}
 					</div>
 				</div>
 				<div className="col-span-2 sm:col-span-1">
-					<div className="text-gray-400">7d Change</div>
-					<div className={getPercentChangeClass(cryptoData.quote.USD.percent_change_7d)}>
-						{cryptoData.quote.USD.percent_change_7d > 0 ? '+' : ''}
-						{formatNumber(cryptoData.quote.USD.percent_change_7d)}%
+					<div className="text-gray-400">24h Low</div>
+					<div className="text-red-400">
+						${formatNumber(cryptoData.market_data.low_24h)}
 					</div>
 				</div>
 			</div>
 
-			{/* Last Updated */}
-			<div className="bg-gray-900 rounded-lg p-2 sm:p-3 text-[10px] sm:text-xs text-gray-400 text-right">
-				Last Updated: {formatDate(cryptoData.last_updated)}
+			{/* Supply Information */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+				<div>
+					<div className="text-gray-400">Circulating Supply</div>
+					<div>{formatLargeNumber(cryptoData.market_data.circulating_supply)} {cryptoData.symbol}</div>
+				</div>
+				<div>
+					<div className="text-gray-400">Total Supply</div>
+					<div>{formatLargeNumber(cryptoData.market_data.total_supply)} {cryptoData.symbol}</div>
+				</div>
+			</div>
+
+			{/* Volume Information */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+				<div>
+					<div className="text-gray-400">24h Volume (USD)</div>
+					<div>${formatLargeNumber(cryptoData.volume.USD.volume_24h_to_raw)}</div>
+				</div>
+				<div>
+					<div className="text-gray-400">24h Volume ({cryptoData.symbol})</div>
+					<div>{formatLargeNumber(cryptoData.volume.USD.volume_24h_raw)} {cryptoData.symbol}</div>
+				</div>
+			</div>
+
+			{/* Multi-Currency Price Display */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4">
+				<h3 className="text-sm font-semibold mb-2 text-gray-300">Multi-Currency Prices</h3>
+				<div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
+					<div className="flex justify-between items-center">
+						<span className="text-gray-400">USD:</span>
+						<span className="font-medium">{cryptoData.prices.USD.price}</span>
+					</div>
+					<div className="flex justify-between items-center">
+						<span className="text-gray-400">EUR:</span>
+						<span className="font-medium">{cryptoData.prices.EUR.price}</span>
+					</div>
+					<div className="flex justify-between items-center">
+						<span className="text-gray-400">BTC:</span>
+						<span className="font-medium">{cryptoData.prices.BTC.price}</span>
+					</div>
+				</div>
+			</div>
+
+			{/* Market Statistics */}
+			<div className="bg-gray-900 rounded-lg p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm">
+				<div>
+					<div className="text-gray-400">Open (24h)</div>
+					<div>${formatNumber(cryptoData.market_data.open_24h)}</div>
+				</div>
+				<div>
+					<div className="text-gray-400">Market Cap (USD)</div>
+					<div>{cryptoData.prices.USD.market_cap}</div>
+				</div>
+				<div className="col-span-2 sm:col-span-1">
+					<div className="text-gray-400">Market Cap (EUR)</div>
+					<div>{cryptoData.prices.EUR.market_cap}</div>
+				</div>
+			</div>
+
+			{/* Data Source and Last Updated */}
+			<div className="bg-gray-900 rounded-lg p-2 sm:p-3 text-[10px] sm:text-xs text-gray-400 flex justify-between items-center">
+				<div>Data Source: {responseData.source}</div>
+				<div>Last Updated: {formatDate(cryptoData.market_data.last_update)}</div>
 			</div>
 		</div>
 	);
