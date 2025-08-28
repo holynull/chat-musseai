@@ -10,7 +10,7 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime 
+from datetime import datetime
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from alerts_monitor.alert_conditions import check_alert_conditions
@@ -143,6 +143,66 @@ class PortfolioAlertMonitor:
 
             # NEW: Pre-fetch all required asset prices
             all_symbols = self._get_unique_symbols_from_alerts(active_alerts)
+            # all_symbols = [
+            #     # Top 10 by market cap
+            #     "BTC",
+            #     "ETH",
+            #     "BNB",
+            #     "XRP",
+            #     "SOL",
+            #     "ADA",
+            #     "DOGE",
+            #     "AVAX",
+            #     "TRX",
+            #     "DOT",
+            #     # DeFi tokens
+            #     "LINK",
+            #     "UNI",
+            #     "AAVE",
+            #     "SUSHI",
+            #     "COMP",
+            #     "MKR",
+            #     "CRV",
+            #     "1INCH",
+            #     # Layer 2 & Scaling
+            #     "MATIC",
+            #     "OP",
+            #     "ARB",
+            #     "LRC",
+            #     "IMX",
+            #     # Meme coins (popular)
+            #     "SHIB",
+            #     "PEPE",
+            #     "FLOKI",
+            #     "BONK",
+            #     # Infrastructure & Utilities
+            #     "ATOM",
+            #     "NEAR",
+            #     "ALGO",
+            #     "VET",
+            #     "FTM",
+            #     "HBAR",
+            #     # Gaming & NFT
+            #     "SAND",
+            #     "MANA",
+            #     "AXS",
+            #     "ENJ",
+            #     "GALA",
+            #     # Stablecoins (for reference)
+            #     "USDT",
+            #     "USDC",
+            #     "BUSD",
+            #     "DAI",
+            #     # Newer projects
+            #     "APT",
+            #     "SUI",
+            #     "OP",
+            #     "ARB",
+            #     "LDO",
+            #     "RPL",
+            #     # Pattener
+            #     "SWFTC",
+            # ]
             global_price_data = self._fetch_batch_prices(all_symbols)
 
             # Check alerts concurrently with pre-fetched prices

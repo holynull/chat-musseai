@@ -13,6 +13,16 @@ from utils.enhance_multi_api_manager import api_manager
 # ========================================
 
 
+def safe_float(value, default=0.0):
+    """Safely convert a value to float, handling None and invalid values"""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
 @tool
 def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
     """
@@ -116,16 +126,20 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                                 symbol
                             )
 
-                            # Extract price changes
-                            price_change_24h = data.get(
-                                "price_change_percentage_24h", 0
+                            # Extract price changes with safe conversion
+                            price_change_24h = safe_float(
+                                data.get("price_change_percentage_24h"), 0
                             )
-                            price_change_7d = data.get("price_change_percentage_7d", 0)
-                            price_change_1h = data.get("price_change_percentage_1h", 0)
+                            price_change_7d = safe_float(
+                                data.get("price_change_percentage_7d"), 0
+                            )
+                            price_change_1h = safe_float(
+                                data.get("price_change_percentage_1h"), 0
+                            )
 
                             # Get volume and market cap data for additional context
-                            volume_24h = data.get("total_volume", 0)
-                            market_cap = data.get("market_cap", 0)
+                            volume_24h = safe_float(data.get("total_volume"), 0)
+                            market_cap = safe_float(data.get("market_cap"), 0)
                             volume_to_mcap_ratio = (
                                 volume_24h / market_cap if market_cap > 0 else 0
                             )
@@ -289,7 +303,7 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                             )
 
                             # Calculate distance to key levels as percentages
-                            current_price = data.get("current_price", 0)
+                            current_price = safe_float(data.get("current_price"), 0)
                             distance_to_support = (
                                 ((current_price - support_level) / current_price * 100)
                                 if current_price > 0
@@ -307,7 +321,9 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
 
                             # Store asset analysis with comprehensive data
                             asset_specific_analysis[symbol_upper] = {
-                                "current_price": data.get("current_price", 0),
+                                "current_price": safe_float(
+                                    data.get("current_price"), 0
+                                ),
                                 "market_cap": market_cap,
                                 "market_cap_rank": data.get("market_cap_rank"),
                                 "price_changes": {
@@ -340,8 +356,8 @@ def analyze_market_conditions(asset_symbols: List[str] = None) -> Dict:
                                         distance_to_resistance, 2
                                     ),
                                     "ath": data.get("ath", 0),
-                                    "ath_change_percentage": data.get(
-                                        "ath_change_percentage", 0
+                                    "ath_change_percentage": safe_float(
+                                        data.get("ath_change_percentage"), 0
                                     ),
                                     "atl": data.get("atl", 0),
                                     "atl_change_percentage": data.get(
@@ -1430,12 +1446,15 @@ def format_market_cap(market_cap):
 
 
 @tool
-def get_market_opportunities(user_id: str, opportunity_type: str = "ALL") -> Dict:
+def get_market_opportunities(
+    user_id: str, market_conditions: dict, opportunity_type: str = "ALL"
+) -> Dict:
     """
     Identify market opportunities based on current conditions and portfolio.
 
     Args:
         user_id (str): User identifier
+                market_conditions (dict): Market analysis and conditions, returns from `analyze_market_conditions`
         opportunity_type (str): Type of opportunities (ALL, DIP_BUYING, PROFIT_TAKING, ARBITRAGE, YIELD, TRENDING)
 
     Returns:
@@ -1460,22 +1479,22 @@ def get_market_opportunities(user_id: str, opportunity_type: str = "ALL") -> Dic
 
             # Analyze market for opportunities
             # Include more comprehensive list of major assets to analyze
-            market_conditions = analyze_market_conditions.invoke(
-                {
-                    "asset_symbols": [
-                        "BTC",
-                        "ETH",
-                        "BNB",
-                        "SOL",
-                        "XRP",
-                        "ADA",
-                        "DOT",
-                        "MATIC",
-                        "AVAX",
-                        "LINK",
-                    ]
-                }
-            )
+            # market_conditions = analyze_market_conditions.invoke(
+            #     {
+            #         "asset_symbols": [
+            #             "BTC",
+            #             "ETH",
+            #             "BNB",
+            #             "SOL",
+            #             "XRP",
+            #             "ADA",
+            #             "DOT",
+            #             "MATIC",
+            #             "AVAX",
+            #             "LINK",
+            #         ]
+            #     }
+            # )
 
             if (
                 isinstance(market_conditions, dict)

@@ -33,11 +33,19 @@ def get_comprehensive_market_condition():
     market_data = {}
 
     # Get Fear & Greed Index
+    # 修复后的代码
     try:
         result = api_manager.get_fear_greed_index()
         logger.debug(f"get_fear_greed_index: {result}")
-        if isinstance(result, tuple) and len(result) >= 4:
-            # api_manager返回4个值: (index, classification, market_condition, market_sentiment)
+    
+        # Handle dictionary response from get_fear_greed_index
+        if isinstance(result, dict):
+            fear_greed_value = result.get("current_index", 0)
+            fear_greed_class = result.get("classification", "unknown")
+            fg_market_condition = result.get("market_condition", "neutral")
+            market_sentiment = result.get("market_sentiment", "unknown")
+        elif isinstance(result, tuple) and len(result) >= 4:
+            # Backward compatibility for tuple response
             (
                 fear_greed_value,
                 fear_greed_class,
@@ -69,7 +77,7 @@ def get_comprehensive_market_condition():
     # market_data["risk_free_rate"] = api_manager.get_risk_free_rate()
 
     # Get market metrics
-    market_metrics = api_manager.get_market_metrics()
+    market_metrics = api_manager.get_enhanced_market_metrics()
     if market_metrics:
         market_data["market_metrics"] = market_metrics
 
@@ -148,8 +156,11 @@ def determine_overall_market_condition(market_data):
     # Market cap change scoring
     if "market_metrics" in market_data:
         market_cap_change = market_data["market_metrics"].get(
-            "market_cap_change_24h", 0
+            "market_cap_change_24h"
         )
+        # Ensure we have a valid number, default to 0 if None
+        market_cap_change = market_cap_change if market_cap_change is not None else 0
+    
         if market_cap_change > 5:
             bull_score += 2
         elif market_cap_change > 0:
@@ -173,7 +184,7 @@ def determine_overall_market_condition(market_data):
 def adjust_thresholds_with_defi_yields(base_thresholds, market_condition):
     """根据DeFi收益率调整性能阈值"""
     try:
-        defi_yields = api_manager.get_real_defi_yields()
+        defi_yields = api_manager.get_defi_yields()
         if defi_yields:
             # 获取平均DeFi收益率
             avg_yield = (
@@ -2103,12 +2114,16 @@ def calculate_returns_from_positions(
 
         for position in positions:
             if position.last_price and position.avg_cost and position.quantity > 0:
-                # Calculate position return
-                position_return = (
-                    position.last_price - position.avg_cost
-                ) / position.avg_cost
-                position_value = float(position.quantity * position.last_price)
+                # Ensure all calculations use consistent decimal types
+                last_price = float(position.last_price)
+                avg_cost = float(position.avg_cost)
+                quantity = float(position.quantity)
+                
+                # Calculate position return as float
+                position_return = (last_price - avg_cost) / avg_cost
+                position_value = quantity * last_price
 
+                # Now both are float types - safe to multiply
                 total_returns.append(position_return * position_value)
                 total_weight += position_value
 
@@ -2138,6 +2153,7 @@ def calculate_returns_from_positions(
             f"Failed to calculate returns from positions: {e}\n{traceback.format_exc()}"
         )
         return []
+
 
 
 def calculate_returns_from_market_data(
@@ -2283,7 +2299,7 @@ def estimate_portfolio_beta_enhanced(positions, market_condition):
     """使用实时市场数据增强Beta计算"""
     try:
         # 获取实时市场数据来调整Beta值
-        market_metrics = api_manager.get_market_metrics()
+        market_metrics = api_manager.get_enhanced_market_metrics()
         btc_dominance = market_metrics.get("btc_dominance", 50)
 
         # 根据BTC主导地位调整Beta

@@ -164,9 +164,9 @@ class MultiAPIManager:
             },
         }
 
-    @api_call_with_cache_and_rate_limit_no_429_retry(
-        cache_duration=86400, rate_limit_interval=1.2, api_name="coingecko"
-    )
+    # @api_call_with_cache_and_rate_limit_no_429_retry(
+    #     cache_duration=86400, rate_limit_interval=1.2, api_name="coingecko"
+    # )
     def fetch_historical_prices_coingecko(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
@@ -212,9 +212,9 @@ class MultiAPIManager:
         else:
             raise ValueError(f"CoinGecko returned empty data for {symbol}")
 
-    @api_call_with_cache_and_rate_limit_no_429_retry(
-        cache_duration=300, rate_limit_interval=0.1, api_name="coincap"
-    )
+    # @api_call_with_cache_and_rate_limit_no_429_retry(
+    #     cache_duration=300, rate_limit_interval=0.1, api_name="coincap"
+    # )
     def fetch_historical_prices_coincap(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
@@ -256,9 +256,9 @@ class MultiAPIManager:
             else:
                 raise
 
-    @api_call_with_cache_and_rate_limit_no_429_retry(
-        cache_duration=300, rate_limit_interval=0.1, api_name="binance"
-    )
+    # @api_call_with_cache_and_rate_limit_no_429_retry(
+    #     cache_duration=3600, rate_limit_interval=0.1, api_name="binance"
+    # )
     def fetch_historical_prices_binance(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
@@ -278,7 +278,7 @@ class MultiAPIManager:
         data = response.json()
         return self._process_binance_data(data)
 
-    @api_call_with_cache_and_rate_limit(cache_duration=300, rate_limit_interval=0.05)
+    # @api_call_with_cache_and_rate_limit(cache_duration=3600, rate_limit_interval=0.05)
     def fetch_historical_prices_cryptocompare(
         self, symbol: str, days: int = 90
     ) -> Optional[Dict]:
@@ -337,9 +337,9 @@ class MultiAPIManager:
 
         # Define API methods in priority order
         api_methods = [
+            ("cryptocompare", self.fetch_historical_prices_cryptocompare),
             ("coingecko", self.fetch_historical_prices_coingecko),
             ("coincap", self.fetch_historical_prices_coincap),
-            ("cryptocompare", self.fetch_historical_prices_cryptocompare),
             ("binance", self.fetch_historical_prices_binance),
         ]
 
@@ -380,8 +380,7 @@ class MultiAPIManager:
                 try:
                     logger.info(f"Trying API: {api_name} for {symbol}")
                     result = api_method(symbol, days)
-
-                    if result and len(result.get("prices", [])) > 10:
+                    if result and len(result.get("prices", [])) > 0:
                         logger.info(
                             f"Successfully fetched data from {api_name} for {symbol}"
                         )
@@ -521,6 +520,9 @@ class MultiAPIManager:
             "mean_return": np.mean(returns) * 365 if returns else 0,
         }
 
+    @api_call_with_cache_and_rate_limit_no_429_retry(
+        cache_duration=86400 * 365, rate_limit_interval=1.2, api_name="coingecko"
+    )
     def _get_coingecko_mapping(self) -> Dict[str, str]:
         """
         Get CoinGecko symbol mapping with retry mechanism
@@ -649,10 +651,10 @@ class MultiAPIManager:
         """
         # Define API methods in priority order
         api_methods = [
+            ("cryptocompare", self._fetch_cryptocompare_market_data),
             ("coingecko", self._fetch_coingecko_market_data),
             ("coincap", self._fetch_coincap_market_data),
             ("binance", self._fetch_binance_market_data),
-            ("cryptocompare", self._fetch_cryptocompare_market_data),
         ]
 
         last_error = None
@@ -1077,9 +1079,9 @@ class MultiAPIManager:
             )
             raise
 
-    @api_call_with_cache_and_rate_limit_no_429_retry(
-        cache_duration=1800, rate_limit_interval=1.2, api_name="coingecko"
-    )
+    # @api_call_with_cache_and_rate_limit_no_429_retry(
+    #     cache_duration=1800, rate_limit_interval=1.2, api_name="coingecko"
+    # )
     def fetch_market_chart_coingecko(
         self, symbol: str, days: str = "30", interval: str = "daily"
     ) -> Optional[Dict]:
@@ -1129,9 +1131,9 @@ class MultiAPIManager:
             )
             raise
 
-    @api_call_with_cache_and_rate_limit_no_429_retry(
-        cache_duration=1800, rate_limit_interval=0.1, api_name="coincap"
-    )
+    # @api_call_with_cache_and_rate_limit_no_429_retry(
+    #     cache_duration=1800, rate_limit_interval=0.1, api_name="coincap"
+    # )
     def fetch_market_chart_coincap(
         self, symbol: str, days: str = "30", interval: str = "daily"
     ) -> Optional[Dict]:
@@ -1193,9 +1195,9 @@ class MultiAPIManager:
             )
             raise
 
-    @api_call_with_cache_and_rate_limit_no_429_retry(
-        cache_duration=1800, rate_limit_interval=0.1, api_name="binance"
-    )
+    # @api_call_with_cache_and_rate_limit_no_429_retry(
+    #     cache_duration=1800, rate_limit_interval=0.1, api_name="binance"
+    # )
     def fetch_market_chart_binance(
         self, symbol: str, days: str = "30", interval: str = "daily"
     ) -> Optional[Dict]:
@@ -1231,9 +1233,9 @@ class MultiAPIManager:
             )
             raise
 
-    @api_call_with_cache_and_rate_limit_no_429_retry(
-        cache_duration=1800, rate_limit_interval=0.05, api_name="cryptocompare"
-    )
+    # @api_call_with_cache_and_rate_limit_no_429_retry(
+    #     cache_duration=1800, rate_limit_interval=0.05, api_name="cryptocompare"
+    # )
     def fetch_market_chart_cryptocompare(
         self, symbol: str, days: str = "30", interval: str = "daily"
     ) -> Optional[Dict]:
@@ -1296,10 +1298,10 @@ class MultiAPIManager:
 
         # Define API methods in priority order
         api_methods = [
+            ("cryptocompare", self.fetch_market_chart_cryptocompare),
             ("coingecko", self.fetch_market_chart_coingecko),
             ("coincap", self.fetch_market_chart_coincap),
             ("binance", self.fetch_market_chart_binance),
-            ("cryptocompare", self.fetch_market_chart_cryptocompare),
         ]
 
         for global_retry in range(max_global_retries + 1):
@@ -1486,50 +1488,6 @@ class MultiAPIManager:
             logger.debug(f"Full traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e), "symbol": symbol}
 
-    def fetch_multiple_assets_data(self, symbols: List[str], days: int = 365) -> Dict:
-        """
-        Batch fetch data for multiple assets with optimized API usage
-
-        Args:
-            symbols: List of asset symbols
-            days: Number of days of data
-
-        Returns:
-            Dict mapping symbols to their price data
-        """
-        results = {}
-
-        for symbol in symbols:
-            try:
-                # Determine asset type and use appropriate API
-                crypto_symbols = [
-                    "BTC",
-                    "ETH",
-                    "ADA",
-                    "DOT",
-                    "LINK",
-                    "UNI",
-                    "AAVE",
-                    "SOL",
-                ]
-
-                if symbol.upper() in crypto_symbols:
-                    data = self.get_crypto_historical_data(symbol.lower(), "usd", days)
-                else:
-                    data = self.fetch_yahoo_finance_data_optimized(symbol, "1y")
-
-                results[symbol] = data
-
-                # Add small delay to respect rate limits
-                time.sleep(0.1)
-
-            except Exception as e:
-                logger.debug(traceback.format_exc())
-                logger.error(f"Failed to fetch data for {symbol}: {e}")
-                results[symbol] = {"success": False, "error": str(e)}
-
-        return results
-
     def _fetch_fear_greed_alternative(self):
         """Fetch from Alternative.me (existing implementation)"""
         url = "https://api.alternative.me/fng/"
@@ -1612,34 +1570,523 @@ class MultiAPIManager:
 
     @api_call_with_cache_and_rate_limit(
         cache_duration=3600,
-        rate_limit_interval=1.2,  # 1.2秒间隔
+        rate_limit_interval=1.2,
         max_retries=2,
         retry_delay=1,
     )
     def get_market_metrics(self):
-        """Get market metrics from multiple APIs with fallback"""
-        # Define API methods in priority order
+        """Get market metrics from multiple APIs with fallback and enhanced support for CryptoCompare and Binance"""
+        # Define API methods in priority order - added CryptoCompare and Binance
         api_methods = [
+            ("cryptocompare", self._fetch_cryptocompare_global_metrics),
             ("coingecko", self._fetch_coingecko_global_metrics),
             ("coincap", self._fetch_coincap_global_metrics),
-            # ("binance", self._fetch_binance_global_metrics),
+            ("binance", self._fetch_binance_global_metrics),
         ]
 
+        last_error = None
+
         for api_name, api_method in api_methods:
+            # Skip disabled APIs
+            if self._is_api_disabled(api_name):
+                logger.debug(f"Skipping disabled API: {api_name}")
+                continue
+
+            # Skip rate-limited APIs
             if self._is_api_rate_limited(api_name):
+                logger.debug(f"Skipping rate-limited API: {api_name}")
                 continue
 
             try:
+                logger.info(f"Attempting to fetch global metrics from {api_name}")
                 result = api_method()
-                if result:
+                if result and self._validate_global_metrics(result):
+                    logger.info(f"Successfully fetched global metrics from {api_name}")
                     return result
+                else:
+                    logger.warning(
+                        f"API {api_name} returned invalid global metrics data"
+                    )
+
+            except APIRateLimitException as e:
+                logger.warning(f"API {api_name} rate limited: {e}")
+                self._mark_api_rate_limited(api_name, reset_after_seconds=300)
+                last_error = e
+                continue
+
+            except ValueError as e:
+                # Check if it's a 403 disabled API error
+                if "403" in str(e) or "disabled" in str(e):
+                    logger.warning(f"API {api_name} is disabled due to 403 error: {e}")
+                    last_error = e
+                    continue
+                else:
+                    logger.warning(f"API {api_name} failed for global metrics: {e}")
+                    last_error = e
+                    continue
+
             except Exception as e:
                 logger.warning(
                     f"API {api_name} failed for global metrics: {e}\n{traceback.format_exc()}"
                 )
+                last_error = e
                 continue
 
+        # All APIs failed
+        logger.error("All APIs failed to fetch global metrics")
+        if last_error:
+            raise last_error
         raise ValueError("All APIs failed for global metrics")
+
+    def _validate_global_metrics(self, data: Dict) -> bool:
+        """
+        Validate global metrics data format and content
+
+        Args:
+            data: Global metrics data dictionary
+
+        Returns:
+            bool: True if data is valid
+        """
+        if not isinstance(data, dict):
+            return False
+
+        # Check for essential fields
+        required_fields = ["total_market_cap", "source"]
+
+        for field in required_fields:
+            if field not in data:
+                return False
+            if field == "total_market_cap" and (
+                data[field] is None or data[field] <= 0
+            ):
+                return False
+
+        return True
+
+    def _fetch_cryptocompare_global_metrics(self):
+        """
+        Fetch global market metrics from CryptoCompare API
+
+        Returns:
+            Dict: Standardized global metrics data
+        """
+        try:
+            # Get top market cap data from CryptoCompare
+            url = f"{self.apis['cryptocompare']['base_url']}/top/mktcapfull"
+            params = {
+                "limit": 100,  # Get top 100 coins for market cap calculation
+                "tsym": "USD",
+            }
+
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if "Data" not in data or not data["Data"]:
+                raise ValueError("No data returned from CryptoCompare")
+
+            # Calculate total market cap and other metrics
+            total_market_cap = 0
+            btc_market_cap = 0
+            eth_market_cap = 0
+            active_count = 0
+
+            for coin in data["Data"]:
+                coin_data = coin.get("RAW", {}).get("USD", {})
+                if coin_data and "MKTCAP" in coin_data:
+                    market_cap = float(coin_data["MKTCAP"])
+                    total_market_cap += market_cap
+                    active_count += 1
+
+                    # Track BTC and ETH specifically
+                    symbol = coin.get("CoinInfo", {}).get("Name", "").upper()
+                    if symbol == "BTC":
+                        btc_market_cap = market_cap
+                    elif symbol == "ETH":
+                        eth_market_cap = market_cap
+
+            # Calculate dominance percentages
+            btc_dominance = (
+                (btc_market_cap / total_market_cap * 100) if total_market_cap > 0 else 0
+            )
+            eth_dominance = (
+                (eth_market_cap / total_market_cap * 100) if total_market_cap > 0 else 0
+            )
+
+            return {
+                "total_market_cap": total_market_cap,
+                "btc_dominance": btc_dominance,
+                "eth_dominance": eth_dominance,
+                "market_cap_change_24h": None,  # Not directly available in this endpoint
+                "active_cryptocurrencies": active_count,
+                "markets": None,  # Not available in CryptoCompare
+                "source": "cryptocompare",
+            }
+
+        except Exception as e:
+            logger.error(
+                f"CryptoCompare global metrics API failed: {e}\n{traceback.format_exc()}"
+            )
+            raise
+
+    def _fetch_binance_global_metrics(self):
+        """
+        Fetch global market metrics from Binance API
+
+        Note: Binance doesn't provide global market metrics directly,
+        so we'll aggregate data from top trading pairs
+
+        Returns:
+            Dict: Standardized global metrics data
+        """
+        try:
+            # Get 24hr ticker statistics for all symbols
+            url = f"{self.apis['binance']['base_url']}/ticker/24hr"
+
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if not data:
+                raise ValueError("No data returned from Binance")
+
+            # Filter for USDT pairs to calculate approximate market metrics
+            usdt_pairs = [item for item in data if item["symbol"].endswith("USDT")]
+
+            total_volume_24h = 0
+            btc_volume = 0
+            eth_volume = 0
+            active_pairs = 0
+
+            # Get current BTC and ETH prices for market cap estimation
+            btc_price = 0
+            eth_price = 0
+
+            for pair in usdt_pairs:
+                symbol = pair["symbol"]
+                volume = float(pair["quoteVolume"])  # Volume in USDT
+                price = float(pair["lastPrice"])
+
+                total_volume_24h += volume
+                active_pairs += 1
+
+                if symbol == "BTCUSDT":
+                    btc_volume = volume
+                    btc_price = price
+                elif symbol == "ETHUSDT":
+                    eth_volume = volume
+                    eth_price = price
+
+            # Estimate market dominance based on trading volume
+            # This is an approximation since Binance doesn't provide market cap data
+            btc_dominance = (
+                (btc_volume / total_volume_24h * 100) if total_volume_24h > 0 else 0
+            )
+            eth_dominance = (
+                (eth_volume / total_volume_24h * 100) if total_volume_24h > 0 else 0
+            )
+
+            # Rough estimation of total market cap based on major coins
+            # This is a very rough approximation and should be used with caution
+            estimated_market_cap = 0
+            if btc_price > 0:
+                # Assume BTC supply of ~19.7M coins
+                estimated_btc_cap = btc_price * 19700000
+                if btc_dominance > 0:
+                    estimated_market_cap = estimated_btc_cap / (btc_dominance / 100)
+
+            return {
+                "total_market_cap": estimated_market_cap,
+                "btc_dominance": btc_dominance,
+                "eth_dominance": eth_dominance,
+                "market_cap_change_24h": None,  # Not available from Binance
+                "active_cryptocurrencies": active_pairs,
+                "markets": 1,  # Binance is one market
+                "total_volume_24h": total_volume_24h,
+                "btc_price": btc_price,
+                "eth_price": eth_price,
+                "source": "binance",
+                "note": "Market cap is estimated based on trading volume dominance",
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Binance global metrics API failed: {e}\n{traceback.format_exc()}"
+            )
+            raise
+
+    def _fetch_cryptocompare_market_sentiment(self):
+        """
+        Fetch additional market sentiment data from CryptoCompare
+        This can be used to enhance global metrics
+
+        Returns:
+            Dict: Market sentiment indicators
+        """
+        try:
+            # Get social stats and news sentiment (if available)
+            url = f"{self.apis['cryptocompare']['base_url']}/social/coin/histo/day"
+            params = {
+                "coinId": 1182,  # Bitcoin coin ID in CryptoCompare
+                "limit": 30,
+                "aggregate": 1,
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+
+            sentiment_data = {}
+            if "Data" in data and data["Data"]:
+                latest_data = data["Data"][-1]  # Get most recent data
+                sentiment_data = {
+                    "social_score": latest_data.get("comments", 0)
+                    + latest_data.get("posts", 0),
+                    "page_views": latest_data.get("page_views", 0),
+                    "fb_likes": latest_data.get("fb_likes", 0),
+                    "twitter_followers": latest_data.get("twitter_followers", 0),
+                }
+
+            return sentiment_data
+
+        except Exception as e:
+            logger.warning(f"CryptoCompare sentiment data failed: {e}")
+            return {}
+
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=3600,
+        rate_limit_interval=1.2,
+        max_retries=2,
+        retry_delay=1,
+    )
+    def get_enhanced_market_metrics(self):
+        """
+        Get enhanced market metrics with additional data sources
+        This method combines global metrics with sentiment and technical indicators
+
+        Returns:
+            Dict: Enhanced market metrics with multiple data sources
+        """
+        try:
+            # Get base market metrics
+            base_metrics = self.get_market_metrics()
+
+            # Enhance with additional data
+            enhanced_metrics = base_metrics.copy()
+
+            # Add Fear & Greed Index
+            try:
+                fear_greed_data = self.get_fear_greed_index()
+                enhanced_metrics.update(
+                    {
+                        "fear_greed_index": fear_greed_data.get("current_index"),
+                        "fear_greed_classification": fear_greed_data.get(
+                            "classification"
+                        ),
+                        "market_sentiment": fear_greed_data.get("market_sentiment"),
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Failed to fetch Fear & Greed Index: {e}")
+
+            # Add DeFi yields if available
+            try:
+                defi_yields = self.get_defi_yields()
+                enhanced_metrics["defi_yields"] = defi_yields
+            except Exception as e:
+                logger.warning(f"Failed to fetch DeFi yields: {e}")
+
+            # Add BTC trend analysis
+            try:
+                btc_trend = self.analyze_btc_trend(7)  # 7-day trend
+                enhanced_metrics["btc_trend"] = btc_trend
+            except Exception as e:
+                logger.warning(f"Failed to analyze BTC trend: {e}")
+
+            # Add timestamp
+            enhanced_metrics["timestamp"] = int(time.time())
+            enhanced_metrics["last_updated"] = datetime.now().isoformat()
+
+            return enhanced_metrics
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get enhanced market metrics: {e}\n{traceback.format_exc()}"
+            )
+            raise
+
+    def analyze_btc_trend(self, days: int = 7) -> Dict:
+        """
+        Analyze Bitcoin trend for market sentiment
+
+        Args:
+            days: Number of days to analyze
+
+        Returns:
+            Dict: BTC trend analysis
+        """
+        try:
+            # Get BTC historical data
+            btc_data = self.fetch_with_fallback("BTC", days)
+
+            if not btc_data or not btc_data.get("prices"):
+                raise ValueError("No BTC data available for trend analysis")
+
+            prices = btc_data["prices"]
+            if len(prices) < 2:
+                raise ValueError("Insufficient BTC data for trend analysis")
+
+            # Calculate trend metrics
+            current_price = prices[-1]
+            start_price = prices[0]
+
+            # Price change calculations
+            price_change = current_price - start_price
+            price_change_pct = (price_change / start_price) * 100
+
+            # Volatility calculation
+            volatility = btc_data.get("volatility", 0)
+
+            # Moving averages if enough data
+            ma_short = (
+                sum(prices[-3:]) / len(prices[-3:])
+                if len(prices) >= 3
+                else current_price
+            )
+            ma_long = sum(prices) / len(prices)
+
+            # Trend classification
+            if price_change_pct > 10:
+                trend = "strong_bullish"
+            elif price_change_pct > 5:
+                trend = "bullish"
+            elif price_change_pct > -5:
+                trend = "sideways"
+            elif price_change_pct > -10:
+                trend = "bearish"
+            else:
+                trend = "strong_bearish"
+
+            return {
+                "current_price": current_price,
+                "start_price": start_price,
+                "price_change": price_change,
+                "price_change_percentage": price_change_pct,
+                "volatility": volatility,
+                "trend": trend,
+                "ma_short": ma_short,
+                "ma_long": ma_long,
+                "days_analyzed": days,
+                "data_points": len(prices),
+            }
+
+        except Exception as e:
+            logger.error(f"BTC trend analysis failed: {e}\n{traceback.format_exc()}")
+            raise
+
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=3600,
+        rate_limit_interval=2.0,
+        max_retries=3,
+        retry_delay=5,
+    )
+    def get_fear_greed_index(self):
+        """
+        Get Fear & Greed Index with enhanced fallback mechanisms
+
+        Returns:
+            Dict: Fear & Greed Index data with market sentiment analysis
+        """
+        try:
+            # Try Alternative.me API first
+            current_index, classification, market_condition, market_sentiment = (
+                self._fetch_fear_greed_alternative()
+            )
+
+            return {
+                "current_index": current_index,
+                "classification": classification,
+                "market_condition": market_condition,
+                "market_sentiment": market_sentiment,
+                "source": "alternative.me",
+                "timestamp": int(time.time()),
+            }
+
+        except Exception as e:
+            logger.warning(f"Alternative.me Fear & Greed API failed: {e}")
+
+            # Fallback to market-based estimation
+            try:
+                current_index, classification, market_condition, market_sentiment = (
+                    self._estimate_fear_greed_from_market()
+                )
+
+                return {
+                    "current_index": current_index,
+                    "classification": classification,
+                    "market_condition": market_condition,
+                    "market_sentiment": market_sentiment,
+                    "source": "market_estimation",
+                    "timestamp": int(time.time()),
+                    "note": "Estimated based on market data due to API unavailability",
+                }
+
+            except Exception as fallback_error:
+                logger.error(
+                    f"Fear & Greed fallback estimation also failed: {fallback_error}"
+                )
+
+                # Ultimate fallback
+                return {
+                    "current_index": 50,
+                    "classification": "Neutral",
+                    "market_condition": "sideways",
+                    "market_sentiment": "neutral",
+                    "source": "default_fallback",
+                    "timestamp": int(time.time()),
+                    "note": "Default values due to all API failures",
+                }
+
+    @api_call_with_cache_and_rate_limit(
+        cache_duration=1800,
+        rate_limit_interval=1.0,
+        max_retries=2,
+        retry_delay=3,
+    )
+    def get_defi_yields(self):
+        """
+        Get DeFi yields from multiple sources with fallback
+
+        Returns:
+            Dict: DeFi yield data from various protocols
+        """
+        yields_data = {}
+
+        # Try different DeFi data sources
+        try:
+            aave_yields = self._fetch_aave_yields()
+            yields_data.update(aave_yields)
+        except Exception as e:
+            logger.warning(f"Failed to fetch Aave yields: {e}")
+
+        try:
+            compound_yields = self._fetch_compound_yields()
+            yields_data.update(compound_yields)
+        except Exception as e:
+            logger.warning(f"Failed to fetch Compound yields: {e}")
+
+        # If no data was fetched, use fallback
+        if not yields_data:
+            yields_data = self._get_fallback_yields()
+
+        yields_data["timestamp"] = int(time.time())
+        yields_data["last_updated"] = datetime.now().isoformat()
+
+        return yields_data
 
     def _fetch_coingecko_global_metrics(self):
         """Fetch from CoinGecko (existing implementation)"""
@@ -1785,6 +2232,8 @@ class MultiAPIManager:
         aave_response = requests.get(
             "https://aave-api-v2.aave.com/data/liquidity/v2", timeout=10
         )
+        aave_response.raise_for_status()
+        logger.debug(aave_response.content)
         aave_data = aave_response.json()
 
         yields = {}
@@ -1818,10 +2267,175 @@ class MultiAPIManager:
         return yields
 
     def _fetch_defi_pulse_yields(self):
-        """Fetch yields from DeFiPulse or similar aggregator"""
-        # This would be implemented if DeFiPulse API is available
-        # For now, return empty dict to fall through to next source
-        return {}
+        """
+        Fetch yields from DefiLlama API (alternative to DeFiPulse)
+        DefiLlama provides comprehensive DeFi protocol data including yields
+
+        Returns:
+            Dict: DeFi yields from various protocols
+        """
+        try:
+            yields_data = {}
+
+            # Get pools data from DefiLlama
+            pools_url = "https://yields.llama.fi/pools"
+            response = requests.get(pools_url, timeout=15)
+            response.raise_for_status()
+
+            pools_data = response.json()
+
+            if not pools_data or "data" not in pools_data:
+                logger.warning("No pools data returned from DefiLlama")
+                return {}
+
+            # Filter and process popular protocols
+            popular_protocols = {
+                "aave-v3",
+                "compound-v3",
+                "uniswap-v3",
+                "curve",
+                "yearn-finance",
+                "lido",
+                "convex-finance",
+                "maker",
+            }
+
+            stable_coins = {"USDC", "USDT", "DAI", "FRAX"}
+
+            # Process pools data
+            for pool in pools_data["data"]:
+                try:
+                    project = pool.get("project", "").lower()
+                    symbol = pool.get("symbol", "")
+                    apy = pool.get("apy", 0)
+                    tvl = pool.get("tvlUsd", 0)
+
+                    # Skip if essential data is missing
+                    if not project or not symbol or apy is None:
+                        continue
+
+                    # Skip pools with very low TVL (less than $1M)
+                    if tvl < 1000000:
+                        continue
+
+                    # Focus on popular protocols and reasonable APYs
+                    if (
+                        project in popular_protocols and 0 < apy < 100
+                    ):  # Filter out unrealistic APYs
+
+                        # Categorize by token type
+                        if any(stable in symbol.upper() for stable in stable_coins):
+                            category = "stablecoin"
+                        elif "ETH" in symbol.upper():
+                            category = "eth"
+                        elif "BTC" in symbol.upper():
+                            category = "btc"
+                        else:
+                            category = "other"
+
+                        # Create standardized key
+                        key = f"{project}_{category}_{symbol.lower().replace('-', '_')}"
+
+                        # Store yield data
+                        yields_data[key] = {
+                            "apy": round(apy, 2),
+                            "tvl": tvl,
+                            "project": project,
+                            "symbol": symbol,
+                            "category": category,
+                            "chain": pool.get("chain", "ethereum"),
+                            "pool_id": pool.get("pool", ""),
+                        }
+
+                except Exception as e:
+                    logger.debug(f"Error processing pool data: {e}")
+                    continue
+
+            # Get protocol summary if available
+            try:
+                protocols_url = "https://api.llama.fi/protocols"
+                protocols_response = requests.get(protocols_url, timeout=10)
+                if protocols_response.ok:
+                    protocols_data = protocols_response.json()
+
+                    # Add protocol summary for major DeFi protocols
+                    protocol_summary = {}
+                    for protocol in protocols_data:
+                        name = protocol.get("name", "").lower()
+                        if name in [
+                            "aave",
+                            "compound",
+                            "uniswap",
+                            "curve",
+                            "yearn",
+                            "lido",
+                        ]:
+                            protocol_summary[name] = {
+                                "tvl": protocol.get("tvl", 0),
+                                "change_1d": protocol.get("change_1d", 0),
+                                "change_7d": protocol.get("change_7d", 0),
+                                "mcap": protocol.get("mcap", 0),
+                            }
+
+                    if protocol_summary:
+                        yields_data["protocol_summary"] = protocol_summary
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch protocol summary: {e}")
+
+            # Calculate category averages
+            try:
+                categories = {"stablecoin": [], "eth": [], "btc": [], "other": []}
+
+                for key, data in yields_data.items():
+                    if isinstance(data, dict) and "category" in data:
+                        category = data["category"]
+                        if category in categories:
+                            categories[category].append(data["apy"])
+
+                # Add average yields by category
+                category_averages = {}
+                for category, apys in categories.items():
+                    if apys:
+                        category_averages[f"avg_{category}_apy"] = round(
+                            sum(apys) / len(apys), 2
+                        )
+                        category_averages[f"max_{category}_apy"] = round(max(apys), 2)
+                        category_averages[f"min_{category}_apy"] = round(min(apys), 2)
+
+                if category_averages:
+                    yields_data["category_averages"] = category_averages
+
+            except Exception as e:
+                logger.warning(f"Failed to calculate category averages: {e}")
+
+            # Add metadata
+            yields_data["source"] = "defillama"
+            yields_data["total_pools"] = len(
+                [
+                    k
+                    for k in yields_data.keys()
+                    if not k.startswith(
+                        ("protocol_", "category_", "source", "timestamp")
+                    )
+                ]
+            )
+            yields_data["timestamp"] = int(time.time())
+            yields_data["last_updated"] = datetime.now().isoformat()
+
+            logger.info(
+                f"Successfully fetched {yields_data.get('total_pools', 0)} DeFi yield pools from DefiLlama"
+            )
+            return yields_data
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"DefiLlama API request failed: {e}")
+            raise
+
+        except Exception as e:
+            logger.error(f"Failed to fetch DeFi yields from DefiLlama: {e}")
+            logger.debug(traceback.format_exc())
+            raise
 
     def _get_fallback_yields(self):
         """Conservative fallback yields based on current market conditions"""

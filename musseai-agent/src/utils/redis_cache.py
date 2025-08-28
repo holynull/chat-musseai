@@ -250,7 +250,7 @@ class RedisCacheBackend:
                     logger.debug(f"Hits cached Redis: {key} ")
                     return (value, timestamp)
                 else:
-                    logger.debug(f"Miss cached. cached_data: {cached_data}")
+                    logger.debug(f"Miss cached data: {cached_data}")
             except (ConnectionError, TimeoutError, RedisError) as e:
                 logger.warning(f"Redis get failed, falling back to memory: {e}")
                 self._setup_redis()  # Try to reconnect

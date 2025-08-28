@@ -79,9 +79,9 @@ class BatchCacheAPIManager(MultiAPIManager):
             logger.error(f"Cache warming failed: {e}")
             logger.debug(traceback.format_exc())
         # finally:
-            # Mark batch operation end
-            # if hasattr(self, "end_batch_operation"):
-                # self.api_manager.end_batch_operation()
+        # Mark batch operation end
+        # if hasattr(self, "end_batch_operation"):
+        # self.api_manager.end_batch_operation()
 
     @cache_result(duration=86400)  # 24-hour cache
     def preload_all_market_data(self) -> Dict:
@@ -312,7 +312,7 @@ class BatchCacheAPIManager(MultiAPIManager):
     def _safe_get_global_metrics(self) -> Dict:
         """Safely get global market metrics with enhanced timeout and 429 handling"""
         try:
-            return self.get_market_metrics()
+            return self.get_enhanced_market_metrics()
         except APIRateLimitException as e:
             logger.debug(f"Global metrics rate limited: {e}")
             self.consecutive_429_count += 1
@@ -362,24 +362,10 @@ class BatchCacheAPIManager(MultiAPIManager):
         # Cap the maximum delay
         return min(calculated_delay, 5.0)  # Maximum 5 seconds between calls
 
-    @market_data_api
-    def _safe_fetch_market_data(self, symbol: str) -> Optional[Dict]:
-        """Safely fetch market data with enhanced 429 handling"""
-        try:
-            return super().fetch_market_data(symbol)
-        except APIRateLimitException as e:
-            logger.debug(f"Market data fetch rate limited for {symbol}: {e}")
-            # Mark this as a 429 occurrence for delay calculation
-            self.consecutive_429_count += 1
-            return None
-        except Exception as e:
-            logger.debug(f"Market data fetch failed for {symbol}: {e}")
-            return None
-
     def _safe_fetch_historical_data(self, symbol: str) -> Optional[Dict]:
         """Safely fetch historical data with enhanced 429 handling"""
         try:
-            return super().fetch_with_fallback(symbol, days=365)
+            return super().fetch_with_fallback(symbol)
         except APIRateLimitException as e:
             logger.debug(f"Historical data fetch rate limited for {symbol}: {e}")
             # Mark this as a 429 occurrence for delay calculation
@@ -512,7 +498,7 @@ class BatchCacheAPIManager(MultiAPIManager):
     def _safe_get_market_metrics(self) -> Dict:
         """Safely get market metrics with enhanced timeout and 429 handling"""
         try:
-            return self.get_market_metrics()
+            return self.get_enhanced_market_metrics()
         except APIRateLimitException as e:
             logger.debug(f"Market metrics rate limited: {e}")
             self.consecutive_429_count += 1
@@ -564,7 +550,7 @@ class BatchCacheAPIManager(MultiAPIManager):
     def _safe_fetch_historical_data(self, symbol: str) -> Optional[Dict]:
         """Safely fetch historical data with 429 handling"""
         try:
-            return super().fetch_with_fallback(symbol, days=365)
+            return super().fetch_with_fallback(symbol)
         except APIRateLimitException:
             logger.debug(
                 f"Historical data fetch rate limited for {symbol}\n{traceback.format_exc()}"
@@ -657,38 +643,38 @@ class BatchCacheAPIManager(MultiAPIManager):
             batch_data["fear_greed_index"] = (50, "Neutral", "sideways", "neutral")
             batch_data["risk_free_rate"] = 0.045
 
+    # @market_data_api
+    # def get_fear_greed_index(self):
+    #     """Get Fear & Greed Index with multi-API fallback"""
+    #     api_methods = [
+    #         ("alternative_me", self._fetch_fear_greed_alternative),
+    #         # ("coinmarketcap", self._fetch_fear_greed_cmc),  # If available
+    #     ]
+
+    #     for api_name, api_method in api_methods:
+    #         try:
+    #             result = api_method()
+    #             if result:
+    #                 return result
+    #         except Exception as e:
+    #             logger.warning(
+    #                 f"Fear & Greed API {api_name} failed: {e}\n{traceback.format_exc()}"
+    #             )
+    #             continue
+
+    #     # Fallback to estimated values based on market conditions
+    #     return self._estimate_fear_greed_from_market()
+
     @market_data_api
-    def get_fear_greed_index(self):
-        """Get Fear & Greed Index with multi-API fallback"""
-        api_methods = [
-            ("alternative_me", self._fetch_fear_greed_alternative),
-            # ("coinmarketcap", self._fetch_fear_greed_cmc),  # If available
-        ]
-
-        for api_name, api_method in api_methods:
-            try:
-                result = api_method()
-                if result:
-                    return result
-            except Exception as e:
-                logger.warning(
-                    f"Fear & Greed API {api_name} failed: {e}\n{traceback.format_exc()}"
-                )
-                continue
-
-        # Fallback to estimated values based on market conditions
-        return self._estimate_fear_greed_from_market()
-
-    @market_data_api
-    def get_real_defi_yields(self) -> Dict:
+    def get_defi_yields(self) -> Dict:
         """Fetch real DeFi yields from multiple protocols with fallback"""
         yields = {}
 
         # Define yield sources in priority order
         yield_sources = [
+            ("defi_pulse", self._fetch_defi_pulse_yields),
             ("aave", self._fetch_aave_yields),
             ("compound", self._fetch_compound_yields),
-            ("defi_pulse", self._fetch_defi_pulse_yields),
             ("fallback", self._get_fallback_yields),
         ]
 
@@ -711,7 +697,7 @@ class BatchCacheAPIManager(MultiAPIManager):
     def _safe_get_market_metrics(self) -> Dict:
         """Safely get market metrics with timeout"""
         try:
-            return self.get_market_metrics()
+            return self.get_enhanced_market_metrics()
         except Exception as e:
             logger.debug(f"Market metrics fetch failed: {e}\n{traceback.format_exc()}")
             return {}

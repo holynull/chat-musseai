@@ -17,7 +17,6 @@ import traceback
 from utils.enhance_multi_api_manager import api_manager
 
 
-
 # ========================================
 # Portfolio Value Calculation Functions
 # ========================================
@@ -511,12 +510,13 @@ def analyze_portfolio_performance(
             ) * 100
 
         # Get benchmark data for comparison
-        benchmark_data = api_manager.get_benchmark_price_data(
-            benchmark, days=period_days + 30
-        )
+        # benchmark_data = api_manager.get_benchmark_price_data(
+        #     benchmark, days=period_days + 30
+        # )
+        benchmark_data = None
         benchmark_return = 0
 
-        if benchmark_data["success"] and benchmark_data["prices"]:
+        if benchmark_data and benchmark_data["success"] and benchmark_data["prices"]:
             prices = benchmark_data["prices"]
             # Find prices closest to our date range
             start_price = None
@@ -702,7 +702,7 @@ def compare_to_benchmarks(
         if "error" in portfolio_metrics:
             return portfolio_metrics
 
-        portfolio_return = portfolio_metrics["returns"]["return_percentage"]
+        portfolio_return = portfolio_metrics["returns"]["total_return_percentage"]
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=365)
 
@@ -716,11 +716,12 @@ def compare_to_benchmarks(
         for benchmark in benchmarks:
             try:
                 # Get benchmark data
-                benchmark_data = api_manager.get_benchmark_price_data(
-                    benchmark, days=365
-                )
+                # benchmark_data = api_manager.get_benchmark_price_data(
+                #     benchmark, days=365
+                # )
+                benchmark_data = None
 
-                if not benchmark_data["success"]:
+                if not benchmark_data or not benchmark_data["success"]:
                     logger.warning(f"Failed to get data for benchmark {benchmark}")
                     continue
 
@@ -953,11 +954,13 @@ def get_historical_performance(user_id: str, interval: str = "monthly") -> List[
                     # Get benchmark performance for comparison
                     benchmark_return = 0
                     try:
-                        benchmark_data = api_manager.get_benchmark_price_data(
-                            "BTC", days=interval_days + 7
-                        )
+                        # benchmark_data = api_manager.get_benchmark_price_data(
+                        #     "BTC", days=interval_days + 7
+                        # )
+                        benchmark_data = None
                         if (
-                            benchmark_data["success"]
+                            benchmark_data
+                            and benchmark_data["success"]
                             and len(benchmark_data["prices"]) >= 2
                         ):
                             prices = benchmark_data["prices"]

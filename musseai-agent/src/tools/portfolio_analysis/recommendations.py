@@ -148,7 +148,7 @@ def _generate_recommendation_text(market_data: Dict) -> str:
 
 def classify_asset_by_market_cap(symbol: str, market_data: Dict = None) -> str:
     """
-    Classify asset based on real market cap data
+    Classify asset based on real market cap data - Optimized version
     
     Args:
         symbol: Asset symbol
@@ -157,48 +157,49 @@ def classify_asset_by_market_cap(symbol: str, market_data: Dict = None) -> str:
     Returns:
         str: Asset classification
     """
+    # Priority check for stablecoins (regardless of rank)
+    STABLECOINS = {"USDT", "USDC", "DAI", "BUSD", "FRAX", "TUSD"}
+    if symbol in STABLECOINS:
+        return "STABLECOINS"
+    
+    # Define fallback classifications for known assets
+    KNOWN_ASSETS = {
+        "TOP_10": {"BTC", "ETH", "BNB", "XRP", "ADA", "SOL", "DOGE", "AVAX", "DOT", "MATIC"},
+        "LARGE_CAP": {"LINK", "UNI", "LTC", "BCH", "ATOM", "NEAR", "APE", "CRO"}
+    }
+    
+    def get_fallback_classification(asset_symbol: str) -> str:
+        """Get classification based on known asset lists"""
+        for category, assets in KNOWN_ASSETS.items():
+            if asset_symbol in assets:
+                return category
+        return "SMALL_CAP"  # Conservative default
+    
+    # Fetch market data if not provided
     if not market_data:
         market_data = api_manager.fetch_market_data(symbol)
     
-    # Enhanced validation for market data
+    # Validate market data and extract rank
     if not market_data or not api_manager._validate_market_data(market_data):
-        # Fallback classification based on known assets
-        if symbol in ["BTC", "ETH"]:
-            return "TOP_10"
-        elif symbol in ["USDT", "USDC", "DAI", "BUSD"]:
-            return "STABLECOINS"
-        else:
-            return "UNKNOWN"
+        logger.warning(f"Invalid market data for {symbol}, using fallback classification")
+        return get_fallback_classification(symbol)
     
-    # Get rank with additional null checking
     rank = market_data.get("market_cap_rank")
     
-    # Handle None or invalid rank values
+    # Handle invalid rank values
     if rank is None or not isinstance(rank, (int, float)):
         logger.warning(f"Invalid market_cap_rank for {symbol}: {rank}, using fallback classification")
-        # Fallback classification based on known assets
-        if symbol in ["BTC", "ETH"]:
-            return "TOP_10"
-        elif symbol in ["USDT", "USDC", "DAI", "BUSD", "FRAX", "TUSD"]:
-            return "STABLECOINS"
-        elif symbol in ["BNB", "XRP", "ADA", "SOL", "DOGE", "AVAX", "DOT", "MATIC"]:
-            return "TOP_10"
-        elif symbol in ["LINK", "UNI", "LTC", "BCH", "ATOM", "NEAR", "APE", "CRO"]:
-            return "LARGE_CAP"
-        else:
-            return "SMALL_CAP"  # Conservative default
+        return get_fallback_classification(symbol)
     
     # Convert to int for comparison
     try:
         rank = int(rank)
     except (ValueError, TypeError):
         logger.warning(f"Cannot convert rank to int for {symbol}: {rank}")
-        return "UNKNOWN"
+        return get_fallback_classification(symbol)
     
-    # Stablecoin check first (priority over rank)
-    if symbol in ["USDT", "USDC", "DAI", "BUSD", "FRAX", "TUSD"]:
-        return "STABLECOINS"
-    elif rank <= 10:
+    # Classification based on market cap rank
+    if rank <= 10:
         return "TOP_10"
     elif rank <= 50:
         return "LARGE_CAP"
@@ -206,6 +207,7 @@ def classify_asset_by_market_cap(symbol: str, market_data: Dict = None) -> str:
         return "MID_CAP"
     else:
         return "SMALL_CAP"
+
 
 
 
@@ -441,7 +443,7 @@ def find_investment_opportunities(user_id: str, risk_tolerance: str = "MEDIUM") 
         # Get real market data
         market_conditions = get_real_market_conditions()
         try:
-            defi_yields = api_manager.get_real_defi_yields()
+            defi_yields = api_manager.get_defi_yields()
         except Exception as e:
             logger.error(f"Failed to fetch DeFi yields: {e}\n{traceback.format_exc()}")
             defi_yields = {

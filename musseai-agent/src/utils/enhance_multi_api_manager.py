@@ -7,6 +7,7 @@ from loggers import logger
 import traceback
 from utils.api_decorators import (
     api_call_with_cache_and_rate_limit,
+    api_call_with_cache_and_rate_limit_no_429_retry,
     cache_result,
     clear_cache,
     get_cache_stats,
@@ -83,10 +84,10 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
 
         try:
             # Warm cache on startup
-            threading.Thread(target=self.warm_cache_on_startup, daemon=True).start()
+            # threading.Thread(target=self.warm_cache_on_startup, daemon=True).start()
 
             # Start refresh scheduler
-            self.cache_scheduler.start_scheduler()
+            # self.cache_scheduler.start_scheduler()
 
             # Set up periodic volatility checks
             # threading.Thread(target=self._volatility_monitor_loop, daemon=True).start()
@@ -405,26 +406,23 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
         try:
             logger.info(f"Getting price for {symbol} at {target_date} from batch cache")
 
-            # Step 1: Get preloaded batch data (should already be cached)
-            batch_data = self.preload_all_market_data()
-
-            if not batch_data:
-                logger.warning("No batch preload data available")
-                return 0.0
-
-            # Step 2: Check crypto assets first (most common case)
-            crypto_data = batch_data.get("crypto_prices", {}).get(symbol.upper())
-            if crypto_data:
-                return self._extract_price_from_crypto_cache(
-                    crypto_data, target_date, symbol
+            historical_data = self._safe_fetch_historical_data(symbol)
+            if historical_data:
+                price = self._extract_price_from_cached_data(
+                    historical_data, target_date
                 )
+                if price > 0:
+                    logger.info(
+                        f"Found price {price} from historical data for {symbol}"
+                    )
+                    return price
 
             # Step 3: Check traditional assets
-            traditional_data = self._find_traditional_asset_data(batch_data, symbol)
-            if traditional_data:
-                return self._extract_price_from_traditional_cache(
-                    traditional_data, target_date, symbol
-                )
+            # traditional_data = self._safe_fetch_yahoo_data(symbol)
+            # if traditional_data:
+            #     return self._extract_price_from_traditional_cache(
+            #         traditional_data, target_date, symbol
+            #     )
 
             # Step 4: No data found in batch cache
             logger.warning(f"Symbol {symbol} not found in batch cache")
@@ -543,7 +541,7 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
             )
 
             # Extract Yahoo Finance data
-            yahoo_data = traditional_data.get("data")
+            yahoo_data = traditional_data
             if yahoo_data:
                 price = self._extract_price_from_yahoo_data(yahoo_data, target_date)
                 if price > 0:
@@ -783,9 +781,8 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
     #             )
     #         return cached_data["data"]
 
-        # If not in batch cache or expired, make individual call
-        # return self._fetch_yahoo_finance_individual(symbol, period)
-
+    # If not in batch cache or expired, make individual call
+    # return self._fetch_yahoo_finance_individual(symbol, period)
     def get_risk_free_rate(self) -> float:
         """
         Get current risk-free rate from 10-year Treasury yield
@@ -811,7 +808,7 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
     #     retry_delay=2,
     # )
     def get_crypto_historical_data(
-        self, coin_id: str, vs_currency: str = "usd", days: int = 365
+        self, coin_id: str, vs_currency: str = "usd", days: int = 30 
     ) -> Dict:
         """
         Get cryptocurrency historical price data using multi-API fallback mechanism with caching
@@ -883,7 +880,7 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
 
         return failed_response
 
-    def get_benchmark_price_data(self, benchmark: str, days: int = 365) -> Dict:
+    def get_benchmark_price_data(self, benchmark: str, days: int = 30) -> Dict:
         """
         Get price data for benchmark asset with unified fallback mechanism
 
@@ -935,9 +932,10 @@ class EnhancedMultiAPIManager(OptimizedBatchCacheAPIManager):
         """
         try:
             days_diff = (end_date - start_date).days + 7  # Add buffer
-            benchmark_data = self.get_benchmark_price_data(benchmark, days=days_diff)
+            # benchmark_data = self.get_benchmark_price_data(benchmark, days=days_diff)
+            benchmark_data=None
 
-            if not benchmark_data["success"]:
+            if not benchmark_data or not benchmark_data["success"]:
                 return []
 
             prices = benchmark_data["prices"]
