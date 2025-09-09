@@ -45,6 +45,7 @@ scipy = "^1.16.0"
 redis = "^6.2.0"
 schedule = "^1.2.2"
 twilio = "^9.7.0"
+tradingview-screener = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = ">=1.11.1"

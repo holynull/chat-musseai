@@ -164,6 +164,21 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         graph_module="graphs.graph_crypto_portfolios",
         graph_name="graph_crypto_portfolios",
     ),
+    # 在第166行后添加了以下配置
+    "trading_strategy": AgentConfig(
+        name="Cryptocurrency Trading Strategy Expert",
+        description="Specialist in generating and analyzing short-term trading strategies for cryptocurrencies",
+        capabilities=[
+            "Generate comprehensive trading strategies based on market analysis",
+            "Provide entry and exit points for cryptocurrency trades",
+            "Analyze market trends and technical indicators",
+            "Generate risk management recommendations",
+            "Provide trading signal analysis and market timing insights",
+            "Create customized trading plans based on risk tolerance and investment goals",
+        ],
+        graph_module="graphs.graph_trading_strategy",
+        graph_name="graph_trading_strategy",
+    ),
 }
 
 # 辅助函数

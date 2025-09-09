@@ -5299,6 +5299,22 @@ slack = ["slack-sdk"]
 telegram = ["requests"]
 
 [[package]]
+name = "tradingview-screener"
+version = "3.0.0"
+description = "A package for creating stock screeners with the TradingView API"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "tradingview_screener-3.0.0-py3-none-any.whl", hash = "sha256:771637deb32313c5f3f038e40e24bbe0efbb97dfa5d5c46b8ee63f30ed0a2ead"},
+    {file = "tradingview_screener-3.0.0.tar.gz", hash = "sha256:4f55c8be2da7cf349af54dbad5dee777a80c397ec67a66e50feefc9fee3dbb76"},
+]
+
+[package.dependencies]
+pandas = "==2.*"
+requests = "==2.*"
+
+[[package]]
 name = "tradingview-ta"
 version = "3.3.0"
 description = "Unofficial TradingView technical analysis API wrapper."
@@ -6183,4 +6199,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4.0"
-content-hash = "619ecf5b43cd86496917fc127596205331c6fe133cc7a52b5650822affa97a27"
+content-hash = "0c52ec4bd47c235830a64133e65619a503c63d584f3b181fd585ef271e7d1ff9"
