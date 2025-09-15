@@ -309,7 +309,10 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 						"node_llm_pumpfun",
 						"node_llm_crypto_portfolios",
 						"node_llm_portfolio_analysis",
-						"node_llm_trading_strategy"
+						"node_llm_trading_strategy",
+						"node_llm_trading_signal",
+						"node_llm_trading_signal_backtest",
+						"judgement_regenerate_signals"
 					]
 						.includes(chunk.data.metadata.langgraph_node)) {
 					const message = chunk.data.data.chunk;
@@ -350,9 +353,14 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 									...prevMessages.slice(existingMessageIndex + 1),
 								];
 							} else {
-								const newMessage = new AIMessage({
-									...message,
-								});
+								let newMessage = null;
+								if (message.type == 'human') {
+									newMessage = new HumanMessage({ ...message })
+								} else {
+									newMessage = new AIMessage({
+										...message,
+									});
+								}
 								return [...prevMessages, newMessage];
 							}
 						});
