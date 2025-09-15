@@ -369,12 +369,7 @@ def getLatestQuote(
             }
         )
 
-@api_call_with_cache_and_rate_limit(
-    cache_duration=1800,  # 30 minutes cache for historical data
-    rate_limit_interval=1.5,  # 1.5 seconds interval for kline data
-    max_retries=3,
-    retry_delay=2,
-)
+
 def getKlineData(
     symbol: str,
     period: str = "daily",
