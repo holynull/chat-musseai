@@ -376,6 +376,12 @@ def getLatestQuote(
     max_retries=3,
     retry_delay=2,
 )
+@api_call_with_cache_and_rate_limit(
+    cache_duration=1800,  # 30 minutes cache for historical data
+    rate_limit_interval=1.5,  # 1.5 seconds interval for kline data
+    max_retries=3,
+    retry_delay=2,
+)
 def getKlineData(
     symbol: str,
     period: str = "daily",
@@ -394,10 +400,10 @@ def getKlineData(
     Args:
         symbol (str): cryptocurrency symbol. Example: "BTC"
         period (str): Time period for kline data. Options:
-            - "minute" or "1m": 1-minute klines
-            - "15minute" or "15m": 15-minute klines
-            - "hourly" or "1h": 1-hour klines
-            - "daily" or "1d": 1-day klines (default)
+            - "minute" or "1m": 1-minute klines (7 days limit)
+            - "15minute" or "15m": 15-minute klines (30 days limit)
+            - "hourly" or "1h": 1-hour klines (365 days limit)
+            - "daily" or "1d": 1-day klines (2000 days limit)
 
         limit (int): Number of data points to return (1-2000, default: 100)
         to_timestamp (Optional[int]): End timestamp (Unix timestamp). If None, uses current time
@@ -406,39 +412,7 @@ def getKlineData(
         logger (Logger): Logger instance for logging operations
 
     Returns:
-        str: JSON string containing historical kline data with structure:
-            {
-                "source": "CryptoCompare",
-                "period": "daily",
-                "symbols_requested": ["BTC", "ETH"],
-                "timestamp_range": {"from": 1234567890, "to": 1234567890},
-                "data": {
-                    "BTC": {
-                        "symbol": "BTC",
-                        "klines": [
-                            {
-                                "timestamp": 1234567890,
-                                "datetime": "2024-01-01 00:00:00",
-                                "open": 45000.0,
-                                "high": 46000.0,
-                                "low": 44000.0,
-                                "close": 45500.0,
-                                "volume": 1000.0,
-                                "volume_to": 45000000.0
-                            }
-                        ],
-                        "count": 100,
-                        "period": "daily"
-                    }
-                }
-            }
-
-    Example usage:
-        getKlineData("BTC") - Get last 100 daily candles for Bitcoin
-        getKlineData("ETH", period="hourly", limit=24) - Get last 24 hourly candles for Ethereum
-        getKlineData("BTC", period="15m", limit=96) - Get last 96 15-minute candles for Bitcoin
-        getKlineData("BTC,ETH", period="minute", limit=60) - Get last 60 minute candles for both
-        getKlineData("BTC", from_timestamp=1672531200, to_timestamp=1675209600) - Custom date range
+        str: JSON string containing historical kline data
     """
     if logger is None:
         logger = logging.getLogger("cryptocompare_kline")
@@ -454,26 +428,50 @@ def getKlineData(
                 "endpoint": "histominute",
                 "period_name": "minute",
                 "aggregate": 1,
+                "max_days": 7,  # CryptoCompare limit for minute data
             },
-            "1m": {"endpoint": "histominute", "period_name": "minute", "aggregate": 1},
+            "1m": {
+                "endpoint": "histominute",
+                "period_name": "minute",
+                "aggregate": 1,
+                "max_days": 7,
+            },
             "15m": {
                 "endpoint": "histominute",
                 "period_name": "15minute",
                 "aggregate": 15,
+                "max_days": 30,  # 15-minute data limit
             },
             "15minute": {
                 "endpoint": "histominute",
                 "period_name": "15minute",
                 "aggregate": 15,
+                "max_days": 30,
             },
             "hourly": {
                 "endpoint": "histohour",
                 "period_name": "hourly",
                 "aggregate": 1,
+                "max_days": 365,  # Hourly data limit
             },
-            "1h": {"endpoint": "histohour", "period_name": "hourly", "aggregate": 1},
-            "daily": {"endpoint": "histoday", "period_name": "daily", "aggregate": 1},
-            "1d": {"endpoint": "histoday", "period_name": "daily", "aggregate": 1},
+            "1h": {
+                "endpoint": "histohour",
+                "period_name": "hourly",
+                "aggregate": 1,
+                "max_days": 365,
+            },
+            "daily": {
+                "endpoint": "histoday",
+                "period_name": "daily",
+                "aggregate": 1,
+                "max_days": 2000,
+            },
+            "1d": {
+                "endpoint": "histoday",
+                "period_name": "daily",
+                "aggregate": 1,
+                "max_days": 2000,
+            },
         }
 
         if period.lower() not in period_mapping:
@@ -491,6 +489,7 @@ def getKlineData(
         endpoint_info = period_mapping[period.lower()]
         endpoint = endpoint_info["endpoint"]
         period_name = endpoint_info["period_name"]
+        max_days = endpoint_info["max_days"]
 
         # Validate limit parameter
         if not isinstance(limit, int) or limit < 1 or limit > 2000:
@@ -511,8 +510,27 @@ def getKlineData(
         if to_timestamp is None:
             to_timestamp = current_timestamp
 
+        # **KEY FIX: Add data availability validation**
+        max_seconds_back = max_days * 86400  # Convert days to seconds
+        earliest_allowed_timestamp = current_timestamp - max_seconds_back
+
         if from_timestamp is not None:
-            # If from_timestamp is provided, calculate limit based on time range
+            # If from_timestamp is provided, validate it's within limits
+            if from_timestamp < earliest_allowed_timestamp:
+                error_msg = f"Requested start time is too far back. {period_name} data is only available for the last {max_days} days. Earliest available: {datetime.fromtimestamp(earliest_allowed_timestamp).strftime('%Y-%m-%d %H:%M:%S')}"
+                logger.error(error_msg)
+                return json.dumps(
+                    {
+                        "error": True,
+                        "message": error_msg,
+                        "requested_symbol": symbol,
+                        "error_type": "data_limit_exceeded",
+                        "max_days_available": max_days,
+                        "earliest_timestamp": earliest_allowed_timestamp,
+                    }
+                )
+
+            # Calculate limit based on time range
             time_diff = to_timestamp - from_timestamp
             if period_name == "minute":
                 calculated_limit = min(int(time_diff / 60), 2000)
@@ -524,6 +542,21 @@ def getKlineData(
                 calculated_limit = min(int(time_diff / 86400), 2000)
 
             limit = max(1, calculated_limit)
+        else:
+            # **KEY FIX: Validate limit doesn't exceed available data range**
+            period_seconds = _get_period_seconds(period_name)
+            if endpoint_info.get("aggregate", 1) > 1:
+                period_seconds *= endpoint_info["aggregate"]
+
+            requested_timespan = limit * period_seconds
+            if requested_timespan > max_seconds_back:
+                # Adjust limit to fit within available data range
+                max_limit = max_seconds_back // period_seconds
+                old_limit = limit
+                limit = max(1, int(max_limit))
+                logger.warning(
+                    f"Requested limit {old_limit} exceeds available data range for {period_name}. Adjusted to {limit} (max {max_days} days of data)"
+                )
 
         # Split symbols and process each one
         processed_data = {
@@ -531,7 +564,11 @@ def getKlineData(
             "period": period_name,
             "symbol_requested": symbol,
             "timestamp_range": {
-                "from": to_timestamp - (limit * _get_period_seconds(period_name)),
+                # **KEY FIX: Ensure from timestamp is within limits**
+                "from": max(
+                    to_timestamp - (limit * _get_period_seconds(period_name)),
+                    earliest_allowed_timestamp,
+                ),
                 "to": to_timestamp,
             },
             "data": {},
@@ -547,7 +584,7 @@ def getKlineData(
 
             params = {
                 "fsym": symbol,  # From symbol
-                "tsym": "USD",  # To symbol (USD for standard pricing)
+                "tsym": "USDT",  # To symbol (USD for standard pricing)
                 "limit": limit,
                 "toTs": to_timestamp,
                 "e": exchange,
@@ -566,17 +603,38 @@ def getKlineData(
 
             data = response.json()
 
-            # Check for API errors
+            # **KEY FIX: Improved error handling - return immediately on API error**
             if data.get("Response") == "Error":
                 error_msg = data.get("Message", f"Unknown error for symbol {symbol}")
                 logger.error(
                     f"CryptoCompare API [getKlineData] error for {symbol}: {error_msg}"
                 )
-                processed_data["data"][symbol] = {
-                    "error": True,
-                    "message": error_msg,
-                    "symbol": symbol,
-                }
+
+                # Check if it's a data limit error and provide helpful guidance
+                if (
+                    "only available for the last" in error_msg.lower()
+                    or "data limit" in error_msg.lower()
+                ):
+                    enhanced_error_msg = f"{error_msg}. Try using a shorter time period or reduce the limit parameter. For {period_name} data, maximum history is {max_days} days."
+                    return json.dumps(
+                        {
+                            "error": True,
+                            "message": enhanced_error_msg,
+                            "requested_symbol": symbol,
+                            "error_type": "data_limit_exceeded",
+                            "max_days_available": max_days,
+                            "suggestion": f"For {period_name} data, use limit <= {max_seconds_back // _get_period_seconds(period_name)} or choose a longer time period like 'hourly' or 'daily'.",
+                        }
+                    )
+
+                return json.dumps(
+                    {
+                        "error": True,
+                        "message": error_msg,
+                        "requested_symbol": symbol,
+                        "error_type": "api_error",
+                    }
+                )
 
             # Extract historical data
             hist_data = data.get("Data", {}).get("Data", [])
@@ -588,6 +646,7 @@ def getKlineData(
                     "message": f"No historical data available for {symbol}",
                     "symbol": symbol,
                 }
+                return json.dumps(processed_data, ensure_ascii=False, indent=2)
 
             # Process kline data
             klines = []
@@ -1682,429 +1741,3 @@ def getRealtimeTrades(
     logger.info(f"Get real-time trades for {symbol}")
 
     return getRecentTrades(symbol=symbol, limit=limit, exchange=exchange, logger=logger)
-
-
-@api_call_with_cache_and_rate_limit(
-    cache_duration=1800, rate_limit_interval=1.0, max_retries=2
-)
-def calculateVolatilityMetrics(
-    symbol: str, lookback_days: int = 30, logger: Logger = None
-) -> str:
-    """
-    Calculate volatility metrics for market regime analysis.
-
-    Returns JSON with:
-    - Historical volatility (annualized)
-    - Average True Range (ATR)
-    - Volatility percentile rank
-    - Recent volatility trend
-    """
-    try:
-        # Get historical kline data
-        kline_data = getKlineData(symbol, "daily", lookback_days * 2, logger=logger)
-        data = json.loads(kline_data)
-
-        if data.get("error"):
-            return kline_data
-
-        klines = data["data"][symbol]["klines"]
-        if len(klines) < lookback_days:
-            return json.dumps(
-                {"error": True, "message": "Insufficient historical data"}
-            )
-
-        # Calculate daily returns
-        returns = []
-        atr_values = []
-
-        for i in range(1, len(klines)):
-            prev_close = klines[i - 1]["close"]
-            current = klines[i]
-
-            # Daily return
-            daily_return = (current["close"] - prev_close) / prev_close
-            returns.append(daily_return)
-
-            # True Range calculation
-            high_low = current["high"] - current["low"]
-            high_close = abs(current["high"] - prev_close)
-            low_close = abs(current["low"] - prev_close)
-            true_range = max(high_low, high_close, low_close)
-            atr_values.append(true_range)
-
-        # Calculate metrics
-        volatility = np.std(returns) * np.sqrt(365) * 100  # Annualized volatility %
-        atr = (
-            np.mean(atr_values[-14:]) if len(atr_values) >= 14 else np.mean(atr_values)
-        )
-
-        # Volatility percentile (last 90 days vs current 30 days)
-        if len(returns) >= 90:
-            recent_vol = np.std(returns[-30:]) * np.sqrt(365) * 100
-            historical_vols = []
-            for i in range(60, len(returns)):
-                period_vol = np.std(returns[i - 30 : i]) * np.sqrt(365) * 100
-                historical_vols.append(period_vol)
-
-            percentile_rank = (
-                sum(1 for v in historical_vols if v < recent_vol) / len(historical_vols)
-            ) * 100
-        else:
-            percentile_rank = 50  # Default to median
-
-        # Volatility trend
-        if len(returns) >= 60:
-            recent_vol = np.std(returns[-30:])
-            previous_vol = np.std(returns[-60:-30])
-            vol_trend = (
-                "increasing"
-                if recent_vol > previous_vol * 1.1
-                else "decreasing" if recent_vol < previous_vol * 0.9 else "stable"
-            )
-        else:
-            vol_trend = "stable"
-
-        result = {
-            "symbol": symbol,
-            "lookback_days": lookback_days,
-            "volatility_metrics": {
-                "annualized_volatility": round(volatility, 2),
-                "atr": round(atr, 4),
-                "volatility_percentile": round(percentile_rank, 1),
-                "volatility_trend": vol_trend,
-                "volatility_level": (
-                    "high"
-                    if percentile_rank > 70
-                    else "low" if percentile_rank < 30 else "medium"
-                ),
-            },
-        }
-
-        return json.dumps(result, ensure_ascii=False, indent=2)
-
-    except Exception as e:
-        error_msg = f"Error calculating volatility metrics: {str(e)}"
-        logger.error(error_msg) if logger else None
-        return json.dumps({"error": True, "message": error_msg})
-
-
-@api_call_with_cache_and_rate_limit(
-    cache_duration=900, rate_limit_interval=1.2, max_retries=2  # 15 minutes cache
-)
-def analyzeTrendStrength(
-    symbol: str, lookback_days: int = 30, logger: Logger = None
-) -> str:
-    """
-    Analyze trend strength and direction for market regime classification.
-
-    Returns JSON with:
-    - Trend direction and strength
-    - Support/resistance levels
-    - Momentum indicators
-    """
-    try:
-        # Get kline data for multiple timeframes
-        daily_data = json.loads(
-            getKlineData(symbol, "daily", lookback_days, logger=logger)
-        )
-        hourly_data = json.loads(
-            getKlineData(symbol, "hourly", lookback_days * 24, logger=logger)
-        )
-
-        if daily_data.get("error") or hourly_data.get("error"):
-            return json.dumps({"error": True, "message": "Failed to fetch trend data"})
-
-        daily_klines = daily_data["data"][symbol]["klines"]
-        hourly_klines = hourly_data["data"][symbol]["klines"]
-
-        # Calculate trend metrics
-        def calculate_trend_metrics(klines, period_name):
-            if len(klines) < 20:
-                return None
-
-            prices = [k["close"] for k in klines]
-
-            # Simple trend calculation
-            first_third = np.mean(prices[: len(prices) // 3])
-            last_third = np.mean(prices[-len(prices) // 3 :])
-            trend_change = (last_third - first_third) / first_third * 100
-
-            # Calculate simple moving averages
-            sma_20 = np.mean(prices[-20:]) if len(prices) >= 20 else np.mean(prices)
-            current_price = prices[-1]
-
-            # Trend direction
-            if trend_change > 2:
-                direction = "bullish"
-                strength = "strong" if trend_change > 10 else "moderate"
-            elif trend_change < -2:
-                direction = "bearish"
-                strength = "strong" if trend_change < -10 else "moderate"
-            else:
-                direction = "sideways"
-                strength = "weak"
-
-            return {
-                "direction": direction,
-                "strength": strength,
-                "trend_change_pct": round(trend_change, 2),
-                "price_vs_sma20": round((current_price - sma_20) / sma_20 * 100, 2),
-                "current_price": current_price,
-            }
-
-        daily_trend = calculate_trend_metrics(daily_klines, "daily")
-        hourly_trend = calculate_trend_metrics(
-            hourly_klines[-168:], "hourly"
-        )  # Last 7 days
-
-        # Check for null values before accessing properties
-        if daily_trend is None or hourly_trend is None:
-            # Handle insufficient data case
-            missing_data = []
-            if daily_trend is None:
-                missing_data.append("daily")
-            if hourly_trend is None:
-                missing_data.append("hourly")
-
-            error_msg = f"Insufficient historical data for {' and '.join(missing_data)} analysis. Need at least 20 data points for each timeframe."
-
-            return json.dumps(
-                {
-                    "error": True,
-                    "message": error_msg,
-                    "symbol": symbol,
-                    "missing_timeframes": missing_data,
-                    "required_data_points": 20,
-                    "available_data_points": {
-                        "daily": len(daily_klines),
-                        "hourly": len(hourly_klines),
-                    },
-                }
-            )
-
-        # Overall trend assessment - now safe to access properties
-        trend_alignment = daily_trend["direction"] == hourly_trend["direction"]
-
-        result = {
-            "symbol": symbol,
-            "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "trend_analysis": {
-                "daily_trend": daily_trend,
-                "hourly_trend": hourly_trend,
-                "trend_alignment": trend_alignment,
-                "overall_assessment": {
-                    "primary_trend": daily_trend["direction"],
-                    "trend_strength": daily_trend["strength"],
-                    "short_term_bias": hourly_trend["direction"],
-                    "confidence": "high" if trend_alignment else "medium",
-                },
-            },
-        }
-
-        return json.dumps(result, ensure_ascii=False, indent=2)
-
-    except Exception as e:
-        error_msg = f"Error analyzing trend strength: {str(e)}"
-        logger.error(error_msg) if logger else None
-        return json.dumps({"error": True, "message": error_msg})
-
-
-@api_call_with_cache_and_rate_limit(
-    cache_duration=300, rate_limit_interval=0.8, max_retries=2  # 5 minutes cache
-)
-def analyzeLiquidityConditions(
-    symbols: str, exchange: str, logger: Logger = None
-) -> str:
-    """
-    Analyze current liquidity conditions using order book and recent trades for one or more symbols.
-
-    Args:
-        symbols (str): Comma-separated cryptocurrency symbols. Example: "BTC,ETH" or single "BTC"
-        logger (Logger): Logger instance
-
-    Returns:
-        str: JSON string with liquidity analysis for each requested symbol
-    """
-    try:
-        # Parse symbols
-        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-        if not symbol_list:
-            return json.dumps({"error": True, "message": "No valid symbols provided"})
-
-        # Get order book for all symbols
-        orderbook_data = json.loads(
-            getOrderBookDepth(
-                symbols,
-                depth=20,
-                logger=logger,
-                exchange=exchange,
-            )
-        )
-
-        if orderbook_data.get("error"):
-            return json.dumps(
-                {
-                    "error": True,
-                    "message": "Failed to fetch order book data",
-                    "symbols_requested": symbol_list,
-                }
-            )
-
-        # Initialize result structure
-        result = {
-            "symbols_requested": symbol_list,
-            "timestamp": int(time.time()),
-            "liquidity_analysis": {},
-        }
-
-        # Analyze liquidity for each symbol
-        for symbol in symbol_list:
-            symbol_orderbook = orderbook_data.get("data", {}).get(symbol, {})
-
-            if symbol_orderbook.get("error"):
-                result["liquidity_analysis"][symbol] = {
-                    "error": True,
-                    "message": f"No order book data available for {symbol}",
-                    "symbol": symbol,
-                }
-                continue
-
-            # Get recent trades for this symbol
-            trades_data = json.loads(getRecentTrades(symbol, limit=100, logger=logger))
-
-            if trades_data.get("error"):
-                # Continue with order book analysis only
-                trades_summary = {}
-                trade_frequency = 0
-            else:
-                trades_summary = trades_data.get("summary", {})
-                trade_frequency = trades_data.get("market_activity_analysis", {}).get(
-                    "trade_frequency", 0
-                )
-
-            # Extract liquidity metrics from order book
-            summary = symbol_orderbook.get("summary", {})
-            spread_pct = summary.get("spread_percent", 0)
-            total_bid_volume = summary.get("total_bid_volume", 0)
-            total_ask_volume = summary.get("total_ask_volume", 0)
-
-            # Assess liquidity conditions for this symbol
-            liquidity_score = 0
-
-            # Spread component (lower spread = better liquidity)
-            if spread_pct < 0.1:
-                liquidity_score += 40
-            elif spread_pct < 0.5:
-                liquidity_score += 25
-            elif spread_pct < 1.0:
-                liquidity_score += 10
-
-            # Volume component
-            total_volume = total_bid_volume + total_ask_volume
-            if total_volume > 100:
-                liquidity_score += 30
-            elif total_volume > 50:
-                liquidity_score += 20
-            elif total_volume > 10:
-                liquidity_score += 10
-
-            # Trading frequency component
-            if trade_frequency > 5:
-                liquidity_score += 30
-            elif trade_frequency > 2:
-                liquidity_score += 20
-            elif trade_frequency > 0.5:
-                liquidity_score += 10
-
-            # Determine liquidity level
-            if liquidity_score >= 80:
-                liquidity_level = "high"
-            elif liquidity_score >= 50:
-                liquidity_level = "medium"
-            else:
-                liquidity_level = "low"
-
-            # Store analysis for this symbol
-            result["liquidity_analysis"][symbol] = {
-                "symbol": symbol,
-                "spread_percent": spread_pct,
-                "total_orderbook_volume": round(total_volume, 4),
-                "trade_frequency": trade_frequency,
-                "liquidity_score": liquidity_score,
-                "liquidity_level": liquidity_level,
-                "slippage_risk": (
-                    "low"
-                    if spread_pct < 0.2
-                    else "medium" if spread_pct < 0.8 else "high"
-                ),
-                "bid_volume": round(total_bid_volume, 4),
-                "ask_volume": round(total_ask_volume, 4),
-                "market_depth_analysis": symbol_orderbook.get(
-                    "market_depth_analysis", {}
-                ),
-                "trades_summary": {
-                    "total_volume": trades_summary.get("total_volume", 0),
-                    "total_value": trades_summary.get("total_value", 0),
-                    "buy_sell_ratio": (
-                        round(
-                            trades_summary.get("buy_volume", 0)
-                            / max(trades_summary.get("sell_volume", 1), 0.001),
-                            2,
-                        )
-                        if trades_summary
-                        else 0
-                    ),
-                },
-            }
-
-        # Calculate overall liquidity summary if multiple symbols
-        if len(symbol_list) > 1:
-            valid_analyses = [
-                analysis
-                for analysis in result["liquidity_analysis"].values()
-                if not analysis.get("error")
-            ]
-
-            if valid_analyses:
-                avg_liquidity_score = sum(
-                    a["liquidity_score"] for a in valid_analyses
-                ) / len(valid_analyses)
-                avg_spread = sum(a["spread_percent"] for a in valid_analyses) / len(
-                    valid_analyses
-                )
-                total_volume = sum(a["total_orderbook_volume"] for a in valid_analyses)
-
-                result["overall_summary"] = {
-                    "symbols_analyzed": len(valid_analyses),
-                    "average_liquidity_score": round(avg_liquidity_score, 2),
-                    "average_spread_percent": round(avg_spread, 4),
-                    "combined_orderbook_volume": round(total_volume, 4),
-                    "overall_liquidity_level": (
-                        "high"
-                        if avg_liquidity_score >= 80
-                        else "medium" if avg_liquidity_score >= 50 else "low"
-                    ),
-                    "market_conditions": (
-                        "favorable"
-                        if avg_spread < 0.3 and avg_liquidity_score > 60
-                        else (
-                            "moderate"
-                            if avg_spread < 0.8 and avg_liquidity_score > 40
-                            else "challenging"
-                        )
-                    ),
-                }
-
-        return json.dumps(result, ensure_ascii=False, indent=2)
-
-    except Exception as e:
-        error_msg = f"Error analyzing liquidity conditions: {str(e)}"
-        if logger:
-            logger.error(error_msg)
-        return json.dumps(
-            {
-                "error": True,
-                "message": error_msg,
-                "symbols_requested": symbols.split(",") if symbols else [],
-            }
-        )

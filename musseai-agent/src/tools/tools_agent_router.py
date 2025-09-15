@@ -3,7 +3,6 @@ from typing import Optional
 from langchain_core.tools import tool
 from agent_config import ROUTE_MAPPING, get_agent_by_tool, AGENT_CONFIGS, load_graph
 
-
 @tool
 def get_utc_time():
     """
