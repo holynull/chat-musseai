@@ -5,7 +5,7 @@
 	"graphs": {
 		"network": "./src/graphs/graph_network.py:graph"
 	},
-	"env": ".env",
+	"env": ".env.musseai_agent",
 	"http": {
 		"app": "./src/webapp.py:app"
 	}

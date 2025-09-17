@@ -714,7 +714,7 @@ def initialize_test_users():
     import re
 
     # 加载.env文件
-    load_dotenv(".env")
+    load_dotenv(".env.musseai_agent")
 
     # 查找所有TEST_USER_开头的环境变量
     test_user_pattern = re.compile(r"^TEST_USER_\d+$")

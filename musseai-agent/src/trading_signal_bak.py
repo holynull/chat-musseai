@@ -15,7 +15,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 
 # Load environment configuration
-load_dotenv(".env_trading_signal")
+load_dotenv(".env.trading_signal")
 
 @dataclass
 class TradingConfig:

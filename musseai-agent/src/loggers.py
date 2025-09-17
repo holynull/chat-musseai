@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 project_root = Path(__file__).parent.parent
-env_file_path = project_root / ".env"
+env_file_path = project_root / ".env.musseai_agent"
 
 # Load .env file with verbose output for debugging
 env_loaded = load_dotenv(env_file_path, verbose=True)

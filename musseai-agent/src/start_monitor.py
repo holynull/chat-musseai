@@ -18,7 +18,7 @@ from loggers import logger
 from dotenv import load_dotenv
 
 project_root = Path(__file__).parent.parent
-env_file_path = project_root / ".env"
+env_file_path = project_root / ".env.musseai_agent"
 
 # Load .env file with verbose output for debugging
 env_loaded = load_dotenv(env_file_path, verbose=True)
@@ -27,7 +27,7 @@ if not env_loaded:
     print(f"Warning: Could not load .env file from {env_file_path}")
     # Try to find .env file in alternative locations
     alternative_paths = [
-        Path(__file__).parent / ".env",  # src directory
+        Path(__file__).parent / ".env.musseai_agent",  # src directory
         Path.cwd() / ".env",  # current working directory
     ]
     

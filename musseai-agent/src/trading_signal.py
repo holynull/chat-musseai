@@ -14,9 +14,10 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 from loggers import DEFAULT_LOG_LEVEL
+from telegram_service import TelegramNotificationService
 
 # Load environment configuration
-load_dotenv(".env_trading_signal")
+load_dotenv(".env.trading_signal")
 
 
 @dataclass
@@ -55,8 +56,30 @@ class TradingSignalScheduler:
         # Thread-safe storage for thread information
         self.threads: Dict[str, ThreadInfo] = {}
         self.threads_lock = threading.Lock()  # NEW: Thread safety
+
         self.setup_logging(config)
         self.setup_clients()
+
+        # Initialize Telegram service
+        self.telegram_service = None
+        self.setup_telegram_service()
+
+    def setup_telegram_service(self):
+        """Initialize Telegram notification service"""
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if bot_token:
+            try:
+                self.telegram_service = TelegramNotificationService(
+                    bot_token=bot_token, chat_storage_file="telegram_users.json"
+                )
+                self.logger.info("Telegram service initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize Telegram service: {e}")
+                self.telegram_service = None
+        else:
+            self.logger.warning(
+                "TELEGRAM_BOT_TOKEN not found, Telegram notifications disabled"
+            )
 
     def setup_logging(self, config: TradingConfig):
         """Setup logging configuration"""
@@ -335,7 +358,21 @@ class TradingSignalScheduler:
                                             self.logger.info(
                                                 f"{symbol}'s new signal: \n{text}"
                                             )
-                                            # todo: send text to tg bot.
+                                            # Send trading signal to Telegram
+                                            if self.telegram_service:
+                                                try:
+                                                    await self.telegram_service.send_to_all_users(
+                                                        message=f"*{symbol} Trading Signal:*\n\n{text}",
+                                                        message_type="signal",
+                                                    )
+                                                except Exception as e:
+                                                    self.logger.error(
+                                                        f"Failed to send Telegram notification for {symbol} signal: {e}"
+                                                    )
+                                            else:
+                                                self.logger.warning(
+                                                    "Telegram service not available, skipping notification"
+                                                )
                             else:
                                 self.logger.error(
                                     f"Can't get {symbol}'s trading signal from: \n{json.dumps(chunk.get('data',{}),indent=4)}"
@@ -358,7 +395,21 @@ class TradingSignalScheduler:
                                             self.logger.info(
                                                 f"{symbol}'s signal baktest result: \n{text}"
                                             )
-                                            # todo: send text to tg bot.
+                                            # Send backtest result to Telegram
+                                            if self.telegram_service:
+                                                try:
+                                                    await self.telegram_service.send_to_all_users(
+                                                        message=f"*{symbol} Backtest Result:*\n\n{text}",
+                                                        message_type="backtest",
+                                                    )
+                                                except Exception as e:
+                                                    self.logger.error(
+                                                        f"Failed to send Telegram notification for {symbol} backtest: {e}"
+                                                    )
+                                            else:
+                                                self.logger.warning(
+                                                    "Telegram service not available, skipping backtest notification"
+                                                )
                             else:
                                 self.logger.error(
                                     f"Can't get {symbol}'s backtest result from: \n{json.dumps(chunk.get('data',{}),indent=4)}"

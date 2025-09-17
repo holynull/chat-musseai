@@ -5,6 +5,10 @@ volumes:
         driver: local
     langgraph_api_data:
         driver: local
+    telegram_bot_data:
+        driver: local
+    trading_signal_data:
+        driver: local
 
 services:
     langgraph-redis:
@@ -44,7 +48,7 @@ services:
             langgraph-postgres:
                 condition: service_healthy
         env_file:
-            - .env
+            - .env.musseai_agent
         extra_hosts:
             - "host.docker.internal:host-gateway"
         networks:
@@ -58,6 +62,7 @@ services:
         shm_size: 2gb
         cap_add:
             - SYS_ADMIN
+        restart: unless-stopped
         
     mysql:
         image: mysql:8.0
@@ -75,6 +80,53 @@ services:
           - MYSQL_DATABASE=crypto_portfolio
           - MYSQL_USER=asset_agent
           - MYSQL_PASSWORD=asset_agent_123456
+
+    telegram-bot:
+        image: musseai-telegram-bot
+        container_name: musseai-telegram-bot
+        restart: unless-stopped
+        depends_on:
+            - langgraph-api
+        env_file:
+            - .env.telegram_bot
+        volumes:
+            - telegram_bot_data:/app/logs
+            - ./telegram_users.json:/app/telegram_users.json
+        environment:
+            - PYTHONPATH=/app/src
+            - LOG_LEVEL=INFO
+        networks:
+            - default
+        healthcheck:
+            test: ["CMD", "python", "-c", "import os; exit(0 if os.getenv('TELEGRAM_BOT_TOKEN') else 1)"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+
+    trading-signal:
+        image: musseai-trading-signal
+        container_name: musseai-trading-signal
+        restart: unless-stopped
+        depends_on:
+            - langgraph-api
+            - langgraph-redis
+        env_file:
+            - .env.trading_signal
+        volumes:
+            - trading_signal_data:/app/logs
+            - ./telegram_users.json:/app/telegram_users.json
+        environment:
+            - PYTHONPATH=/app/src
+            - LOG_LEVEL=INFO
+        networks:
+            - default
+        healthcheck:
+            test: ["CMD", "python", "-c", "import sys; sys.path.insert(0, 'src'); from trading_signal import load_config; load_config()"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
 
 networks:
   default:

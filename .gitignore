@@ -169,3 +169,5 @@ volumes/
 logs/
 *.pid
 .env_trading_signal
+telegram_users.json
+.env*

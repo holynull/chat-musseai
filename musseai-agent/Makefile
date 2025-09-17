@@ -71,9 +71,22 @@ stop:
 	    echo "No PID file found. Is Langgraph running?"; \
 	fi
 
-build:
-# langgraph build -t musseai_agent
-	docker build -t musseai-agent .
+build_musseai_agent:
+	@echo "Building AI Agent image..."
+	docker build Dockerfile.Dockerfile.musseai_agent -t musseai-agent .
+
+# Docker build targets for individual services
+build_telegram_bot:
+	@echo "Building Telegram Bot Docker image..."
+	docker build -f Dockerfile.telegram_bot -t musseai-telegram-bot .
+
+build_trading_signal:
+	@echo "Building Trading Signal Docker image..."
+	docker build -f Dockerfile.trading_signal -t musseai-trading-signal .
+
+# Build all service images
+build_all_services: build_musseai_agent build_telegram_bot build_trading_signal
+	@echo "All Docker images built successfully"
 
 # Alert Monitor Configuration
 MONITOR_PID_FILE := monitor.pid

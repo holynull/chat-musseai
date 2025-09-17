@@ -1,0 +1,39 @@
+# Dockerfile.telegram_bot
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY pyproject.toml poetry.lock ./
+
+# Install Poetry and dependencies
+RUN pip install poetry && \
+    poetry config virtualenvs.create false && \
+    poetry install --only=main --no-dev
+
+# Copy application code
+COPY src/ ./src/
+COPY .env.example .env.telegram_bot.example ./
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Set Python path
+ENV PYTHONPATH=/app/src
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.path.insert(0, 'src'); \
+    from telegram_bot import TelegramSubscriptionBot; \
+    import os; \
+    token = os.getenv('TELEGRAM_BOT_TOKEN'); \
+    exit(0 if token else 1)"
+
+# Run telegram bot
+CMD ["python", "src/telegram_bot.py"]
