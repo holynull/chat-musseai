@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from dotenv import load_dotenv
 
-load_dotenv(".env.trading_signal")
+load_dotenv(".env.telegram_bot")
 
 
 class TelegramSubscriptionBot:
