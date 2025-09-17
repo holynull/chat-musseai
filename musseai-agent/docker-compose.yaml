@@ -91,7 +91,7 @@ services:
             - .env.telegram_bot
         volumes:
             - telegram_bot_data:/app/logs
-            - ./telegram_users.json:/app/src/telegram_users.json
+            - ./telegram_users.json:/app/telegram_users.json
         environment:
             - PYTHONPATH=/app/src
             - LOG_LEVEL=INFO
@@ -115,7 +115,7 @@ services:
             - .env.trading_signal
         volumes:
             - trading_signal_data:/app/logs
-            - ./telegram_users.json:/app/src/telegram_users.json
+            - ./telegram_users.json:/app/telegram_users.json
         environment:
             - PYTHONPATH=/app/src
             - LOG_LEVEL=INFO
