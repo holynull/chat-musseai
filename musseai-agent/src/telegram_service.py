@@ -9,7 +9,7 @@ import json
 import os
 
 class TelegramNotificationService:
-    def __init__(self, bot_token: str, chat_storage_file: str = "telegram_users/telegram_users.json"):
+    def __init__(self, bot_token: str, chat_storage_file: str = "telegram_users.json"):
         self.bot = Bot(token=bot_token)
         self.chat_storage_file = chat_storage_file
         self.logger = logging.getLogger(__name__)
