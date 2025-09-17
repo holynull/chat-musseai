@@ -141,7 +141,7 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
     )
     # last_ai_message = cast(AIMessage, state["messages"][-1])
     # last_ai_message.content += response.content
-    return {"messages": [response]}
+    return {"messages": [HumanMessage(content=response.content)]}
 
 
 graph_builder.add_node(

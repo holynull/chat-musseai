@@ -168,3 +168,4 @@ test**
 volumes/
 logs/
 *.pid
+.env_trading_signal
