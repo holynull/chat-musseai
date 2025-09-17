@@ -70,7 +70,7 @@ class TradingSignalScheduler:
         if bot_token:
             try:
                 self.telegram_service = TelegramNotificationService(
-                    bot_token=bot_token, chat_storage_file="telegram_users.json"
+                    bot_token=bot_token, chat_storage_file="telegram_users/telegram_users.json"
                 )
                 self.logger.info("Telegram service initialized successfully")
             except Exception as e:
