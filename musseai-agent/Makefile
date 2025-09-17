@@ -73,7 +73,7 @@ stop:
 
 build_musseai_agent:
 	@echo "Building AI Agent image..."
-	docker build -f Dockerfile.Dockerfile.musseai_agent -t musseai-agent .
+	docker build -f Dockerfile.musseai_agent -t musseai-agent .
 
 # Docker build targets for individual services
 build_telegram_bot:
