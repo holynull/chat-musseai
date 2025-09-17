@@ -41,12 +41,22 @@ origins = [
 
 
 # 添加一个认证中间件来保护指定的路径
+# 添加一个认证中间件来保护指定的路径
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.method == "OPTIONS":
             # 直接放行预检请求
             response = await call_next(request)
             return response
+            
+        # 检查是否为Docker内部访问
+        host = request.headers.get("host", "").lower()
+        if host.startswith("langgraph-api:8000"):
+            # Docker内部访问，跳过权限验证
+            logger.info(f"Internal Docker access detected from host: {host}, skipping authentication for {request.url.path}")
+            response = await call_next(request)
+            return response
+            
         # 定义需要保护的路径列表
         protected_paths = [
             "/api/runs/share",
@@ -117,8 +127,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         return response
 
 
+
 # 添加身份验证中间件 - 在CORS中间件之后添加，因为CORS中间件需要先处理preflight请求
-# app.add_middleware(AuthenticationMiddleware)
+app.add_middleware(AuthenticationMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
