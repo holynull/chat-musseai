@@ -27,6 +27,7 @@ class TradingConfig:
     langgraph_server_url: str
     user_id: str
     graph_name: str
+    group_id: str
     timezone: str = "UTC"
     execution_interval: int = 15  # minutes
     thread_rebuild_hours: int = 24  # hours
@@ -34,7 +35,6 @@ class TradingConfig:
     retry_delay: int = 30  # seconds
     max_concurrent_symbols: int = 5  # NEW: Maximum concurrent symbol processing
     log_level: int = logging.INFO
-    group_id: str
 
 
 @dataclass
