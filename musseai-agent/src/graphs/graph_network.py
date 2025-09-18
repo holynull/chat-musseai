@@ -109,7 +109,22 @@ async def acall_model(state: State, config: RunnableConfig):
             next_node = ROUTE_MAPPING[tool_name]
         else:
             logger.error(f"{GRAPH_NAME} note_router point to a route {tool_name}")
-            next_node = END
+            response = await llm_configed.ainvoke(
+                system_message
+                + state["messages"]
+                + [response, AIMessage("Sorry, I returned a wrong tool name!")]
+            )
+            ai_message = cast(AIMessage, response)
+            if len(ai_message.tool_calls) > 0:
+                if ROUTE_MAPPING.get(tool_name, None):
+                    tool_call = ai_message.tool_calls[0]
+                    tool_name = tool_call.get("name")
+                    next_node = ROUTE_MAPPING[tool_name]
+                else:
+                    logger.error(
+                        f"{GRAPH_NAME} note_router point to a route {tool_name}"
+                    )
+                    next_node = END
     else:
         state["messages"] += [ai_message]
     logger.info(f"Node: {GRAPH_NAME}, goto {next_node}, after llm handling.")
