@@ -115,7 +115,7 @@ async def acall_model(state: State, config: RunnableConfig):
                 + [response, AIMessage("Sorry, I returned a wrong tool name!")]
             )
             ai_message = cast(AIMessage, response)
-            if len(ai_message.tool_calls) > 0:
+            if ai_message.tool_calls and len(ai_message.tool_calls) > 0:
                 tool_call = ai_message.tool_calls[0]
                 tool_name = tool_call.get("name")
                 if ROUTE_MAPPING.get(tool_name, None):
