@@ -164,16 +164,29 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         graph_module="graphs.graph_crypto_portfolios",
         graph_name="graph_crypto_portfolios",
     ),
-    # 在第166行后添加了以下配置
-    "trading_strategy": AgentConfig(
-        name="Cryptocurrency Trading Strategy Expert",
-        description="Provide trading signals and provide backtest for trading signals.",
+    "trading_signal": AgentConfig(
+        name="Trading Signal Generation Expert",
+        description="Expert in generating cryptocurrency trading signals and market analysis",
         capabilities=[
-            "Provide simple, direct trading signals",
-            "Provide backtest for trading signals",
+            "Generate trading signals for cryptocurrency pairs",
+            "Analyze market trends and technical indicators",
+            "Provide buy/sell recommendations with risk assessment",
+            # ... 其他能力
         ],
-        graph_module="graphs.graph_trading_strategy",
-        graph_name="graph_trading_strategy",
+        graph_module="graphs.graph_trading_signal",
+        graph_name="graph_trading_signal",
+    ),
+    "trading_signal_backtest": AgentConfig(
+        name="Trading Signal Backtesting Expert",
+        description="Expert in backtesting and validating trading signals",
+        capabilities=[
+            "Backtest trading signals against historical data",
+            "Validate signal performance and accuracy",
+            "Generate performance metrics and analysis",
+            # ... 其他能力
+        ],
+        graph_module="graphs.graph_trading_signal_backtest",
+        graph_name="graph_signal_backtest",  # 注意：这里应该与实际图名保持一致
     ),
 }
 

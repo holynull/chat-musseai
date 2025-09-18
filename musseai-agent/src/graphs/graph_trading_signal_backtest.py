@@ -1,8 +1,7 @@
 from typing import Annotated, cast
-from langgraph.prebuilt import  tools_condition
+from langgraph.prebuilt import tools_condition
 from typing_extensions import TypedDict
-from langgraph.types import Command
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage
 
 from langchain_anthropic import ChatAnthropic
 
@@ -56,7 +55,7 @@ def call_model_trading_strategy(
     Main LLM node for generating trading strategies.
     Uses enhanced prompt and specialized tools for short-term trading analysis.
     """
-    llm_with_tools = _llm.bind_tools(tools )
+    llm_with_tools = _llm.bind_tools(tools)
     system_message = system_template.format_messages(
         time_zone=state["time_zone"],
     )
@@ -73,7 +72,7 @@ async def acall_model_trading_strategy(
     """
     Async version of the main LLM node for trading strategy generation.
     """
-    llm_with_tools = _llm.bind_tools(tools )
+    llm_with_tools = _llm.bind_tools(tools)
     system_message = system_template.format_messages(
         time_zone=state["time_zone"],
     )
@@ -84,11 +83,39 @@ async def acall_model_trading_strategy(
     return {"messages": [response]}
 
 
+async def judgement_regenerate_signals(state: TradingStrategyGraphState):
+    # llm_with_tools = _llm.bind_tools(tools)
+    system_prompt = """
+    You are a cryptocurrency trading expert. Provide simple, direct trading signals.
+
+    ## Language Rules:
+    - If user writes in Chinese → respond in Chinese
+    - If user writes in English → respond in English  
+    - If user writes in other languages → respond in that language
+    - Match the user's communication style
+
+    If regenerating signal is necessary, regenerate the new signal automatically.
+    """
+    system_template = SystemMessagePromptTemplate.from_template(system_prompt)
+    system_message = system_template.format_messages()
+    human = HumanMessage(
+        """Do you need to generate a new trading signal? 
+        If so, please clearly state at the end that the signal needs to be regenerated.
+        Also, please answer this question using the language of the previous user, regardless of the language I use now."""
+    )
+    # last_ai_message=cast(AIMessage,state["messages"][-1])
+    response = cast(
+        AIMessage,
+        await _llm.ainvoke(system_message + state["messages"] + [human]),
+    )
+    # last_ai_message = cast(AIMessage, state["messages"][-1])
+    # last_ai_message.content += response.content
+    return {"messages": [HumanMessage(content=response.content)]}
+
+
 from langgraph.prebuilt import ToolNode
 
-tool_node = ToolNode(
-    tools=tools , name="node_tools_trading_signal_backtest"
-)
+tool_node = ToolNode(tools=tools, name="node_tools_trading_signal_backtest")
 
 from langgraph.utils.runnable import RunnableCallable
 
@@ -102,9 +129,12 @@ graph_builder.add_node(tool_node.get_name(), tool_node)
 graph_builder.add_conditional_edges(
     node_llm.get_name(),
     tools_condition,
-    {"tools": tool_node.get_name(), END: END},
+    {"tools": tool_node.get_name(), END: judgement_regenerate_signals.__name__},
 )
-
+graph_builder.add_edge(judgement_regenerate_signals.__name__, END)
+graph_builder.add_node(
+    judgement_regenerate_signals, judgement_regenerate_signals.__name__
+)
 graph_builder.add_edge(tool_node.get_name(), node_llm.get_name())
 graph_builder.add_edge(START, node_llm.get_name())
 graph = graph_builder.compile()
