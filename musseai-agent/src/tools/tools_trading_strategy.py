@@ -9,14 +9,7 @@ def generate_trading_signal(symbol:str):
 	return "Nodified the trading signal generator node."
 
 @tool
-def update_trading_signal(symbol:str):
-	"""
-	Notify the trading signal generator node to update the trading signal for the symbol.
-	"""
-	return "Nodified the trading signal generator node to update signal."
-
-@tool
-def notify_backtest_node(signal_content:str):
+def backtest_signal(signal_content:str):
 	"""
 	Notify the backtest node to execute a backtest for the signal content.
     Args:
@@ -28,5 +21,5 @@ def notify_backtest_node(signal_content:str):
 tools = [
     generate_trading_signal,
 	# update_trading_signal,
-    notify_backtest_node,
+    backtest_signal,
 ]

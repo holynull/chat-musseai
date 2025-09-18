@@ -167,7 +167,7 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
     # 在第166行后添加了以下配置
     "trading_strategy": AgentConfig(
         name="Cryptocurrency Trading Strategy Expert",
-        description="Specialist in generating and analyzing short-term trading strategies for cryptocurrencies",
+        description="Provide trading signals and provide backtest for trading signals.",
         capabilities=[
             "Provide simple, direct trading signals",
             "Provide backtest for trading signals",

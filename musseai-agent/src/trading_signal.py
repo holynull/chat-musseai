@@ -317,6 +317,8 @@ class TradingSignalScheduler:
             run_id_signal_backtest = ""
             async for _chunk in chunks:
                 chunk = _chunk.data
+                if chunk.get("error", None):
+                    self.logger.error(f"Error: {chunk}")
                 if chunk.get("event", "") != "":
                     self.logger.debug(f"{symbol} - Event: {chunk.get('event','')}")
                 if chunk.get("data", None):
