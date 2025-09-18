@@ -34,6 +34,7 @@ class TradingConfig:
     retry_delay: int = 30  # seconds
     max_concurrent_symbols: int = 5  # NEW: Maximum concurrent symbol processing
     log_level: int = logging.INFO
+    group_id: str
 
 
 @dataclass
@@ -63,6 +64,8 @@ class TradingSignalScheduler:
         # Initialize Telegram service
         self.telegram_service = None
         self.setup_telegram_service()
+
+        self.group_id = config.group_id
 
     def setup_telegram_service(self):
         """Initialize Telegram notification service"""
@@ -363,9 +366,10 @@ class TradingSignalScheduler:
                                             # Send trading signal to Telegram
                                             if self.telegram_service:
                                                 try:
-                                                    await self.telegram_service.send_to_all_users(
+                                                    await self.telegram_service.send_to_group(
                                                         message=f"*{symbol} Trading Signal:*\n\n{text}",
                                                         message_type="signal",
+                                                        group_ids=self.group_id,
                                                     )
                                                 except Exception as e:
                                                     self.logger.error(
@@ -400,9 +404,10 @@ class TradingSignalScheduler:
                                             # Send backtest result to Telegram
                                             if self.telegram_service:
                                                 try:
-                                                    await self.telegram_service.send_to_all_users(
+                                                    await self.telegram_service.send_to_group(
                                                         message=f"*{symbol} Backtest Result:*\n\n{text}",
                                                         message_type="backtest",
+                                                        group_ids=self.group_id,
                                                     )
                                                 except Exception as e:
                                                     self.logger.error(
@@ -653,6 +658,7 @@ def load_config() -> TradingConfig:
     config_dict["log_level"] = getattr(
         logging, os.getenv("LOG_LEVEL").upper(), DEFAULT_LOG_LEVEL
     )
+    config_dict["group_id"] = os.getenv("TELEGRAM_GROUP_CHAT_ID")
     return TradingConfig(**config_dict)
 
 
