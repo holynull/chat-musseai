@@ -1,10 +1,10 @@
-# telegram_bot.py
+# telegram_bot.py (Enhanced with Button Menu)
 import asyncio
 import logging
 import json
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 from dotenv import load_dotenv
 
 load_dotenv(".env.telegram_bot")
@@ -15,182 +15,6 @@ class TelegramSubscriptionBot:
         self.bot_token = bot_token
         self.chat_storage_file = chat_storage_file
         self.logger = logging.getLogger(__name__)
-        self.application = None
-
-    async def set_bot_commands(self):
-        """Set bot commands that will appear in the menu button"""
-        commands = [
-            BotCommand("menu", "Display interactive menu"),
-            BotCommand("start", "Subscribe to trading signals"),
-            BotCommand("status", "Check subscription status"),
-            BotCommand("help", "Get help information"),
-            BotCommand("stop", "Unsubscribe"),
-        ]
-
-        try:
-            await self.application.bot.set_my_commands(commands)
-            self.logger.info("Bot commands set successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to set bot commands: {e}")
-
-    def create_main_menu(self) -> InlineKeyboardMarkup:
-        """Create simple inline keyboard menu"""
-        keyboard = [
-            [
-                InlineKeyboardButton("📊 Subscription Status", callback_data="action:status"),
-                InlineKeyboardButton("🔔 Subscribe", callback_data="action:subscribe"),
-            ],
-            [
-                InlineKeyboardButton("🔕 Unsubscribe", callback_data="action:unsubscribe"),
-                InlineKeyboardButton("❓ Help", callback_data="action:help"),
-            ],
-        ]
-        return InlineKeyboardMarkup(keyboard)
-
-    async def menu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /menu command - show inline keyboard menu"""
-        menu_markup = self.create_main_menu()
-
-        chat_type = (
-            "Group" if update.effective_chat.type in ["group", "supergroup"] else "Private"
-        )
-
-        await update.message.reply_text(
-            f"🤖 **Trading Signal Bot Menu**\n\n"
-            f"📱 Current Environment: {chat_type}\n"
-            f"👤 User: @{update.effective_user.username or 'Unknown'}\n\n"
-            f"Please select an operation:",
-            reply_markup=menu_markup,
-            parse_mode="Markdown",
-        )
-
-    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle inline keyboard button callbacks"""
-        query = update.callback_query
-        await query.answer()
-
-        action = query.data.split(":")[1]
-
-        if action == "status":
-            await self.handle_status_callback(query)
-        elif action == "subscribe":
-            await self.handle_subscribe_callback(query)
-        elif action == "unsubscribe":
-            await self.handle_unsubscribe_callback(query)
-        elif action == "help":
-            await self.handle_help_callback(query)
-
-    async def handle_status_callback(self, query):
-        """Handle status button click"""
-        chat_id = str(query.message.chat.id)
-        chat_ids = self.load_chat_ids()
-
-        if chat_id in chat_ids:
-            total_subscribers = len(chat_ids)
-            status_text = (
-                f"✅ **Subscription Status: ACTIVE**\n\n"
-                f"📊 Total Subscribers: {total_subscribers}\n"
-                f"🔔 Receiving signals: ETH, BTC\n"
-                f"⏰ Signal frequency: Every 15 minutes\n\n"
-                f"💡 Click buttons below for other operations"
-            )
-        else:
-            status_text = (
-                "❌ **Subscription Status: INACTIVE**\n\n"
-                "You are not currently subscribed to signal notifications.\n"
-                "Click '🔔 Subscribe' button to start receiving notifications."
-            )
-
-        await query.edit_message_text(
-            status_text, reply_markup=self.create_main_menu(), parse_mode="Markdown"
-        )
-
-    async def handle_subscribe_callback(self, query):
-        """Handle subscribe button click"""
-        chat_id = str(query.message.chat.id)
-        chat_ids = self.load_chat_ids()
-
-        if chat_id not in chat_ids:
-            chat_ids.append(chat_id)
-            self.save_chat_ids(chat_ids)
-
-            subscribe_text = (
-                "🎉 **Subscription Successful!**\n\n"
-                "✅ You have successfully subscribed to trading signal notifications\n"
-                "🔔 Will receive ETH, BTC trading signals\n"
-                "⏰ Signal frequency: Every 15 minutes\n"
-                "📱 Available in both group and private chat environments"
-            )
-            self.logger.info(f"User subscribed via menu: {chat_id}")
-        else:
-            subscribe_text = (
-                "📱 **Already Subscribed**\n\n"
-                "You are already subscribed to trading signal notifications.\n"
-                "If you need to unsubscribe, please click '🔕 Unsubscribe' button."
-            )
-
-        await query.edit_message_text(
-            subscribe_text, reply_markup=self.create_main_menu(), parse_mode="Markdown"
-        )
-
-    async def handle_unsubscribe_callback(self, query):
-        """Handle unsubscribe button click"""
-        chat_id = str(query.message.chat.id)
-        chat_ids = self.load_chat_ids()
-
-        if chat_id in chat_ids:
-            chat_ids.remove(chat_id)
-            self.save_chat_ids(chat_ids)
-
-            unsubscribe_text = (
-                "😢 **Unsubscription Successful**\n\n"
-                "You have unsubscribed from trading signal notifications.\n"
-                "To resubscribe, please click '🔔 Subscribe' button."
-            )
-            self.logger.info(f"User unsubscribed via menu: {chat_id}")
-        else:
-            unsubscribe_text = (
-                "❌ **Subscription Not Found**\n\n"
-                "You are not currently subscribed to notifications.\n"
-                "Click '🔔 Subscribe' button to start receiving notifications."
-            )
-
-        await query.edit_message_text(
-            unsubscribe_text,
-            reply_markup=self.create_main_menu(),
-            parse_mode="Markdown",
-        )
-
-    async def handle_help_callback(self, query):
-        """Handle help button click"""
-        help_text = """
-🤖 **Trading Signal Bot Help**
-
-**🎯 Main Features:**
-📈 Provides real-time ETH and BTC trading signals
-📊 Updates signals every 15 minutes
-🔔 Instant push notifications to groups and private chats
-
-**📱 Menu Description:**
-📊 Subscription Status - Check current subscription status and statistics
-🔔 Subscribe - Start receiving trading signal notifications
-🔕 Unsubscribe - Stop receiving all notifications
-❓ Help - Display this help information
-
-**⌨️ Command List:**
-/menu - Display interactive menu (recommended)
-/start - Quick subscribe
-/stop - Quick unsubscribe
-/status - Check status
-/help - Display help
-
-**🔧 Technical Support:**
-Contact administrator if you encounter any issues
-        """
-
-        await query.edit_message_text(
-            help_text, reply_markup=self.create_main_menu(), parse_mode="Markdown"
-        )
 
     def load_chat_ids(self) -> list:
         """Load chat IDs from storage"""
@@ -214,8 +38,42 @@ Contact administrator if you encounter any issues
             self.logger.error(f"Failed to save chat IDs: {e}")
             return False
 
+    def create_main_menu(self) -> InlineKeyboardMarkup:
+        """Create main menu with inline buttons"""
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 Check Status", callback_data="status"),
+                InlineKeyboardButton("❓ Help", callback_data="help")
+            ],
+            [
+                InlineKeyboardButton("🔕 Unsubscribe", callback_data="unsubscribe"),
+                InlineKeyboardButton("🔄 Refresh Menu", callback_data="refresh")
+            ]
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    def create_unsubscribe_menu(self) -> InlineKeyboardMarkup:
+        """Create unsubscribe confirmation menu"""
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Yes, Unsubscribe", callback_data="confirm_unsubscribe"),
+                InlineKeyboardButton("❌ Cancel", callback_data="main_menu")
+            ]
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    def create_subscribe_menu(self) -> InlineKeyboardMarkup:
+        """Create subscribe menu for non-subscribed users"""
+        keyboard = [
+            [
+                InlineKeyboardButton("🔔 Subscribe Now", callback_data="subscribe"),
+                InlineKeyboardButton("❓ Help", callback_data="help")
+            ]
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command"""
+        """Handle /start command with menu"""
         chat_id = str(update.effective_chat.id)
         chat_ids = self.load_chat_ids()
 
@@ -223,29 +81,172 @@ Contact administrator if you encounter any issues
             chat_ids.append(chat_id)
             self.save_chat_ids(chat_ids)
 
-            await update.message.reply_text(
+            welcome_text = (
                 "🎉 *Welcome to Trading Signal Bot!*\n\n"
                 "✅ You have been subscribed to receive trading signals and backtest results.\n\n"
-                "*💡 How to use:*\n"
-                "• Click the **Menu Button** 📋 in the chat\n"
-                "• Or send /menu command\n\n"
-                "*Available Commands:*\n"
-                "/menu - Display interactive menu (recommended)\n"
-                "/start - Subscribe to notifications\n"
-                "/stop - Unsubscribe from notifications\n"
-                "/status - Check your subscription status\n"
-                "/help - Show this help message",
-                parse_mode="Markdown",
+                "Use the menu below to manage your subscription:"
             )
-
             self.logger.info(f"New user subscribed: {chat_id}")
+            reply_markup = self.create_main_menu()
         else:
-            await update.message.reply_text(
+            welcome_text = (
+                "👋 *Welcome back!*\n\n"
                 "📱 You are already subscribed to trading signals!\n\n"
-                "Use /stop to unsubscribe or /status to check your subscription.",
+                "Use the menu below to manage your subscription:"
+            )
+            reply_markup = self.create_main_menu()
+
+        await update.message.reply_text(
+            welcome_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
+
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle all button callbacks"""
+        query = update.callback_query
+        await query.answer()
+        
+        chat_id = str(query.from_user.id)
+        chat_ids = self.load_chat_ids()
+        is_subscribed = chat_id in chat_ids
+
+        if query.data == "main_menu" or query.data == "refresh":
+            if is_subscribed:
+                text = "🏠 *Main Menu*\n\nYou are subscribed to trading signals. Choose an option:"
+                reply_markup = self.create_main_menu()
+            else:
+                text = "🏠 *Main Menu*\n\nYou are not subscribed. Would you like to subscribe?"
+                reply_markup = self.create_subscribe_menu()
+            
+            await query.edit_message_text(
+                text,
                 parse_mode="Markdown",
+                reply_markup=reply_markup
             )
 
+        elif query.data == "status":
+            if is_subscribed:
+                total_subscribers = len(chat_ids)
+                status_text = (
+                    f"✅ *Subscription Status: ACTIVE*\n\n"
+                    f"📊 Total Subscribers: {total_subscribers}\n"
+                    f"🔔 You will receive trading signals for: ETH, BTC\n"
+                    f"⏰ Signal frequency: Every 15 minutes\n\n"
+                    f"Use the menu below to manage your subscription:"
+                )
+            else:
+                status_text = (
+                    "❌ *Subscription Status: INACTIVE*\n\n"
+                    "You are not currently subscribed to notifications.\n"
+                    "Use the menu below to subscribe:"
+                )
+            
+            reply_markup = self.create_main_menu() if is_subscribed else self.create_subscribe_menu()
+            
+            await query.edit_message_text(
+                status_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+
+        elif query.data == "help":
+            help_text = """
+🤖 *Trading Signal Bot Help*
+
+This bot provides automated trading signals and backtest results for cryptocurrency pairs.
+
+*Features:*
+📈 Real-time trading signals for ETH and BTC
+📊 Backtest results for generated signals
+⏰ Automated updates every 15 minutes
+🔔 Instant notifications when signals are generated
+
+*How to use:*
+• Use the menu buttons to navigate
+• Subscribe to receive notifications
+• Check your status anytime
+• Unsubscribe when needed
+
+*Support:*
+If you encounter any issues, please contact the administrator.
+            """
+            
+            keyboard = [[InlineKeyboardButton("◀️ Back to Menu", callback_data="main_menu")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                help_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+
+        elif query.data == "subscribe":
+            if not is_subscribed:
+                chat_ids.append(chat_id)
+                self.save_chat_ids(chat_ids)
+                
+                subscribe_text = (
+                    "🎉 *Successfully Subscribed!*\n\n"
+                    "✅ You will now receive trading signals and backtest results.\n\n"
+                    "Welcome to our community of traders!"
+                )
+                self.logger.info(f"User subscribed via button: {chat_id}")
+            else:
+                subscribe_text = (
+                    "✅ *Already Subscribed!*\n\n"
+                    "You are already receiving trading signals.\n\n"
+                    "Use the menu below to manage your subscription:"
+                )
+            
+            await query.edit_message_text(
+                subscribe_text,
+                parse_mode="Markdown",
+                reply_markup=self.create_main_menu()
+            )
+
+        elif query.data == "unsubscribe":
+            if is_subscribed:
+                confirm_text = (
+                    "⚠️ *Confirm Unsubscribe*\n\n"
+                    "Are you sure you want to unsubscribe from trading signal notifications?\n\n"
+                    "You will no longer receive signals and backtest results."
+                )
+                await query.edit_message_text(
+                    confirm_text,
+                    parse_mode="Markdown",
+                    reply_markup=self.create_unsubscribe_menu()
+                )
+            else:
+                await query.edit_message_text(
+                    "❌ You are not currently subscribed to notifications.",
+                    parse_mode="Markdown",
+                    reply_markup=self.create_subscribe_menu()
+                )
+
+        elif query.data == "confirm_unsubscribe":
+            if is_subscribed:
+                chat_ids.remove(chat_id)
+                self.save_chat_ids(chat_ids)
+                
+                unsubscribe_text = (
+                    "😢 *Unsubscribed Successfully*\n\n"
+                    "You will no longer receive trading signal notifications.\n\n"
+                    "To re-subscribe, use the button below:"
+                )
+                self.logger.info(f"User unsubscribed via button: {chat_id}")
+                reply_markup = self.create_subscribe_menu()
+            else:
+                unsubscribe_text = "❌ You were not subscribed."
+                reply_markup = self.create_subscribe_menu()
+            
+            await query.edit_message_text(
+                unsubscribe_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+
+    # Keep original command handlers for backward compatibility
     async def stop_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stop command"""
         chat_id = str(update.effective_chat.id)
@@ -260,6 +261,7 @@ Contact administrator if you encounter any issues
                 "You will no longer receive trading signal notifications.\n\n"
                 "To re-subscribe, simply send /start anytime.",
                 parse_mode="Markdown",
+                reply_markup=self.create_subscribe_menu()
             )
             self.logger.info(f"User unsubscribed: {chat_id}")
         else:
@@ -267,6 +269,7 @@ Contact administrator if you encounter any issues
                 "❌ You are not currently subscribed to notifications.\n\n"
                 "Use /start to subscribe to trading signals.",
                 parse_mode="Markdown",
+                reply_markup=self.create_subscribe_menu()
             )
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -281,15 +284,17 @@ Contact administrator if you encounter any issues
                 f"📊 Total Subscribers: {total_subscribers}\n"
                 f"🔔 You will receive trading signals for: ETH, BTC\n"
                 f"⏰ Signal frequency: Every 15 minutes\n\n"
-                f"Use /stop to unsubscribe.",
+                f"Use the menu below to manage your subscription:",
                 parse_mode="Markdown",
+                reply_markup=self.create_main_menu()
             )
         else:
             await update.message.reply_text(
                 "❌ *Subscription Status: INACTIVE*\n\n"
                 "You are not currently subscribed to notifications.\n"
-                "Use /start to subscribe to trading signals.",
+                "Use the menu below to subscribe:",
                 parse_mode="Markdown",
+                reply_markup=self.create_subscribe_menu()
             )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -301,7 +306,7 @@ This bot provides automated trading signals and backtest results for cryptocurre
 
 *Available Commands:*
 /start - Subscribe to trading signal notifications
-/stop - Unsubscribe from notifications
+/stop - Unsubscribe from notifications  
 /status - Check your subscription status
 /help - Show this help message
 
@@ -315,61 +320,65 @@ This bot provides automated trading signals and backtest results for cryptocurre
 If you encounter any issues, please contact the administrator.
         """
 
-        await update.message.reply_text(help_text, parse_mode="Markdown")
+        await update.message.reply_text(
+            help_text, 
+            parse_mode="Markdown",
+            reply_markup=self.create_main_menu()
+        )
 
-    def setup_handlers(self):
-        """Setup all command and callback handlers"""
+    async def broadcast_signal(self, message: str, parse_mode: str = "Markdown"):
+        """Send trading signal to all subscribers"""
+        chat_ids = self.load_chat_ids()
+        successful_sends = 0
+        failed_sends = 0
+        
+        if not chat_ids:
+            self.logger.warning("No subscribers to send signals to")
+            return {"successful": 0, "failed": 0}
+
+        application = Application.builder().token(self.bot_token).build()
+        
+        for chat_id in chat_ids[:]:  # Create a copy to iterate safely
+            try:
+                await application.bot.send_message(
+                    chat_id=chat_id,
+                    text=message,
+                    parse_mode=parse_mode
+                )
+                successful_sends += 1
+                self.logger.info(f"Signal sent successfully to {chat_id}")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to send signal to {chat_id}: {e}")
+                failed_sends += 1
+                
+                # Remove inactive users (e.g., blocked bot, deleted account)
+                if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
+                    chat_ids.remove(chat_id)
+                    self.logger.info(f"Removed inactive user: {chat_id}")
+        
+        # Save updated chat_ids (removed inactive users)
+        if failed_sends > 0:
+            self.save_chat_ids(chat_ids)
+        
+        self.logger.info(f"Broadcast complete: {successful_sends} successful, {failed_sends} failed")
+        return {"successful": successful_sends, "failed": failed_sends}
+
+    def run(self):
+        """Start the subscription bot"""
+        application = Application.builder().token(self.bot_token).build()
+
         # Add command handlers
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("stop", self.stop_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("menu", self.menu_command))
-
-        # Add callback query handler for inline keyboard buttons
-        self.application.add_handler(CallbackQueryHandler(self.button_callback))
-
-    async def initialize(self):
-        """Initialize the bot application"""
-        self.application = Application.builder().token(self.bot_token).build()
+        application.add_handler(CommandHandler("start", self.start_command))
+        application.add_handler(CommandHandler("stop", self.stop_command))
+        application.add_handler(CommandHandler("status", self.status_command))
+        application.add_handler(CommandHandler("help", self.help_command))
         
-        # Setup handlers
-        self.setup_handlers()
-        
-        # Initialize the application
-        await self.application.initialize()
-        
-        # Set bot commands for menu button
-        await self.set_bot_commands()
+        # Add callback query handler for buttons
+        application.add_handler(CallbackQueryHandler(self.button_callback))
 
-    async def start_polling(self):
-        """Start the bot with polling"""
-        try:
-            await self.initialize()
-            self.logger.info("Telegram subscription bot starting...")
-            
-            # Start polling
-            await self.application.start()
-            await self.application.updater.start_polling()
-            
-            self.logger.info("Bot is now polling for updates...")
-            
-            # Keep the bot running
-            await self.application.updater.idle()
-            
-        except Exception as e:
-            self.logger.error(f"Error starting bot: {e}")
-            raise
-        finally:
-            # Cleanup
-            if self.application:
-                await self.application.updater.stop()
-                await self.application.stop()
-                await self.application.shutdown()
-
-    async def run(self):
-        """Main run method - simplified version"""
-        await self.start_polling()
+        self.logger.info("Telegram subscription bot starting...")
+        application.run_polling()
 
 
 def main():
@@ -385,15 +394,10 @@ def main():
         return
 
     bot = TelegramSubscriptionBot(bot_token)
-    
-    # Use asyncio.run for clean event loop management
     try:
-        asyncio.run(bot.run())
+        bot.run()
     except KeyboardInterrupt:
-        print("\nBot stopped by user")
-    except Exception as e:
-        print(f"Bot encountered an error: {e}")
-        logging.error(f"Bot error: {e}")
+        print("Bot stopped by user")
 
 
 if __name__ == "__main__":
