@@ -59,7 +59,7 @@ def call_model_trading_strategy(
     Main LLM node for generating trading strategies.
     Uses enhanced prompt and specialized tools for short-term trading analysis.
     """
-    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     system_message = system_template.format_messages(
         time_zone=state["time_zone"],
     )
@@ -76,7 +76,7 @@ async def acall_model_trading_strategy(
     """
     Async version of the main LLM node for trading strategy generation.
     """
-    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools)
+    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
     system_message = system_template.format_messages(
         time_zone=state["time_zone"],
     )
@@ -120,7 +120,7 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
 from langgraph.prebuilt import ToolNode
 
 tool_node = ToolNode(
-    tools=tools + generate_routing_tools, name="node_tools_trading_signal_backtest"
+    tools=tools + generate_routing_tools(), name="node_tools_trading_signal_backtest"
 )
 
 from langgraph.utils.runnable import RunnableCallable
