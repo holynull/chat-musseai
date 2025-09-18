@@ -218,7 +218,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 		let runing_id = ""
 
 		for await (const chunk of stream) {
-			console.log(chunk.data)
+			// console.log(chunk.data)
 			if (chunk.data.error) {
 				setMessages((prevMessages) => {
 					let pre_len = prevMessages.length
@@ -557,6 +557,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				}
 			}
 			if (chunk.data.event === "on_chain_end") {
+				console.log(chunk.data)
 				let node = chunk?.data?.name;//metadata?.langgraph_node;
 				if (
 					"node_extranct_relevant_content" === node

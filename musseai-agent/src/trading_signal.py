@@ -34,6 +34,7 @@ class TradingConfig:
     max_retries: int = 3
     retry_delay: int = 30  # seconds
     max_concurrent_symbols: int = 5  # NEW: Maximum concurrent symbol processing
+    enable_backtest_processing: bool = False
     log_level: int = logging.INFO
 
 
@@ -66,6 +67,8 @@ class TradingSignalScheduler:
         self.setup_telegram_service()
 
         self.group_id = config.group_id
+
+        self.enable_backtest_processing = config.enable_backtest_processing
 
     def setup_telegram_service(self):
         """Initialize Telegram notification service"""
@@ -393,30 +396,54 @@ class TradingSignalScheduler:
                                 .get("messages", [])
                             )
                             if len(messages) > 0 and isinstance(messages[-1], dict):
-                                content = cast(dict, messages[-1]).get("content", [])
-                                if len(content) > 0:
-                                    if content[0] and isinstance(content[0], dict):
-                                        text = cast(dict, content[0]).get("text", "")
-                                        if text != "":
-                                            self.logger.info(
-                                                f"{symbol}'s signal baktest result: \n{text}"
+                                # content = cast(dict, messages[-1]).get("content", [])
+                                content = cast(dict, messages[-1]).get("content", "")
+                                # if len(content) > 0:
+                                if content != "":
+                                    self.logger.info(
+                                        f"{symbol}'s signal baktest result: \n{content}"
+                                    )
+                                    # Send backtest result to Telegram
+                                    if (
+                                        self.telegram_service
+                                        and self.enable_backtest_processing
+                                    ):
+                                        try:
+                                            await self.telegram_service.send_to_group(
+                                                message=f"*{symbol} Backtest Result:*\n\n{content}",
+                                                message_type="backtest",
+                                                group_ids=self.group_id,
                                             )
-                                            # Send backtest result to Telegram
-                                            if self.telegram_service:
-                                                try:
-                                                    await self.telegram_service.send_to_group(
-                                                        message=f"*{symbol} Backtest Result:*\n\n{text}",
-                                                        message_type="backtest",
-                                                        group_ids=self.group_id,
-                                                    )
-                                                except Exception as e:
-                                                    self.logger.error(
-                                                        f"Failed to send Telegram notification for {symbol} backtest: {e}"
-                                                    )
-                                            else:
-                                                self.logger.warning(
-                                                    "Telegram service not available, skipping backtest notification"
-                                                )
+                                        except Exception as e:
+                                            self.logger.error(
+                                                f"Failed to send Telegram notification for {symbol} backtest: {e}"
+                                            )
+                                    else:
+                                        self.logger.warning(
+                                            "Telegram service not available, skipping backtest notification"
+                                        )
+                                    # if content[0] and isinstance(content[0], dict):
+                                    #     text = cast(dict, content[0]).get("text", "")
+                                    #     if text != "":
+                                    #         self.logger.info(
+                                    #             f"{symbol}'s signal baktest result: \n{text}"
+                                    #         )
+                                    #         # Send backtest result to Telegram
+                                    #         if self.telegram_service:
+                                    #             try:
+                                    #                 await self.telegram_service.send_to_group(
+                                    #                     message=f"*{symbol} Backtest Result:*\n\n{text}",
+                                    #                     message_type="backtest",
+                                    #                     group_ids=self.group_id,
+                                    #                 )
+                                    #             except Exception as e:
+                                    #                 self.logger.error(
+                                    #                     f"Failed to send Telegram notification for {symbol} backtest: {e}"
+                                    #                 )
+                                    #         else:
+                                    #             self.logger.warning(
+                                    #                 "Telegram service not available, skipping backtest notification"
+                                    #             )
                             else:
                                 self.logger.error(
                                     f"Can't get {symbol}'s backtest result from: \n{json.dumps(chunk.get('data',{}),indent=4)}"
@@ -659,6 +686,9 @@ def load_config() -> TradingConfig:
         logging, os.getenv("LOG_LEVEL").upper(), DEFAULT_LOG_LEVEL
     )
     config_dict["group_id"] = os.getenv("TELEGRAM_GROUP_CHAT_ID")
+    config_dict["enable_backtest_processing"] = (
+        os.getenv("ENABLE_BACKTEST_PROCESSING") == "True"
+    )
     return TradingConfig(**config_dict)
 
 

@@ -1,4 +1,4 @@
-system_prompt = """You are a cryptocurrency trading expert. Provide simple, direct trading signals.
+system_prompt = """You are a cryptocurrency trading expert in generating cryptocurrency trading signals and market analysis.
 
 Timezone: {time_zone}
 
