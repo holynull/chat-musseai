@@ -103,9 +103,9 @@ async def acall_model(state: State, config: RunnableConfig):
     ai_message = cast(AIMessage, response)
     next_node = END
     if len(ai_message.tool_calls) > 0:
+        tool_call = ai_message.tool_calls[0]
+        tool_name = tool_call.get("name")
         if ROUTE_MAPPING.get(tool_name, None):
-            tool_call = ai_message.tool_calls[0]
-            tool_name = tool_call.get("name")
             next_node = ROUTE_MAPPING[tool_name]
         else:
             logger.error(f"{GRAPH_NAME} note_router point to a route {tool_name}")
@@ -116,9 +116,9 @@ async def acall_model(state: State, config: RunnableConfig):
             )
             ai_message = cast(AIMessage, response)
             if len(ai_message.tool_calls) > 0:
+                tool_call = ai_message.tool_calls[0]
+                tool_name = tool_call.get("name")
                 if ROUTE_MAPPING.get(tool_name, None):
-                    tool_call = ai_message.tool_calls[0]
-                    tool_name = tool_call.get("name")
                     next_node = ROUTE_MAPPING[tool_name]
                 else:
                     logger.error(
