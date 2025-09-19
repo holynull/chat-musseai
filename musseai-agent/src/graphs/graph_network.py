@@ -83,6 +83,8 @@ system_template = SystemMessagePromptTemplate.from_template(system_prompt)
 
 async def acall_model(state: State, config: RunnableConfig):
     last_message = state["messages"][-1]
+
+    # Existing routing logic...
     if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
         next_node = ROUTE_MAPPING[last_message.name]
         logger.info(f"Node: {GRAPH_NAME}, goto {next_node}")
@@ -100,21 +102,25 @@ async def acall_model(state: State, config: RunnableConfig):
     response = await llm_configed.ainvoke(system_message + state["messages"])
     ai_message = cast(AIMessage, response)
     next_node = END
+
     if len(ai_message.tool_calls) > 0:
         tool_call = ai_message.tool_calls[0]
         tool_name = tool_call.get("name")
         if ROUTE_MAPPING.get(tool_name, None):
             next_node = ROUTE_MAPPING[tool_name]
+            logger.info(f"✅ Routing to: {next_node} for tool: {tool_name}")
         else:
-            logger.error(f"{GRAPH_NAME} note_router point to a route {tool_name}")
-            toolMessage = ToolMessage(
+            # Enhanced error handling with fallback
+            logger.error(f"❌ Invalid route: {tool_name}, attempting fallback")
+            fallback_message = ToolMessage(
                 name=tool_name,
                 tool_call_id=tool_call.id,
-                content=f"Error: The tool or function you are trying to use does not exist。`{tool_name}` does not exist.",
+                content=f"Routing error: '{tool_name}' not found. Please choose from available routes.",
                 status="error",
             )
+            # Try routing again with error context
             response = await llm_configed.ainvoke(
-                system_message + state["messages"] + [response, toolMessage]
+                system_message + state["messages"] + [response, fallback_message]
             )
             ai_message = cast(AIMessage, response)
             if ai_message.tool_calls and len(ai_message.tool_calls) > 0:
@@ -122,18 +128,15 @@ async def acall_model(state: State, config: RunnableConfig):
                 tool_name = tool_call.get("name")
                 if ROUTE_MAPPING.get(tool_name, None):
                     next_node = ROUTE_MAPPING[tool_name]
+                    logger.info(f"✅ Fallback routing to: {next_node}")
                 else:
-                    logger.error(
-                        f"{GRAPH_NAME} note_router point to a route {tool_name}"
-                    )
+                    logger.error(f"❌ Fallback failed for: {tool_name}")
                     next_node = END
     else:
         state["messages"] += [ai_message]
-    logger.info(f"Node: {GRAPH_NAME}, goto {next_node}, after llm handling.")
-    return Command(
-        goto=next_node,
-        update=state,
-    )
+
+    logger.info(f"Node: {GRAPH_NAME}, goto {next_node}")
+    return Command(goto=next_node, update=state)
 
 
 def call_model(state: State, config: RunnableConfig):
