@@ -296,7 +296,7 @@ class TradingSignalScheduler:
                         "content": f"""任务：分析对话历史中{symbol.lower()}的交易信号并执行相应操作
 
 执行步骤：
-1. 搜索对话历史中最近一次关于{symbol.lower()}的交易信号
+1. 找到对话历史中最近一次关于{symbol.lower()}的交易信号
 2. 提取交易号、交易类型、价格、时间等关键信息
 
 条件处理：
