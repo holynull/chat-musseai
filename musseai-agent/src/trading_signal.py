@@ -15,6 +15,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 from loggers import DEFAULT_LOG_LEVEL
 from telegram_service import TelegramNotificationService
+import traceback
 
 # Load environment configuration
 load_dotenv(".env.trading_signal")
@@ -271,6 +272,33 @@ class TradingSignalScheduler:
 
         return summary
 
+    def _parse_content(self, data: dict) -> str:
+        output = data.get("output", {})
+        messages = output.get("messages", [])
+        if len(messages) == 0:
+            self.logger.error(f"Messages len is : 0")
+            return None
+        if not isinstance(messages[-1], dict):
+            self.logger.error(f"Last message is not a ditc. {messages[-1]}")
+            return None
+        content = cast(dict, messages[-1]).get("content")
+        content_txt = ""
+        if content and isinstance(content, str):
+            content_txt = content
+        elif content and isinstance(content, list):
+            if not content or len(content) == 0:
+                self.logger.error("content len is 0 or is None")
+                return None
+            text = cast(dict, content[0]).get("text", "")
+            content_txt = text
+        else:
+            self.logger.error("content is None or type unknow.")
+            return None
+        if content_txt == "":
+            self.logger.error(f"text is None or empty string.")
+            return None
+        return content_txt
+
     async def execute_signal_for_symbol_async(
         self, symbol: str, retries: int = 0
     ) -> Dict[str, Any]:
@@ -349,7 +377,9 @@ class TradingSignalScheduler:
                     #     self.logger.info(
                     #         f"{symbol} - {chunk.get('event','')}: {str(chunk.get('data',{}))[:200]}..."
                     #     )
-                    if chunk.get("event", "") == "on_chain_start":
+                    event = chunk.get("event", "")
+                    data = chunk.get("data", {})
+                    if event and event == "on_chain_start":
                         if chunk.get("name", "") == "graph_trading_signal":
                             if run_id_trading_signal == "":
                                 run_id_trading_signal = chunk.get("run_id", "")
@@ -362,108 +392,57 @@ class TradingSignalScheduler:
                                 self.logger.info(
                                     f"Catch graph_signal_backtest run_id:{run_id_signal_backtest}"
                                 )
-                    if chunk.get("event", "") == "on_chain_end":
+                    if event == "on_chain_end":
                         if (
                             chunk.get("name", "") == "graph_trading_signal"
                             and chunk.get("run_id", "run_id") == run_id_trading_signal
                         ):
-                            messages = (
-                                chunk.get("data", {})
-                                .get("output", {})
-                                .get("messages", [])
-                            )
-                            if len(messages) > 0 and isinstance(messages[-1], dict):
-                                content = cast(dict, messages[-1]).get("content", [])
-                                if len(content) > 0:
-                                    if content[0] and isinstance(content[0], dict):
-                                        text = cast(dict, content[0]).get("text", "")
-                                        if text != "":
-                                            self.logger.info(
-                                                f"{symbol}'s new signal: \n{text}"
-                                            )
-                                            # Send trading signal to Telegram
-                                            if self.telegram_service:
-                                                try:
-                                                    await self.telegram_service.send_to_group(
-                                                        message=f"*{symbol} Trading Signal:*\n\n{text}",
-                                                        message_type="signal",
-                                                        group_ids=self.group_id,
-                                                    )
-                                                except Exception as e:
-                                                    self.logger.error(
-                                                        f"Failed to send Telegram notification for {symbol} signal: {e}"
-                                                    )
-                                            else:
-                                                self.logger.warning(
-                                                    "Telegram service not available, skipping notification"
-                                                )
+                            self.logger.info("Get a genreted trading signal.")
+                            content = self._parse_content(data)
+                            self.logger.info(f"{symbol}'s new signal: \n{content}")
+                            # Send trading signal to Telegram
+                            if self.telegram_service:
+                                try:
+                                    await self.telegram_service.send_to_group(
+                                        message=f"*{symbol} Trading Signal:*\n\n{content}",
+                                        message_type="signal",
+                                        group_ids=self.group_id,
+                                    )
+                                except Exception as e:
+                                    self.logger.error(
+                                        f"Failed to send Telegram notification for {symbol} signal: {e}"
+                                    )
+                                    self.logger.debug(f"{traceback.format_exc()}")
                             else:
-                                self.logger.error(
-                                    f"Can't get {symbol}'s trading signal from: \n{json.dumps(chunk.get('data',{}),indent=4)}"
+                                self.logger.warning(
+                                    "Telegram service not available, skipping notification"
                                 )
                         if (
                             chunk.get("name", "") == "graph_signal_backtest"
                             and chunk.get("run_id", "run_id") == run_id_signal_backtest
                         ):
-                            messages = (
-                                chunk.get("data", {})
-                                .get("output", {})
-                                .get("messages", [])
-                            )
-                            if len(messages) > 0 and isinstance(messages[-1], dict):
-                                # content = cast(dict, messages[-1]).get("content", [])
-                                content = cast(dict, messages[-1]).get("content", "")
-                                # if len(content) > 0:
-                                if content != "":
-                                    self.logger.info(
-                                        f"{symbol}'s signal baktest result: \n{content}"
+                            self.logger.info("Get a backtest result.")
+                            content = self._parse_content(data)
+                            self.logger.info(f"{symbol}'s backtest result: \n{content}")
+                            if (
+                                self.telegram_service
+                                and self.enable_backtest_processing
+                            ):
+                                try:
+                                    await self.telegram_service.send_to_group(
+                                        message=f"*{symbol} Backtest Result:*\n\n{content}",
+                                        message_type="backtest",
+                                        group_ids=self.group_id,
                                     )
-                                    # Send backtest result to Telegram
-                                    if (
-                                        self.telegram_service
-                                        and self.enable_backtest_processing
-                                    ):
-                                        try:
-                                            await self.telegram_service.send_to_group(
-                                                message=f"*{symbol} Backtest Result:*\n\n{content}",
-                                                message_type="backtest",
-                                                group_ids=self.group_id,
-                                            )
-                                        except Exception as e:
-                                            self.logger.error(
-                                                f"Failed to send Telegram notification for {symbol} backtest: {e}"
-                                            )
-                                    else:
-                                        self.logger.warning(
-                                            "Telegram service not available, skipping backtest notification"
-                                        )
-                                    # if content[0] and isinstance(content[0], dict):
-                                    #     text = cast(dict, content[0]).get("text", "")
-                                    #     if text != "":
-                                    #         self.logger.info(
-                                    #             f"{symbol}'s signal baktest result: \n{text}"
-                                    #         )
-                                    #         # Send backtest result to Telegram
-                                    #         if self.telegram_service:
-                                    #             try:
-                                    #                 await self.telegram_service.send_to_group(
-                                    #                     message=f"*{symbol} Backtest Result:*\n\n{text}",
-                                    #                     message_type="backtest",
-                                    #                     group_ids=self.group_id,
-                                    #                 )
-                                    #             except Exception as e:
-                                    #                 self.logger.error(
-                                    #                     f"Failed to send Telegram notification for {symbol} backtest: {e}"
-                                    #                 )
-                                    #         else:
-                                    #             self.logger.warning(
-                                    #                 "Telegram service not available, skipping backtest notification"
-                                    #             )
+                                except Exception as e:
+                                    self.logger.error(
+                                        f"Failed to send Telegram notification for {symbol} backtest: {e}"
+                                    )
+                                    self.logger.debug(f"{traceback.format_exc()}")
                             else:
-                                self.logger.error(
-                                    f"Can't get {symbol}'s backtest result from: \n{json.dumps(chunk.get('data',{}),indent=4)}"
+                                self.logger.warning(
+                                    "Telegram service not available, skipping backtest notification"
                                 )
-
             result["status"] = "SUCCESS"
             result["end_time"] = datetime.now()
             self.logger.info(
@@ -476,6 +455,7 @@ class TradingSignalScheduler:
             self.logger.error(
                 f"Error executing signal for {symbol} (attempt {retries + 1}): {e}"
             )
+            self.logger.debug(f"{traceback.format_exc()}")
 
             # If thread-related error, try to rebuild thread
             if "thread" in str(e).lower() and retries == 0:

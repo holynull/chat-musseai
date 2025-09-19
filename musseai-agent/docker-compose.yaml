@@ -94,7 +94,6 @@ services:
             - ./telegram_users.json:/app/telegram_users.json
         environment:
             - PYTHONPATH=/app/src
-            - LOG_LEVEL=INFO
         networks:
             - default
         healthcheck:
@@ -118,7 +117,6 @@ services:
             - ./telegram_users.json:/app/telegram_users.json
         environment:
             - PYTHONPATH=/app/src
-            - LOG_LEVEL=INFO
         networks:
             - default
         healthcheck:
