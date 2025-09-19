@@ -103,9 +103,14 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)
     system_message = system_template.format_messages()
     human = HumanMessage(
-        """Please analyze whether a new trading signal needs to be generated based on current market conditions and data.
+        """Please analyze the backtest results provided above and evaluate whether a new trading signal needs to be generated.
 
-If signal regeneration is required, conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
+Assessment criteria:
+- Review performance metrics (returns, drawdown, win rate, etc.)
+- Evaluate signal effectiveness and market adaptation
+- Determine if current strategy parameters require adjustment
+
+If signal regeneration is required based on backtest analysis, conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
 
 Important: Respond in the same language as the previous user's message, regardless of the language used in this prompt.
 """
