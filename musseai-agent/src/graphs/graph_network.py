@@ -109,10 +109,14 @@ async def acall_model(state: State, config: RunnableConfig):
             next_node = ROUTE_MAPPING[tool_name]
         else:
             logger.error(f"{GRAPH_NAME} note_router point to a route {tool_name}")
+            toolMessage = ToolMessage(
+                name=tool_name,
+                tool_call_id=tool_call.id,
+                content=f"Error: The tool or function you are trying to use does not exist。`{tool_name}` does not exist.",
+                status="error",
+            )
             response = await llm_configed.ainvoke(
-                system_message
-                + state["messages"]
-                + [response, AIMessage("Sorry, I returned a wrong tool name!")]
+                system_message + state["messages"] + [response, toolMessage]
             )
             ai_message = cast(AIMessage, response)
             if ai_message.tool_calls and len(ai_message.tool_calls) > 0:
