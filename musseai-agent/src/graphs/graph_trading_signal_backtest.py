@@ -103,9 +103,20 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)
     system_message = system_template.format_messages()
     human = HumanMessage(
-        """Do you need to generate a new trading signal? 
-        If so, please clearly state at the end that the signal needs to be regenerated.
-        Also, please answer this question using the language of the previous user, regardless of the language I use now."""
+        """Task: Evaluate current trading conditions and determine if signal regeneration is necessary.
+
+Analysis Requirements:
+- Assess market volatility, trends, and key indicators
+- Compare current conditions with existing signal parameters
+- Consider time elapsed since last signal generation
+
+Output Format:
+- Provide analysis in the same language as the previous user
+- If regeneration needed, end with: "**SIGNAL REGENERATION REQUIRED**"
+- If not needed, end with: "**CURRENT SIGNAL VALID**"
+
+Language Rule: Match the language of the immediately preceding user message, not this prompt.
+"""
     )
     # last_ai_message=cast(AIMessage,state["messages"][-1])
     response = cast(
