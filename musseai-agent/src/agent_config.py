@@ -68,21 +68,6 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         graph_name="graph_search",
         required_env_vars=["GOOGLE_API_KEY", "GOOGLE_CSE_ID"],
     ),
-    "quote": AgentConfig(
-        name="Cryptocurrency Market Analysis Expert",
-        description="Expert in cryptocurrency market analysis and price quotations",
-        capabilities=[
-            "Retrieves the latest cryptocurrency quotation data from CoinMarketCap API",
-            "Retrieves detailed metadata and information about a cryptocurrency from CoinMarketCap API",
-            "Analyzes trading signals for cryptocurrency pairs against USDT using TradingView technical analysis",
-            "Retrieves the latest content including news, trending coins, and educational materials",
-            "Retrieves trending tokens based on community activity",
-            "Provides market analysis and trading insights",
-        ],
-        graph_module="graphs.graph_quote",
-        graph_name="graph_quote",
-        required_env_vars=["COINMARKETCAP_API_KEY", "TRADINGVIEW_API_KEY"],
-    ),
     "image": AgentConfig(
         name="Text-to-Image Generation Expert",
         description="Specialist in generating images from textual descriptions",
