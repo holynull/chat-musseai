@@ -513,28 +513,48 @@ class TelegramNotificationService:
         except Exception as e:
             self.logger.error(f"Failed to cleanup invalid chat IDs: {e}")
 
+    def _convert_markdown_titles(self, text: str) -> str:
+        """Convert Markdown titles with multi-level indentation support"""
+        import re
+        
+        # Convert ### (h3) to bold format with more indentation
+        text = re.sub(r'^###\s+(.+)$', r'      ▫ *\1*', text, flags=re.MULTILINE)
+        
+        # Convert ## (h2) to bold format with indentation
+        text = re.sub(r'^##\s+(.+)$', r'    ▪ *\1*', text, flags=re.MULTILINE)
+        
+        # Convert # (h1) to bold format
+        text = re.sub(r'^#\s+(.+)$', r'🔶 *\1*', text, flags=re.MULTILINE)
+        
+        return text
+
+
     def format_message(self, text: str, message_type: str) -> str:
         """Format message with appropriate template"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-        
+
+        # Convert Markdown titles to Telegram-compatible format
+        formatted_text = self._convert_markdown_titles(text)
+
         if message_type == "signal":
             header = "🔔 *New Trading Signal*"
         elif message_type == "backtest":
             header = "📊 *Backtest Result*"
         else:
             header = "📈 *Trading Update*"
-        
+
         formatted_message = f"""
-{header}
-⏰ *Time:* {timestamp}
+    {header}
+    ⏰ *Time:* {timestamp}
 
-{text}
+    {formatted_text}
 
----
-_Automated Trading Signal System_
+    ---
+    _Automated Trading Signal System_
         """.strip()
-        
+
         return formatted_message
+
 
     # ✨ NEW: Health check and diagnostics method
     async def health_check(self) -> Dict[str, Any]:
