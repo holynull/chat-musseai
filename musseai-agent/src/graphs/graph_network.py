@@ -84,24 +84,24 @@ system_template = SystemMessagePromptTemplate.from_template(system_prompt)
 def generate_routing_information() -> str:
     """
     Generate comprehensive routing information including route mapping and agent capabilities.
-    
+
     Returns:
         str: Formatted routing information for fallback messages
     """
     routing_info = []
-    
+
     # Add header
     routing_info.append("=== AVAILABLE ROUTING INFORMATION ===")
     routing_info.append("")
-    
+
     # Add route mapping table
     routing_info.append("ROUTE MAPPING TABLE:")
     for tool_name, graph_name in ROUTE_MAPPING.items():
         routing_info.append(f"  • {tool_name} → {graph_name}")
-    
+
     routing_info.append("")
     routing_info.append("EXPERT AGENTS AND CAPABILITIES:")
-    
+
     # Add detailed agent capabilities
     for agent_id, config in AGENT_CONFIGS.items():
         routing_info.append(f"\n[{agent_id.upper()}] - {config.name}")
@@ -109,10 +109,10 @@ def generate_routing_information() -> str:
         routing_info.append("Capabilities:")
         for capability in config.capabilities:
             routing_info.append(f"  - {capability}")
-    
+
     routing_info.append("")
     routing_info.append("=== END ROUTING INFORMATION ===")
-    
+
     return "\n".join(routing_info)
 
 
@@ -146,27 +146,32 @@ async def acall_model(state: State, config: RunnableConfig):
             logger.info(f"✅ Routing to: {next_node} for tool: {tool_name}")
         else:
             # Enhanced error handling with comprehensive fallback information
-            logger.error(f"❌ Invalid route: {tool_name}, attempting fallback with full routing info")
-            
+            logger.error(
+                f"❌ Invalid route: {tool_name}, attempting fallback with full routing info"
+            )
+
             # Generate comprehensive routing information
             routing_info = generate_routing_information()
-            
+
             fallback_content = f"""Routing error: '{tool_name}' not found. Please choose from available routes.
 
 {routing_info}
 
 Please analyze the user's request and select the most appropriate routing tool from the available options above."""
-            
-            fallback_message = ToolMessage(
+
+            tool_message = ToolMessage(
                 name=tool_name,
                 tool_call_id=tool_call.get("id", ""),
-                content=fallback_content,
+                content=f"Routing error: '{tool_name}' not found.",
                 status="error",
             )
-            
+            fallback_message = HumanMessage(content=fallback_content)
+
             # Try routing again with enhanced error context
             response = await llm_configed.ainvoke(
-                system_message + state["messages"] + [response, fallback_message]
+                system_message
+                + state["messages"]
+                + [response, tool_message, fallback_message]
             )
             ai_message = cast(AIMessage, response)
             if ai_message.tool_calls and len(ai_message.tool_calls) > 0:
