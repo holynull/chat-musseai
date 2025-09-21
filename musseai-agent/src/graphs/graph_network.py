@@ -21,7 +21,7 @@ from langchain_core.messages import (
 from langgraph.utils.runnable import RunnableCallable
 from langgraph.types import Command
 from tools.tools_agent_router import tools as tools_router
-from agent_config import ROUTE_MAPPING
+from agent_config import ROUTE_MAPPING, AGENT_CONFIGS
 
 from prompts.prompt_chatbot import system_prompt
 
@@ -55,7 +55,7 @@ llm = ChatAnthropic(
     model="claude-sonnet-4-20250514",
     # model="claude-3-5-haiku-latest",
     max_tokens=4096,
-    temperature=0.7,
+    temperature=0.3,
     # anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
     streaming=True,
     stream_usage=True,
@@ -79,6 +79,41 @@ class State(TypedDict):
 graph_builder = StateGraph(State)
 
 system_template = SystemMessagePromptTemplate.from_template(system_prompt)
+
+
+def generate_routing_information() -> str:
+    """
+    Generate comprehensive routing information including route mapping and agent capabilities.
+    
+    Returns:
+        str: Formatted routing information for fallback messages
+    """
+    routing_info = []
+    
+    # Add header
+    routing_info.append("=== AVAILABLE ROUTING INFORMATION ===")
+    routing_info.append("")
+    
+    # Add route mapping table
+    routing_info.append("ROUTE MAPPING TABLE:")
+    for tool_name, graph_name in ROUTE_MAPPING.items():
+        routing_info.append(f"  • {tool_name} → {graph_name}")
+    
+    routing_info.append("")
+    routing_info.append("EXPERT AGENTS AND CAPABILITIES:")
+    
+    # Add detailed agent capabilities
+    for agent_id, config in AGENT_CONFIGS.items():
+        routing_info.append(f"\n[{agent_id.upper()}] - {config.name}")
+        routing_info.append(f"Description: {config.description}")
+        routing_info.append("Capabilities:")
+        for capability in config.capabilities:
+            routing_info.append(f"  - {capability}")
+    
+    routing_info.append("")
+    routing_info.append("=== END ROUTING INFORMATION ===")
+    
+    return "\n".join(routing_info)
 
 
 async def acall_model(state: State, config: RunnableConfig):
@@ -110,15 +145,26 @@ async def acall_model(state: State, config: RunnableConfig):
             next_node = ROUTE_MAPPING[tool_name]
             logger.info(f"✅ Routing to: {next_node} for tool: {tool_name}")
         else:
-            # Enhanced error handling with fallback
-            logger.error(f"❌ Invalid route: {tool_name}, attempting fallback")
+            # Enhanced error handling with comprehensive fallback information
+            logger.error(f"❌ Invalid route: {tool_name}, attempting fallback with full routing info")
+            
+            # Generate comprehensive routing information
+            routing_info = generate_routing_information()
+            
+            fallback_content = f"""Routing error: '{tool_name}' not found. Please choose from available routes.
+
+{routing_info}
+
+Please analyze the user's request and select the most appropriate routing tool from the available options above."""
+            
             fallback_message = ToolMessage(
                 name=tool_name,
                 tool_call_id=tool_call.get("id", ""),
-                content=f"Routing error: '{tool_name}' not found. Please choose from available routes.",
+                content=fallback_content,
                 status="error",
             )
-            # Try routing again with error context
+            
+            # Try routing again with enhanced error context
             response = await llm_configed.ainvoke(
                 system_message + state["messages"] + [response, fallback_message]
             )
@@ -128,7 +174,7 @@ async def acall_model(state: State, config: RunnableConfig):
                 tool_name = tool_call.get("name")
                 if ROUTE_MAPPING.get(tool_name, None):
                     next_node = ROUTE_MAPPING[tool_name]
-                    logger.info(f"✅ Fallback routing to: {next_node}")
+                    logger.info(f"✅ Fallback routing successful to: {next_node}")
                 else:
                     logger.error(f"❌ Fallback failed for: {tool_name}")
                     next_node = END
