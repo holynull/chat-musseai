@@ -102,12 +102,21 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
     - Match the user's communication style
 
     ## Assessment Criteria:
-    - Review performance metrics (returns, drawdown, win rate, etc.)
-    - Evaluate signal effectiveness and market adaptation
-    - Determine if current strategy parameters require adjustment
+    1. **Signal Status Check**: 
+       - Check if current trading signal has been completed (all positions closed)
+       - If signal is completed, new signal generation is required
+    
+    2. **Performance Analysis**: 
+       - Review performance metrics (returns, drawdown, win rate, etc.)
+       - Evaluate signal effectiveness and market adaptation
+       - Determine if current strategy parameters require adjustment
+    
+    3. **Market Conditions**:
+       - Assess if market conditions have changed significantly
+       - Evaluate if current strategy remains suitable
 
     ## Response Format:
-    If signal regeneration is required, conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
+    If signal regeneration is required (due to completion OR poor performance), conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
     If no regeneration is needed, simply explain why the current signal is adequate.
     
     Be clear and decisive in your analysis.
@@ -118,16 +127,27 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
         system_message = system_template.format_messages()
 
         human = HumanMessage(
-            """Please analyze the backtest results provided above and evaluate whether a new trading signal needs to be generated.
+            """Please analyze the backtest results and current trading status to evaluate whether a new trading signal needs to be generated.
 
 Assessment criteria:
-- Review performance metrics (returns, drawdown, win rate, etc.)
-- Evaluate signal effectiveness and market adaptation
-- Determine if current strategy parameters require adjustment
+1. **Signal Completion Status**: 
+   - Check if the current trading signal has been completed (all positions closed)
+   - If completed, signal regeneration is automatically required
 
-If signal regeneration is required based on backtest analysis, conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
+2. **Performance Evaluation**: 
+   - Review performance metrics (returns, drawdown, win rate, etc.)
+   - Evaluate signal effectiveness and market adaptation
+   - Determine if current strategy parameters require adjustment
 
-Important: Respond in the same language as the previous user's message, regardless of the language used in this prompt.
+3. **Market Adaptation**:
+   - Assess if market conditions have changed significantly
+   - Evaluate if current strategy remains suitable for current market
+
+**Important**: If the trading signal has been completed (all trades finished), you MUST conclude with "**SIGNAL REGENERATION REQUIRED**" regardless of performance.
+
+For ongoing signals, base your decision on performance analysis and market conditions.
+
+Respond in the same language as the previous user's message, regardless of the language used in this prompt.
 """
         )
 
@@ -143,6 +163,7 @@ Important: Respond in the same language as the previous user's message, regardle
 
         if needs_regeneration:
             # Return the analysis message for regeneration workflow
+            logger.info("Signal regeneration required based on analysis")
             return {"messages": [HumanMessage(content=response.content)]}
         else:
             # No regeneration needed, return empty messages
