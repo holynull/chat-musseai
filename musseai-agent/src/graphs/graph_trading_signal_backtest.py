@@ -11,6 +11,7 @@ from langchain_core.runnables import (
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
+from loggers import logger
 
 GRAPH_NAME = "graph_signal_backtest"
 
@@ -84,9 +85,15 @@ async def acall_model_trading_strategy(
 
 
 async def judgement_regenerate_signals(state: TradingStrategyGraphState):
-    # llm_with_tools = _llm.bind_tools(tools)
+    """
+    Analyze backtest results and determine if signal regeneration is needed.
+
+    Returns:
+        - {"messages": []} if no regeneration needed
+        - {"messages": [HumanMessage]} if regeneration required
+    """
     system_prompt = """
-    You are a cryptocurrency trading expert. Provide simple, direct trading signals.
+    You are a cryptocurrency trading expert. Analyze the provided backtest results and determine if a new trading signal needs to be generated.
 
     ## Language Rules:
     - If user writes in Chinese → respond in Chinese
@@ -94,12 +101,24 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
     - If user writes in other languages → respond in that language
     - Match the user's communication style
 
-    If regenerating signal is necessary, regenerate the new signal automatically.
+    ## Assessment Criteria:
+    - Review performance metrics (returns, drawdown, win rate, etc.)
+    - Evaluate signal effectiveness and market adaptation
+    - Determine if current strategy parameters require adjustment
+
+    ## Response Format:
+    If signal regeneration is required, conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
+    If no regeneration is needed, simply explain why the current signal is adequate.
+    
+    Be clear and decisive in your analysis.
     """
-    system_template = SystemMessagePromptTemplate.from_template(system_prompt)
-    system_message = system_template.format_messages()
-    human = HumanMessage(
-        """Please analyze the backtest results provided above and evaluate whether a new trading signal needs to be generated.
+
+    try:
+        system_template = SystemMessagePromptTemplate.from_template(system_prompt)
+        system_message = system_template.format_messages()
+
+        human = HumanMessage(
+            """Please analyze the backtest results provided above and evaluate whether a new trading signal needs to be generated.
 
 Assessment criteria:
 - Review performance metrics (returns, drawdown, win rate, etc.)
@@ -110,15 +129,36 @@ If signal regeneration is required based on backtest analysis, conclude your res
 
 Important: Respond in the same language as the previous user's message, regardless of the language used in this prompt.
 """
-    )
-    # last_ai_message=cast(AIMessage,state["messages"][-1])
-    response = cast(
-        AIMessage,
-        await _llm.ainvoke(system_message + state["messages"] + [human]),
-    )
-    # last_ai_message = cast(AIMessage, state["messages"][-1])
-    # last_ai_message.content += response.content
-    return {"messages": [HumanMessage(content=response.content)]}
+        )
+
+        # Get LLM analysis
+        response = cast(
+            AIMessage,
+            await _llm.ainvoke(system_message + state["messages"] + [human]),
+        )
+
+        # Check if regeneration is required
+        response_content = response.content.upper() if response.content else ""
+        needs_regeneration = "**SIGNAL REGENERATION REQUIRED**" in response_content
+
+        if needs_regeneration:
+            # Return the analysis message for regeneration workflow
+            return {"messages": [HumanMessage(content=response.content)]}
+        else:
+            # No regeneration needed, return empty messages
+            logger.info("Signal regeneration not required based on backtest analysis")
+            return {"messages": []}
+
+    except Exception as e:
+        logger.error(f"Error in judgement_regenerate_signals: {str(e)}")
+        # On error, assume regeneration is needed for safety
+        return {
+            "messages": [
+                HumanMessage(
+                    content="Error occurred during analysis. Proceeding with signal regeneration for safety."
+                )
+            ]
+        }
 
 
 from langgraph.prebuilt import ToolNode

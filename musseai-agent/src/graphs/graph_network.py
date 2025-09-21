@@ -114,7 +114,7 @@ async def acall_model(state: State, config: RunnableConfig):
             logger.error(f"❌ Invalid route: {tool_name}, attempting fallback")
             fallback_message = ToolMessage(
                 name=tool_name,
-                tool_call_id=tool_call.id,
+                tool_call_id=tool_call.get("id", ""),
                 content=f"Routing error: '{tool_name}' not found. Please choose from available routes.",
                 status="error",
             )
