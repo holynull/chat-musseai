@@ -396,7 +396,7 @@ class TradingSignalScheduler:
                             content = self._parse_last_ai_content(data)
                             self.logger.info(f"{symbol}'s new signal: \n{content}")
                             # Send trading signal to Telegram
-                            if self.telegram_service:
+                            if content and self.telegram_service:
                                 try:
                                     await self.telegram_service.send_to_group(
                                         message=f"*{symbol} Trading Signal:*\n\n{content}",
@@ -420,7 +420,8 @@ class TradingSignalScheduler:
                             content = self._parse_last_ai_content(data)
                             self.logger.info(f"{symbol}'s backtest result: \n{content}")
                             if (
-                                self.telegram_service
+                                content
+                                and self.telegram_service
                                 and self.enable_backtest_processing
                             ):
                                 try:
