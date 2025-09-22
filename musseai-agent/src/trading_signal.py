@@ -213,7 +213,7 @@ class TradingSignalScheduler:
                 self.logger.error(f"Failed to create new thread for {symbol}: {e}")
                 raise
 
-    def rebuild_thread_if_needed(self, symbol: str) -> str:
+    def rebuild_thread_if_needed(self, symbol: str) -> tuple[str, bool]:
         """Rebuild thread if it's expired or doesn't exist (thread-safe)"""
         with self.threads_lock:
             # Check if thread exists and is still valid
@@ -224,16 +224,16 @@ class TradingSignalScheduler:
                     self.logger.debug(
                         f"Using existing thread for {symbol}: {thread_info.thread_id}"
                     )
-                    return thread_info.thread_id
+                    return thread_info.thread_id, False
                 else:
                     # Thread is expired, need to rebuild
                     self.logger.info(f"Rebuilding expired thread for {symbol}")
 
         # Delete and create new thread (outside the lock to avoid deadlock)
         self.delete_thread(symbol)
-        return self.create_new_thread(symbol)
+        return self.create_new_thread(symbol), True
 
-    def create_or_get_thread(self, symbol: str) -> str:
+    def create_or_get_thread(self, symbol: str) -> tuple[str, bool]:
         """Create or reuse thread for given symbol with 24-hour rebuild logic"""
         return self.rebuild_thread_if_needed(symbol)
 
@@ -319,9 +319,21 @@ class TradingSignalScheduler:
 
         try:
             # Get thread with automatic rebuild if needed
-            thread_id = self.create_or_get_thread(symbol)
+            thread_id, new_thread = self.create_or_get_thread(symbol)
             result["thread_id"] = thread_id
+            content = ""
+            if new_thread:
+                content = f"生成{symbol.lower()}的交易信号"
+            else:
+                content = f"""任务：分析对话历史中{symbol.lower()}的交易信号并执行相应操作
 
+执行步骤：
+1. 找到对话历史中最近一次关于{symbol.lower()}的交易信号
+2. 提取交易号、交易类型、价格、时间等关键信息
+
+条件处理：
+- 如找到历史交易信号：使用交易信号进行回测分析
+"""
             input_data = {
                 "messages": [
                     {
