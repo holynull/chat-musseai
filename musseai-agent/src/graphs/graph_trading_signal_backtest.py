@@ -166,14 +166,14 @@ Respond in the same language as the previous user's message, regardless of the l
         response_content = response.content.upper() if response.content else ""
         needs_regeneration = "**SIGNAL REGENERATION REQUIRED**" in response_content
 
-        if needs_regeneration:
-            # Return the analysis message for regeneration workflow
-            logger.info("Signal regeneration required based on analysis")
-            return {"messages": [HumanMessage(content=response.content)]}
-        else:
-            # No regeneration needed, return empty messages
-            logger.info("Signal regeneration not required based on backtest analysis")
-            return {"messages": [HumanMessage(content="OK. Thank you!")]}
+        # if needs_regeneration:
+        # Return the analysis message for regeneration workflow
+        logger.info("Signal regeneration required based on analysis")
+        return {"messages": [HumanMessage(content=response.content)]}
+        # else:
+        #     # No regeneration needed, return empty messages
+        #     logger.info("Signal regeneration not required based on backtest analysis")
+        #     return {"messages": [HumanMessage(content="OK. Thank you!")]}
 
     except Exception as e:
         logger.error(f"Error in judgement_regenerate_signals: {str(e)}")
