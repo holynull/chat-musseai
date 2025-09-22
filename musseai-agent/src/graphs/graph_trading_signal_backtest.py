@@ -223,6 +223,7 @@ def node_router(state: TradingStrategyGraphState):
         return Command(goto=node_llm.get_name(), update=state)
 
 
+graph_builder.add_node(node_router)
 graph_builder.add_edge(tool_node.get_name(), node_router.__name__)
 graph_builder.add_edge(START, node_llm.get_name())
 graph = graph_builder.compile()
