@@ -326,11 +326,7 @@ class TradingSignalScheduler:
                 "messages": [
                     {
                         "type": "human",
-                        "content": f"""任务：分析对话历史中{symbol.lower()}的交易信号并执行相应操作
-
-执行步骤：
-1. 找到对话历史中最近一次关于{symbol.lower()}的交易信号
-2. 提取交易号、交易类型、价格、时间等关键信息
+                        "content": f"""对上一个{symbol.lower()}的交易信号进行回测
 
 条件处理：
 - 如找到历史交易信号：使用交易信号进行回测分析
