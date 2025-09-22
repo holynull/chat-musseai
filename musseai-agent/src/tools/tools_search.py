@@ -35,7 +35,7 @@ def search_webpage(terms: str) -> str:
         - The function processes all result types uniformly for consistent output
     """
     try:
-        newsSearch = GoogleSerperAPIWrapper(type="search")
+        newsSearch = GoogleSerperAPIWrapper(type="search", k=5)
         results = newsSearch.results(terms)
         if "news" in results:
             results = results["news"]
@@ -94,7 +94,7 @@ def search_news(terms: str, tbs: str) -> str:
         - The returned JSON string can be parsed to access structured data
     """
     try:
-        newsSearch = GoogleSerperAPIWrapper(type="news", tbs=tbs)
+        newsSearch = GoogleSerperAPIWrapper(type="news", tbs=tbs, k=5)
         results = newsSearch.results(query=terms)
 
         if "news" in results:

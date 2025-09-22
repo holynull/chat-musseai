@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Annotated, List, Literal, cast
+from typing import Annotated, List, cast
 from agent_config import ROUTE_MAPPING, tools_condition
 from typing_extensions import TypedDict
 from langgraph.types import Command
@@ -18,11 +18,7 @@ from langgraph.utils.runnable import RunnableCallable
 from langchain_core.messages import HumanMessage
 from langchain_core.documents import Document
 from langchain_community.document_loaders import SpiderLoader
-from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import re
-from bs4 import BeautifulSoup
-from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import os
@@ -59,7 +55,6 @@ from tools.tools_search import (
 from tools.tools_agent_router import generate_routing_tools
 
 from langchain_core.prompts import SystemMessagePromptTemplate, ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.utils.runnable import RunnableCallable
@@ -144,131 +139,39 @@ chrome_options.add_argument("--headless")
 
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import logging
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import TimeoutException
 from loggers import logger
 
-
-def getHTMLChrome(url: str) -> str:
-    """useful when you need get the HTML of URL asynchronously. The input to this should be URL."""
-    logger.info(f"Access url use Chrome. {url}")
-
-    # 容器环境下的Chrome选项配置
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-plugins")
-    chrome_options.add_argument("--disable-images")
-    chrome_options.add_argument("--disable-javascript")
-    chrome_options.add_argument(
-        "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
-    )
-
-    driver_path = os.getenv("CHROME_DRIVER_PATH", "/chromedriver-linux64/chromedriver")
-    service = Service(executable_path=driver_path)
-
-    browser = webdriver.Chrome(service=service, options=chrome_options)
-    try:
-        # Get the web page content
-        browser.get(url=url)
-
-        # Wait for page to load completely (with timeout)
-        try:
-            WebDriverWait(browser, 15).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )
-        except TimeoutException:
-            logger.warning(f"Page load timeout for URL: {url}")
-
-        html_content = browser.page_source
-        soup = BeautifulSoup(html_content, "html.parser")
-        body = soup.find("body")
-
-        if not body:
-            logger.warning(f"No body tag found in the HTML from URL: {url}")
-            return html_content
-
-        # Remove unwanted tags
-        for tag in body.find_all(
-            [
-                "link",
-                "script",
-                "style",
-                "button",
-                "input",
-                "meta",
-                "iframe",
-                "img",
-                "noscript",
-                "svg",
-            ]
-        ):
-            tag.decompose()
-
-        # Clean up attributes
-        for tag in body.findAll(True):
-            tag.attrs = {
-                key: value
-                for key, value in tag.attrs.items()
-                if key not in ["class", "style"]
-            }
-
-        # Clean whitespace
-        clean_html = re.sub(r"(?m)^[\t ]+$", "", str(body))
-        return clean_html
-    except Exception as e:
-        logger.error(f"Error fetching HTML from {url}: {str(e)}")
-        return ""
-    finally:
-        browser.quit()
-
-
 from langchain_community.document_loaders import WebBaseLoader
+
+html2text = Html2TextTransformer()
 
 
 async def getDocumentFromLink(
     link: str, chunk_size: int, chunk_overlap: int
 ) -> List[Document]:
     """get documents from link."""
-    html = []
-    # try:
-    #     clean_html = await asyncio.to_thread(getHTMLChrome, link)
-    #     html = [Document(page_content=clean_html)]
-    # except Exception as e:
-    #     logger.error(f"Error loading {link}: {e}")
+    text = []
     try:
         loader = SpiderLoader(
             url=link,
             mode="scrape",  # if no API key is provided it looks for SPIDER_API_KEY in env
         )
         docs = await loader.aload()
-        html += docs
+        docs = html2text.transform_documents(documents=docs)
+        text = docs
     except Exception as e:
         logger.warning(e)
         loader = WebBaseLoader(web_paths=[link])
         html = await asyncio.to_thread(loader.load)
-    #     async for doc in loader.alazy_load():
-    #         html.append(doc)
+        text = html2text.transform_documents(html)
 
-    def split_documents(html):
+    def split_documents(text):
         return RecursiveCharacterTextSplitter(
             chunk_size=chunk_size, chunk_overlap=chunk_overlap
-        ).split_documents(html)
+        ).split_documents(text)
 
-    return await asyncio.to_thread(split_documents, html)
-    # 使用线程池执行同步文本分割操作，避免阻塞事件循环
-    # with ThreadPoolExecutor() as executor:
-    #     _split = await asyncio.get_event_loop().run_in_executor(
-    #         executor,
-    #         lambda: RecursiveCharacterTextSplitter(
-    #             chunk_size=chunk_size, chunk_overlap=chunk_overlap
-    #         ).split_documents(html),
-    #     )
+    return await asyncio.to_thread(split_documents, text)
 
 
 async def node_read_content(state: LinkRelaventContentState):

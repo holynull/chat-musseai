@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Optional
 
 import aiohttp
@@ -9,8 +10,8 @@ from typing_extensions import Literal
 from langchain.utils import get_from_dict_or_env
 from tradingview_ta import TA_Handler, Interval, Exchange
 
-
-class GoogleSerperAPIWrapper(BaseModel):
+@dataclass
+class GoogleSerperAPIWrapper:
     """Wrapper around the Serper.dev Google Search API.
 
     You can create a free API key at https://serper.dev.
@@ -26,22 +27,31 @@ class GoogleSerperAPIWrapper(BaseModel):
             google_serper = GoogleSerperAPIWrapper()
     """
 
-    k: int = 10
-    gl: str = "us"
-    hl: str = "en"
-    # "places" and "images" is available from Serper but not implemented in the
-    # parser of run(). They can be used in results()
-    type: Literal["news", "search", "places", "images"] = "search"
-    result_key_for_type: ClassVar[dict] = {
-        "news": "news",
-        "places": "places",
-        "images": "images",
-        "search": "organic",
-    }
+    def __init__(
+        self,
+        k: int = 10,
+        gl: str = "us",
+        hl: str = "en",
+        type: Literal["news", "search", "places", "images"] = "search",
+        tbs: str = None,
+    ):
 
-    tbs: Optional[str] = None
-    serper_api_key: Optional[str] = None
-    aiosession: Optional[aiohttp.ClientSession] = None
+        self.k: int = k
+        self.gl: str = gl
+        self.hl: str = hl
+        # "places" and "images" is available from Serper but not implemented in the
+        # parser of run(). They can be used in results()
+        self.type = type
+        self.result_key_for_type = {
+            "news": "news",
+            "places": "places",
+            "images": "images",
+            "search": "organic",
+        }
+
+        self.tbs = tbs
+        self.serper_api_key: Optional[str] = None
+        self.aiosession: Optional[aiohttp.ClientSession] = None
 
     class Config:
         """Configuration for this pydantic object."""
