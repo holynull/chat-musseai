@@ -1270,17 +1270,17 @@ def get_utc_time():
 
 # 更新工具列表
 tools = [
-    getLatestQuote,
-    get_trade_pair_and_exchanges,
-    get_indicators,
-    get_historical_klines,
+    # getLatestQuote,
+    # get_trade_pair_and_exchanges,
+    # get_indicators,
+    # get_historical_klines,
     # get_order_book,
     # get_recent_trades,
     # get_realtime_order_book,
     # get_realtime_trades,
     # get_volume_profile,
     backtest_trading_signal,
-    now,
-    convert_to_utc_time,
-    get_utc_time,
+    # now,
+    # convert_to_utc_time,
+    # get_utc_time,
 ]
