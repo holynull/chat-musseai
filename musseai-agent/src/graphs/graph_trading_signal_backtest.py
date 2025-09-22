@@ -173,7 +173,7 @@ Respond in the same language as the previous user's message, regardless of the l
         else:
             # No regeneration needed, return empty messages
             logger.info("Signal regeneration not required based on backtest analysis")
-            return {"messages": []}
+            return {"messages": [HumanMessage(content="OK. Thank you!")]}
 
     except Exception as e:
         logger.error(f"Error in judgement_regenerate_signals: {str(e)}")
