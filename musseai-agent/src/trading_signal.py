@@ -326,9 +326,7 @@ class TradingSignalScheduler:
                 "messages": [
                     {
                         "type": "human",
-                        "content": f"""对最近一个对话历史中的{symbol.lower()}的交易信号进行回测。
-如未找到交易信号：生成新的{symbol.lower()}交易信号（包含交易方向、价格区间、止损位、目标位），无需回测
-""",
+                        "content": f"""对最近一个对话历史中的{symbol.lower()}的交易信号进行回测。""",
                     }
                 ],
                 "wallet_is_connected": True,
