@@ -338,7 +338,7 @@ class TradingSignalScheduler:
                 "messages": [
                     {
                         "type": "human",
-                        "content": f"""对最近一个对话历史中的{symbol.lower()}的交易信号进行回测。""",
+                        "content": content,
                     }
                 ],
                 "wallet_is_connected": True,
