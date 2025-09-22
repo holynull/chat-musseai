@@ -326,11 +326,8 @@ class TradingSignalScheduler:
                 "messages": [
                     {
                         "type": "human",
-                        "content": f"""对最近一个{symbol.lower()}的交易信号进行回测
-
-条件处理：
-- 如找到历史交易信号：使用交易信号进行回测分析
-- 如未找到交易信号：生成新的{symbol.lower()}交易信号（包含交易方向、价格区间、止损位、目标位），无需回测
+                        "content": f"""对最近一个{symbol.lower()}的交易信号进行回测。
+如未找到交易信号：生成新的{symbol.lower()}交易信号（包含交易方向、价格区间、止损位、目标位），无需回测
 """,
                     }
                 ],

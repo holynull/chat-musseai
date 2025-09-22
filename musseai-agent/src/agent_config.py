@@ -156,7 +156,6 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
             "Generate trading signals for cryptocurrency pairs",
             "Analyze market trends and technical indicators",
             "Provide buy/sell recommendations with risk assessment",
-            # ... 其他能力
         ],
         graph_module="graphs.graph_trading_signal",
         graph_name="graph_trading_signal",
@@ -166,9 +165,6 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         description="Expert in backtesting and validating trading signals",
         capabilities=[
             "Backtest trading signals against historical data",
-            "Validate signal performance and accuracy",
-            "Generate performance metrics and analysis",
-            # ... 其他能力
         ],
         graph_module="graphs.graph_trading_signal_backtest",
         graph_name="graph_signal_backtest",  # 注意：这里应该与实际图名保持一致
