@@ -380,17 +380,17 @@ class TradingSignalScheduler:
                     data = chunk.get("data", {})
                     if event and event == "on_chain_start":
                         if chunk.get("name", "") == "graph_trading_signal":
-                            if run_id_trading_signal == "":
-                                run_id_trading_signal = chunk.get("run_id", "")
-                                self.logger.info(
-                                    f"Catch graph_trading_signal run_id:{run_id_trading_signal}"
-                                )
+                            # if run_id_trading_signal == "":
+                            run_id_trading_signal = chunk.get("run_id", "")
+                            self.logger.info(
+                                f"Catch graph_trading_signal run_id:{run_id_trading_signal}"
+                            )
                         if chunk.get("name", "") == "graph_signal_backtest":
-                            if run_id_signal_backtest == "":
-                                run_id_signal_backtest = chunk.get("run_id", "")
-                                self.logger.info(
-                                    f"Catch graph_signal_backtest run_id:{run_id_signal_backtest}"
-                                )
+                            # if run_id_signal_backtest == "":
+                            run_id_signal_backtest = chunk.get("run_id", "")
+                            self.logger.info(
+                                f"Catch graph_signal_backtest run_id:{run_id_signal_backtest}"
+                            )
                     if event == "on_chain_end":
                         if (
                             chunk.get("name", "") == "graph_trading_signal"
