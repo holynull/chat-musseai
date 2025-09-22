@@ -272,16 +272,21 @@ class TradingSignalScheduler:
 
         return summary
 
-    def _parse_content(self, data: dict) -> str:
+    def _parse_last_ai_content(self, data: dict) -> str:
         output = data.get("output", {})
         messages = output.get("messages", [])
         if len(messages) == 0:
             self.logger.error(f"Messages len is : 0")
             return None
-        if not isinstance(messages[-1], dict):
-            self.logger.error(f"Last message is not a ditc. {messages[-1]}")
-            return None
-        content = cast(dict, messages[-1]).get("content")
+        last_ai_message = None
+        for m in reversed(messages):
+            if isinstance(m, dict) and m.get("type", "") == "ai":
+                last_ai_message = m
+                break
+        if not last_ai_message:
+            self.logger.error(f"Can't find last AiMessage. in: {messages}")
+
+        content = last_ai_message.get("content")
         content_txt = ""
         if content and isinstance(content, str):
             content_txt = content
@@ -392,7 +397,7 @@ class TradingSignalScheduler:
                             and chunk.get("run_id", "run_id") == run_id_trading_signal
                         ):
                             self.logger.info("Get a genreted trading signal.")
-                            content = self._parse_content(data)
+                            content = self._parse_last_ai_content(data)
                             self.logger.info(f"{symbol}'s new signal: \n{content}")
                             # Send trading signal to Telegram
                             if self.telegram_service:
@@ -416,7 +421,7 @@ class TradingSignalScheduler:
                             and chunk.get("run_id", "run_id") == run_id_signal_backtest
                         ):
                             self.logger.info("Get a backtest result.")
-                            content = self._parse_content(data)
+                            content = self._parse_last_ai_content(data)
                             self.logger.info(f"{symbol}'s backtest result: \n{content}")
                             if (
                                 self.telegram_service
