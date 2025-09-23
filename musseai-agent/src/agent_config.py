@@ -149,26 +149,6 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         graph_module="graphs.graph_crypto_portfolios",
         graph_name="graph_crypto_portfolios",
     ),
-    "trading_signal": AgentConfig(
-        name="Trading Signal Generation Expert",
-        description="Expert in generating cryptocurrency trading signals and market analysis",
-        capabilities=[
-            "Generate trading signals for cryptocurrency pairs",
-            "Analyze market trends and technical indicators",
-            "Provide buy/sell recommendations with risk assessment",
-        ],
-        graph_module="graphs.graph_trading_signal",
-        graph_name="graph_trading_signal",
-    ),
-    "trading_signal_backtest": AgentConfig(
-        name="Trading Signal Backtesting Expert",
-        description="Expert in backtesting and validating trading signals",
-        capabilities=[
-            "Backtest trading signals against historical data",
-        ],
-        graph_module="graphs.graph_trading_signal_backtest",
-        graph_name="graph_signal_backtest",  # 注意：这里应该与实际图名保持一致
-    ),
 }
 
 # 辅助函数

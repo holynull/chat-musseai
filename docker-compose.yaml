@@ -40,6 +40,7 @@ services:
     
     langgraph-api:
         image: musseai-agent
+        container_name: musseai-langgraph-api
         ports:
             - "8080:8000"
         depends_on:
@@ -48,14 +49,13 @@ services:
             langgraph-postgres:
                 condition: service_healthy
         env_file:
-            - .env.musseai_agent
+            - ./musseai-agent/.env.musseai_agent
         extra_hosts:
             - "host.docker.internal:host-gateway"
         networks:
             - default
         volumes:
             - langgraph_api_data:/logs/
-            - ./chromedriver-linux64:/chromedriver-linux64
         # Chrome运行所需的安全配置
         security_opt:
             - seccomp:unconfined
@@ -72,9 +72,9 @@ services:
           - "3307:3306"
         volumes:
           - mysql_data:/var/lib/mysql
-          - ./src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
-          - ./src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
-          - ./src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
+          - ./musseai-agent/src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
+          - ./musseai-agent/src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
+          - ./musseai-agent/src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
         environment:
           - MYSQL_ROOT_PASSWORD=root
           - MYSQL_DATABASE=crypto_portfolio
@@ -88,10 +88,10 @@ services:
         depends_on:
             - langgraph-api
         env_file:
-            - .env.telegram_bot
+            - ./telegram_bot/.env.telegram_bot
         volumes:
             - telegram_bot_data:/app/logs
-            - ./telegram_users.json:/app/telegram_users.json
+            - ./telegram_bot/telegram_users.json:/app/telegram_users.json
         environment:
             - PYTHONPATH=/app/src
         networks:
@@ -111,10 +111,10 @@ services:
             - langgraph-api
             - langgraph-redis
         env_file:
-            - .env.trading_signal
+            - ./trading_signal/.env.trading_signal
         volumes:
             - trading_signal_data:/app/logs
-            - ./telegram_users.json:/app/telegram_users.json
+            - ./trading_signal/telegram_users.json:/app/telegram_users.json
         environment:
             - PYTHONPATH=/app/src
         networks:

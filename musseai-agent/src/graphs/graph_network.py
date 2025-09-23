@@ -33,8 +33,6 @@ from graphs.graph_image import graph as image_graph
 from graphs.graph_infura import graph as infura_graph
 from graphs.graph_solana import graph as solana_graph
 from graphs.graph_crypto_portfolios import graph as crypto_portfolios_graph
-from graphs.graph_trading_signal import graph as trading_signal_graph
-from graphs.graph_trading_signal_backtest import graph as trading_signal_backtest_graph
 from loggers import logger
 
 GRAPH_NAME = "graph_network"
@@ -47,8 +45,6 @@ subgraphs = [
     infura_graph,
     solana_graph,
     crypto_portfolios_graph,
-    trading_signal_graph,
-    trading_signal_backtest_graph,
 ]
 
 llm = ChatAnthropic(

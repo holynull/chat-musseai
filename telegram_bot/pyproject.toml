@@ -1,0 +1,53 @@
+[tool.poetry]
+name = "telegram_bot"
+version = "0.0.1"
+description = "Trading Signal Telegram Bot"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<4.0"
+python-telegram-bot = "^22.4"
+python-dotenv = ">=1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+mypy = ">=1.11.1"
+ruff = ">=0.6.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.setuptools]
+packages = ["."]
+
+[tool.setuptools.package-dir]
+"." = "src"
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+[tool.ruff]
+lint.select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "D",    # pydocstyle
+    "D401", # First line should be in imperative mood
+    "T201",
+    "UP",
+]
+lint.ignore = [
+    "UP006",
+    "UP007",
+    "UP035",
+    "D417",
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "UP"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

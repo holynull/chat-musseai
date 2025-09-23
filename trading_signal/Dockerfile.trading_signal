@@ -1,4 +1,4 @@
-# Dockerfile.telegram_bot
+# Dockerfile.trading_signal
 FROM python:3.11-slim
 
 # Set working directory
@@ -19,10 +19,9 @@ RUN pip install poetry && \
 
 # Copy application code
 COPY src/ ./src/
-COPY .env.example .env.telegram_bot.example ./
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create logs and data directories
+RUN mkdir -p /app/logs /app/data
 
 # Set Python path
 ENV PYTHONPATH=/app/src
@@ -30,10 +29,9 @@ ENV PYTHONPATH=/app/src
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.path.insert(0, 'src'); \
-    from telegram_bot import TelegramSubscriptionBot; \
-    import os; \
-    token = os.getenv('TELEGRAM_BOT_TOKEN'); \
-    exit(0 if token else 1)"
+    from trading_signal import load_config; \
+    try: load_config(); exit(0) \
+    except: exit(1)"
 
-# Run telegram bot
-CMD ["python", "src/telegram_bot.py"]
+# Run trading signal scheduler
+CMD ["python", "src/trading_signal.py"]

@@ -1,3 +1,4 @@
+from datetime import time
 from typing import Annotated, cast
 from langgraph.prebuilt import tools_condition
 from typing_extensions import TypedDict
@@ -12,11 +13,9 @@ from langchain_core.runnables import (
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
-from agent_config import ROUTE_MAPPING, tools_condition
-from langchain_core.messages import ToolMessage
 from loggers import logger
 from langgraph.types import Command
-from tools.tools_agent_router import generate_routing_tools
+from graphs.trading_signal_graph.trading_signal import graph as trading_signal_graph
 
 GRAPH_NAME = "graph_signal_backtest"
 
@@ -36,6 +35,7 @@ class TradingStrategyGraphState(TypedDict):
     # (in this case, it appends messages to the list, rather than overwriting them)
     messages: Annotated[list, add_messages]
     time_zone: str
+    symbol: str
 
 
 graph_builder = StateGraph(TradingStrategyGraphState)
@@ -61,7 +61,7 @@ def call_model_trading_strategy(
     Main LLM node for generating trading strategies.
     Uses enhanced prompt and specialized tools for short-term trading analysis.
     """
-    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
+    llm_with_tools = _llm.bind_tools(tools)
     system_message = system_template.format_messages(
         time_zone=state["time_zone"],
     )
@@ -78,7 +78,7 @@ async def acall_model_trading_strategy(
     """
     Async version of the main LLM node for trading strategy generation.
     """
-    llm_with_tools = _llm.bind_tools(tools + generate_routing_tools())
+    llm_with_tools = _llm.bind_tools(tools)
     system_message = system_template.format_messages(
         time_zone=state["time_zone"],
     )
@@ -93,41 +93,51 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
     """
     Analyze backtest results and determine if signal regeneration is needed.
 
+    Triggers for regeneration:
+    1. Signal reached target price
+    2. Signal reached stop-loss price
+    3. Signal completed (all positions closed)
+    4. Strategy performance severely deteriorated
+
     Returns:
-        - {"messages": []} if no regeneration needed
-        - {"messages": [HumanMessage]} if regeneration required
-    """
-    system_prompt = """
-    You are a cryptocurrency trading expert. Analyze the provided backtest results and determine if a new trading signal needs to be generated.
-
-    ## Language Rules:
-    - If user writes in Chinese → respond in Chinese
-    - If user writes in English → respond in English  
-    - If user writes in other languages → respond in that language
-    - Match the user's communication style
-
-    ## Assessment Criteria:
-    1. **Signal Status Check**: 
-       - Check if current trading signal has been completed (all positions closed)
-       - If signal is completed, new signal generation is required
-    
-    2. **Performance Analysis**: 
-       - Review performance metrics (returns, drawdown, win rate, etc.)
-       - Evaluate signal effectiveness and market adaptation
-       - Determine if current strategy parameters require adjustment
-    
-    3. **Market Conditions**:
-       - Assess if market conditions have changed significantly
-       - Evaluate if current strategy remains suitable
-
-    ## Response Format:
-    If signal regeneration is required (due to completion OR poor performance), conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
-    If no regeneration is needed, simply explain why the current signal is adequate.
-    
-    Be clear and decisive in your analysis.
+        - Command(goto=END) if no regeneration needed
+        - Command(goto=trading_signal_graph) if regeneration required
     """
 
     try:
+
+        # If signal not completed, perform deep analysis via LLM
+        system_prompt = """
+        You are a cryptocurrency trading expert. Analyze the provided backtest results and determine if a new trading signal needs to be generated.
+
+        ## Language Rules:
+        - If user writes in Chinese → respond in Chinese
+        - If user writes in English → respond in English  
+        - If user writes in other languages → respond in that language
+        - Match the user's communication style
+
+        ## Assessment Criteria:
+        1. **Signal Status Check**: 
+           - Check if current trading signal has been completed (all positions closed)
+           - Check if target price or stop-loss price has been reached
+           - If signal is completed, new signal generation is required
+        
+        2. **Performance Analysis**: 
+           - Review performance metrics (returns, drawdown, win rate, etc.)
+           - Evaluate signal effectiveness and market adaptation
+           - Determine if current strategy parameters require adjustment
+        
+        3. **Market Conditions**:
+           - Assess if market conditions have changed significantly
+           - Evaluate if current strategy remains suitable
+
+        ## Response Format:
+        If signal regeneration is required (due to completion OR poor performance), conclude your response with: "**SIGNAL REGENERATION REQUIRED**"
+        If no regeneration is needed, simply explain why the current signal is adequate.
+        
+        Be clear and decisive in your analysis.
+        """
+
         system_template = SystemMessagePromptTemplate.from_template(system_prompt)
         system_message = system_template.format_messages()
 
@@ -137,6 +147,7 @@ async def judgement_regenerate_signals(state: TradingStrategyGraphState):
 Assessment criteria:
 1. **Signal Completion Status**: 
    - Check if the current trading signal has been completed (all positions closed)
+   - Check if target price or stop-loss price has been reached
    - If completed, signal regeneration is automatically required
 
 2. **Performance Evaluation**: 
@@ -148,11 +159,9 @@ Assessment criteria:
    - Assess if market conditions have changed significantly
    - Evaluate if current strategy remains suitable for current market
 
-**Important**: If the trading signal has been completed (all trades finished), you MUST conclude with "**SIGNAL REGENERATION REQUIRED**" regardless of performance.
+**Important**: If the trading signal has been completed (all trades finished) or target/stop-loss reached, you MUST conclude with "**SIGNAL REGENERATION REQUIRED**" regardless of performance.
 
 For ongoing signals, base your decision on performance analysis and market conditions.
-
-Respond in the same language as the previous user's message, regardless of the language used in this prompt.
 """
         )
 
@@ -168,30 +177,34 @@ Respond in the same language as the previous user's message, regardless of the l
 
         if needs_regeneration:
             # Return the analysis message for regeneration workflow
-            logger.info("Signal regeneration required based on analysis")
-            return {"messages": [HumanMessage(content=response.content)]}
+            logger.info("Signal regeneration required based on LLM analysis")
+            human_message = HumanMessage(
+                f"""Generate a new {state['symbol']} trading signal based on the previous trading signal and backtesting results. 
+
+**Note**:
+- Respond in the same language as the previous user's message, regardless of the language used in this prompt."""
+            )
+            state["messages"] += [response, human_message]
+            return Command(goto=trading_signal_graph.get_name(), update=state)
         else:
-            # No regeneration needed, return empty messages
-            logger.info("Signal regeneration not required based on backtest analysis")
-            return {"messages": [AIMessage(content=response.content)]}
+            # No regeneration needed, update state and end
+            logger.info("Signal regeneration not required based on analysis")
+            state["messages"].append(response)
+            return Command(goto=END, update=state)
 
     except Exception as e:
         logger.error(f"Error in judgement_regenerate_signals: {str(e)}")
-        # On error, assume regeneration is needed for safety
-        return {
-            "messages": [
-                HumanMessage(
-                    content="Error occurred during analysis. Proceeding with signal regeneration for safety."
-                )
-            ]
-        }
+        # On error, provide fallback analysis but don't automatically regenerate
+        error_message = AIMessage(
+            content=f"Analysis error occurred: {str(e)}. Maintaining current signal for safety."
+        )
+        state["messages"].append(error_message)
+        return Command(goto=END, update=state)
 
 
 from langgraph.prebuilt import ToolNode
 
-tool_node = ToolNode(
-    tools=tools + generate_routing_tools(), name="node_tools_trading_signal_backtest"
-)
+tool_node = ToolNode(tools=tools, name="node_tools_trading_signal_backtest")
 
 from langgraph.utils.runnable import RunnableCallable
 
@@ -202,6 +215,7 @@ node_llm = RunnableCallable(
 )
 
 graph_builder.add_node(node_llm.name, node_llm)
+graph_builder.add_node(trading_signal_graph.get_name(), trading_signal_graph)
 graph_builder.add_node(tool_node.get_name(), tool_node)
 graph_builder.add_node(
     judgement_regenerate_signals, judgement_regenerate_signals.__name__
@@ -211,20 +225,8 @@ graph_builder.add_conditional_edges(
     tools_condition,
     {"tools": tool_node.get_name(), END: judgement_regenerate_signals.__name__},
 )
-graph_builder.add_edge(judgement_regenerate_signals.__name__, END)
-
-
-def node_router(state: TradingStrategyGraphState):
-    last_message = state["messages"][-1]
-    if isinstance(last_message, ToolMessage) and last_message.name in ROUTE_MAPPING:
-        logger.info(f"Node:{GRAPH_NAME}, Need to route to other node, cause graph end.")
-        return Command(goto=END, update=state)
-    else:
-        return Command(goto=node_llm.get_name(), update=state)
-
-
-graph_builder.add_node(node_router)
-graph_builder.add_edge(tool_node.get_name(), node_router.__name__)
+graph_builder.add_edge(trading_signal_graph.get_name(), END)
+graph_builder.add_edge(tool_node.get_name(), node_llm.get_name())
 graph_builder.add_edge(START, node_llm.get_name())
 graph = graph_builder.compile()
 graph.name = GRAPH_NAME

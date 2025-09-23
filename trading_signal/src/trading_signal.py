@@ -3,10 +3,9 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, cast
+from typing import Dict, Any, List, cast
 from dataclasses import dataclass
 import threading
-from concurrent.futures import ThreadPoolExecutor as ConcurrentThreadPoolExecutor
 
 from langgraph_sdk import get_client, get_sync_client
 from dotenv import load_dotenv
@@ -379,21 +378,22 @@ class TradingSignalScheduler:
                     event = chunk.get("event", "")
                     data = chunk.get("data", {})
                     if event and event == "on_chain_start":
-                        if chunk.get("name", "") == "graph_trading_signal":
-                            # if run_id_trading_signal == "":
-                            run_id_trading_signal = chunk.get("run_id", "")
-                            self.logger.info(
-                                f"Catch graph_trading_signal run_id:{run_id_trading_signal}"
-                            )
+                        if chunk.get("name", "") == "graph_signal_generator":
+                            if run_id_trading_signal == "":
+                                run_id_trading_signal = chunk.get("run_id", "")
+                                self.logger.info(
+                                    f"Catch graph_signal_generator run_id:{run_id_trading_signal}"
+                                )
                         if chunk.get("name", "") == "graph_signal_backtest":
-                            # if run_id_signal_backtest == "":
-                            run_id_signal_backtest = chunk.get("run_id", "")
-                            self.logger.info(
-                                f"Catch graph_signal_backtest run_id:{run_id_signal_backtest}"
-                            )
+                            if run_id_signal_backtest == "":
+                                run_id_signal_backtest = chunk.get("run_id", "")
+                                self.logger.info(
+                                    f"Catch graph_signal_backtest run_id:{run_id_signal_backtest}"
+                                )
                     if event == "on_chain_end":
+                        self.logger.debug(f"{json.dumps(chunk)}")
                         if (
-                            chunk.get("name", "") == "graph_trading_signal"
+                            chunk.get("name", "") == "graph_signal_generator"
                             and chunk.get("run_id", "run_id") == run_id_trading_signal
                         ):
                             self.logger.info("Get a genreted trading signal.")
