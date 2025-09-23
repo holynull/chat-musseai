@@ -391,7 +391,6 @@ class TradingSignalScheduler:
                                     f"Catch graph_signal_backtest run_id:{run_id_signal_backtest}"
                                 )
                     if event == "on_chain_end":
-                        self.logger.debug(f"{json.dumps(chunk)}")
                         if (
                             chunk.get("name", "") == "graph_signal_generator"
                             and chunk.get("run_id", "run_id") == run_id_trading_signal

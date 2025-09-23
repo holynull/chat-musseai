@@ -194,11 +194,12 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			user_id: user?.user_id,
 			// chat_history: chatHistory,
 			chat_history: [],
+			symbol:"BTC"
 			// image_urls: currentImages,
 			// pdf_files: currentPDFs,
 		};
 
-		const stream = client.runs.stream(currentThreadId, "network", {
+		const stream = client.runs.stream(currentThreadId, "trading_signal", {
 			input,
 			streamMode: "events",
 			config: {
@@ -245,6 +246,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 				setRuningId(chunk.data.metadata.run_id)
 			}
 			if (chunk.data.event === "on_chain_start") {
+				console.log(chunk.data)
 				const node = chunk?.data?.name;//metadata?.langgraph_node;
 				if (
 					"node_read_content" === node
