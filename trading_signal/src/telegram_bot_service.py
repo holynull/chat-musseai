@@ -218,7 +218,9 @@ class EnhancedTelegramBotService:
                     and chunk_data.get("run_id") == run_id
                 ):
                     # 提取最后的AI响应
-                    response_content = self._parse_last_ai_content(chunk_data.get('data'))
+                    response_content = self._parse_last_ai_content(
+                        chunk_data.get("data")
+                    )
                     if response_content:
                         break
 
@@ -499,7 +501,7 @@ class EnhancedTelegramBotService:
                     response = await self.process_message_with_langgraph(
                         clean_message, user_id
                     )
-                    response=self._convert_markdown_titles(response)
+                    response = self._convert_markdown_titles(response)
 
                     if response:
                         await update.message.reply_text(
@@ -597,7 +599,7 @@ class EnhancedTelegramBotService:
 
             # 通过 LangGraph 处理消息
             response = await self.process_message_with_langgraph(message_text, user_id)
-            response=self._convert_markdown_titles(response)
+            response = self._convert_markdown_titles(response)
 
             if response:
                 await update.message.reply_text(
