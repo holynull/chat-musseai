@@ -149,10 +149,29 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         graph_module="graphs.graph_crypto_portfolios",
         graph_name="graph_crypto_portfolios",
     ),
+    "quote": AgentConfig(
+        name="Cryptocurrency Market Data & Analysis Expert",
+        description="Specialist in real-time cryptocurrency market data retrieval, technical analysis, and trading insights",
+        capabilities=[
+            "Retrieve latest cryptocurrency quotation data with real-time prices, market cap, volume, and market metrics",
+            "Query trading pairs and exchanges for any cryptocurrency symbol across multiple exchanges",
+            "Get comprehensive technical analysis indicators including moving averages, oscillators, and trend indicators",
+            "Fetch historical OHLCV (candlestick) data for technical analysis and strategy development",
+            "Analyze recent trade records and market activity patterns",
+            "Calculate volume profile data to identify key support/resistance levels and high-volume trading zones",
+            "Provide TradingView-based technical analysis with multiple timeframes (1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1W, 1M)",
+            "Support aggregated data from multiple exchanges including Binance, Coinbase, Kraken, and others",
+            "Generate market activity analysis with trade frequency and volume distribution insights",
+            "Identify Point of Control (POC) and Value Area for volume-based trading strategies",
+            "Deliver comprehensive price trend analysis and market pressure indicators",
+        ],
+        graph_module="graphs.graph_quote",
+        graph_name="graph_quote",
+        required_env_vars=["CRYPTOCOMPARE_API_KEY"],  # Based on the API usage in tools_quote.py
+    ),
 }
 
 # 辅助函数
-
 
 def get_agent_config(agent_id: str) -> Optional[AgentConfig]:
     """根据agent ID获取配置"""

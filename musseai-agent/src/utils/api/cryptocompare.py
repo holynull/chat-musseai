@@ -369,6 +369,25 @@ def getLatestQuote(
             }
         )
 
+@api_call_with_cache_and_rate_limit(
+    cache_duration=3600,
+    rate_limit_interval=1.2,  # 1.2 seconds interval
+    max_retries=2,
+    retry_delay=1,
+)
+def getKlineDataWithCache(
+    symbol: str,
+    period: str = "daily",
+    limit: int = 100,
+    to_timestamp: Optional[int] = None,
+    from_timestamp: Optional[int] = None,
+    exchange: str = "CCCAGG",
+    logger: Logger = None,
+) -> str:
+    return getKlineData(
+        symbol, period, limit, to_timestamp, from_timestamp, exchange, logger
+    )
+
 
 def getKlineData(
     symbol: str,
