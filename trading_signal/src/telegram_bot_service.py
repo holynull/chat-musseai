@@ -452,6 +452,75 @@ class EnhancedTelegramBotService:
         except Exception as e:
             self.logger.error(f"Error handling new chat members: {e}")
 
+    def _extract_reply_context(self, update: Update) -> Dict[str, Any]:
+        """Extract context from reply message"""
+        context = {
+            "has_reply": False,
+            "original_message": None,
+            "original_sender": None,
+            "original_timestamp": None,
+            "is_bot_message": False,
+        }
+
+        if update.message.reply_to_message:
+            reply_msg = update.message.reply_to_message
+            context.update(
+                {
+                    "has_reply": True,
+                    "original_message": reply_msg.text or "[Non-text message]",
+                    "original_sender": {
+                        "id": reply_msg.from_user.id,
+                        "username": reply_msg.from_user.username,
+                        "first_name": reply_msg.from_user.first_name,
+                        "is_bot": reply_msg.from_user.is_bot,
+                    },
+                    "original_timestamp": reply_msg.date.isoformat(),
+                    "is_bot_message": reply_msg.from_user.is_bot,
+                }
+            )
+
+        return context
+
+    def _build_contextual_message(
+        self, user_message: str, reply_context: Dict[str, Any]
+    ) -> str:
+        """Build message with reply context for LangGraph processing"""
+
+        if not reply_context["has_reply"]:
+            return user_message
+
+        # 构建包含上下文的消息
+        if reply_context["is_bot_message"]:
+            # 回复bot的消息
+            contextual_message = f"""
+    [用户回复了我之前的消息]
+    我之前说: "{reply_context['original_message']}"
+    发送时间: {reply_context['original_timestamp']}
+    
+    用户现在回复: "{user_message}"
+    
+    请基于这个对话上下文来回应用户。
+    """
+        else:
+            # 回复其他用户的消息
+            original_sender = reply_context["original_sender"]
+            sender_name = (
+                original_sender["first_name"] or original_sender["username"] or "某用户"
+            )
+
+            contextual_message = f"""
+    [用户回复了群组中的消息]
+    原消息发送者: {sender_name}
+    原消息内容: "{reply_context['original_message']}"
+    发送时间: {reply_context['original_timestamp']}
+    
+    用户现在回复: "{user_message}"
+    
+    请帮助用户回应这个对话，考虑完整的上下文。
+    """
+
+        return contextual_message.strip()
+
     async def handle_mention(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle messages that mention the bot"""
         try:
@@ -493,13 +562,21 @@ class EnhancedTelegramBotService:
             if self.enable_langgraph_chat and not self._is_command_message(
                 message_text
             ):
-                # 提取用户消息内容（移除机器人提及部分）
+                # 🆕 提取回复上下文
+                reply_context = self._extract_reply_context(update)
+
+                # 清理用户消息
                 clean_message = self._clean_mention_text(message_text, bot_username)
 
                 if clean_message.strip():
-                    # 通过 LangGraph 处理消息
+                    # 🆕 构建包含上下文的完整消息
+                    full_message = self._build_contextual_message(
+                        clean_message, reply_context
+                    )
+
+                    # 通过 LangGraph 处理包含上下文的消息
                     response = await self.process_message_with_langgraph(
-                        clean_message, user_id
+                        full_message, user_id
                     )
                     response = self._convert_markdown_titles(response)
 
@@ -510,7 +587,7 @@ class EnhancedTelegramBotService:
                             disable_web_page_preview=True,
                         )
                         self.logger.info(
-                            f"Responded to user {user_id} via LangGraph in group"
+                            f"Responded to user {user_id} via LangGraph in group with reply context"
                         )
                         return
 
