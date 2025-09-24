@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "trading_signal"
-version = "0.0.1"
-description = "Automated trading signal generation and notification system"
+version = "0.1.0"
+description = "Automated trading signal generation and Telegram bot system"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
 license = "MIT"
@@ -10,9 +10,8 @@ license = "MIT"
 python = ">=3.11,<4.0"
 python-dotenv = ">=1.0.1"
 langgraph-sdk = "^0.1.0"
-python-telegram-bot = "^20.0"
+python-telegram-bot = "^22.4"
 apscheduler = "^3.10.0"
-httpx = "^0.25.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = ">=1.11.1"
@@ -24,17 +23,28 @@ pytest-asyncio = "^0.21.0"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.setuptools]
+packages = ["."]
+
+[tool.setuptools.package-dir]
+"." = "src"
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
 [tool.ruff]
 lint.select = [
     "E",    # pycodestyle
     "F",    # pyflakes
     "I",    # isort
     "D",    # pydocstyle
-    "UP",   # pyupgrade
+    "D401", # First line should be in imperative mood
+    "T201",
+    "UP",
 ]
 lint.ignore = [
     "UP006",
-    "UP007", 
+    "UP007",
     "UP035",
     "D417",  # Missing argument descriptions
     "E501",  # Line too long
