@@ -478,10 +478,9 @@ class TradingSignalScheduler:
                                     and self.enable_backtest_processing
                                 ):
                                     try:
-                                        await self.telegram_bot.send_to_group_and_channel(
+                                        await self.telegram_bot.send_to_channel(
                                             message=f"*{symbol} Backtest Result:*\n\n{content_txt}",
                                             message_type="backtest",
-                                            group_ids=None,
                                             channel_ids=os.getenv(
                                                 "TELEGRAM_BACKTEST_CHANNEL_ID"
                                             ),  # 使用环境变量配置的channel
