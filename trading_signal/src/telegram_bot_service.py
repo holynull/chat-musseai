@@ -77,17 +77,6 @@ class EnhancedTelegramBotService:
             "Forbidden",
         }
 
-        # Load group chat IDs
-        self.group_chat_ids = self._load_group_chat_ids()
-        self.group_chat_id = self.group_chat_ids[0] if self.group_chat_ids else None
-
-        if self.group_chat_ids:
-            self.logger.info(f"Group chat IDs configured: {self.group_chat_ids}")
-        else:
-            self.logger.warning(
-                "No group chat IDs configured, group messaging disabled"
-            )
-
         # 新增 LangGraph 配置
         self.langgraph_server_url = os.getenv("LANGGRAPH_SERVER_URL")
         self.chat_graph_name = os.getenv("CHAT_GRAPH_NAME", os.getenv("GRAPH_NAME"))
@@ -105,41 +94,18 @@ class EnhancedTelegramBotService:
 
         if self.enable_langgraph_chat and self.langgraph_server_url:
             self.setup_langgraph_client()
-        
-        # Load channel IDs
-        self.channel_ids = self._load_channel_ids()
-        if self.channel_ids:
-            self.logger.info(f"Channel IDs configured: {self.channel_ids}")
-        else:
-            self.logger.warning("No channel IDs configured, channel messaging disabled")
 
-    def _load_channel_ids(self) -> List[str]:
-        """Load channel IDs from environment variables"""
-        channel_ids_str = os.getenv("TELEGRAM_CHANNEL_IDS")
-        if channel_ids_str:
-            try:
-                channel_ids = [
-                    cid.strip() for cid in channel_ids_str.split(",") if cid.strip()
-                ]
-                return channel_ids
-            except Exception as e:
-                self.logger.error(f"Failed to parse TELEGRAM_CHANNEL_IDS: {e}")
-    
-        single_channel_id = os.getenv("TELEGRAM_CHANNEL_ID")
-        if single_channel_id:
-            return [single_channel_id.strip()]
-    
-        return []
-    
     async def send_to_channel(
         self,
         message: str,
+        channel_ids: str,
         message_type: str = "signal",
-        channel_ids: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Send message to specified channel(s) or all configured channels"""
         if channel_ids is not None:
-            target_channels = [cid.strip() for cid in channel_ids.split(",") if cid.strip()]
+            target_channels = [
+                cid.strip() for cid in channel_ids.split(",") if cid.strip()
+            ]
             if not target_channels:
                 return {
                     "success": False,
@@ -152,24 +118,8 @@ class EnhancedTelegramBotService:
                     "errors": [],
                     "retry_stats": {},
                 }
-        else:
-            target_channels = self.channel_ids if self.channel_ids else []
-    
-        if not target_channels:
-            return {
-                "success": False,
-                "error": "No channel IDs configured or provided",
-                "total_chats": 0,
-                "sent_chats": [],
-                "failed_chats": [],
-                "success_count": 0,
-                "failed_count": 0,
-                "errors": [],
-                "retry_stats": {},
-            }
-    
-        return await self.send_to_multiple_chats(target_channels, message, message_type)
-    
+            return await self.send_to_multiple_chats(target_channels, message, message_type)
+
     async def send_to_group_and_channel(
         self,
         message: str,
@@ -177,25 +127,31 @@ class EnhancedTelegramBotService:
         group_ids: Optional[str] = None,
         channel_ids: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Send message to both groups and channels simultaneously""" 
+        """Send message to both groups and channels simultaneously"""
         results = {}
         # Send to groups
-        if group_ids or self.group_chat_ids:
+        if group_ids:
             group_result = await self.send_to_group(message, message_type, group_ids)
             results["group"] = group_result
-            self.logger.info(f"Group send result: {group_result['success_count']}/{group_result['total_chats']} successful")
-        
+            self.logger.info(
+                f"Group send result: {group_result['success_count']}/{group_result['total_chats']} successful"
+            )
+
         # Send to channels
-        if channel_ids or self.channel_ids:
-            channel_result = await self.send_to_channel(message, message_type, channel_ids)
+        if channel_ids:
+            channel_result = await self.send_to_channel(
+                message, message_type, channel_ids
+            )
             results["channel"] = channel_result
-            self.logger.info(f"Channel send result: {channel_result['success_count']}/{channel_result['total_chats']} successful")
-        
+            self.logger.info(
+                f"Channel send result: {channel_result['success_count']}/{channel_result['total_chats']} successful"
+            )
+
         # Combine results
         total_sent = sum(r.get("success_count", 0) for r in results.values())
         total_failed = sum(r.get("failed_count", 0) for r in results.values())
         total_chats = sum(r.get("total_chats", 0) for r in results.values())
-        
+
         combined_result = {
             "success": total_sent > 0,
             "message_type": message_type,
@@ -208,11 +164,10 @@ class EnhancedTelegramBotService:
                 "channels_sent": results.get("channel", {}).get("success_count", 0),
                 "groups_failed": results.get("group", {}).get("failed_count", 0),
                 "channels_failed": results.get("channel", {}).get("failed_count", 0),
-            }
+            },
         }
-        
-        return combined_result
 
+        return combined_result
 
     def setup_langgraph_client(self):
         """Initialize LangGraph clients for chat processing"""
@@ -385,24 +340,6 @@ class EnhancedTelegramBotService:
         except Exception as e:
             self.logger.error(f"Error parsing AI content: {e}")
             return None
-
-    def _load_group_chat_ids(self) -> List[str]:
-        """Load group chat IDs from environment variables"""
-        group_ids_str = os.getenv("TELEGRAM_GROUP_CHAT_IDS")
-        if group_ids_str:
-            try:
-                group_ids = [
-                    gid.strip() for gid in group_ids_str.split(",") if gid.strip()
-                ]
-                return group_ids
-            except Exception as e:
-                self.logger.error(f"Failed to parse TELEGRAM_GROUP_CHAT_IDS: {e}")
-
-        single_group_id = os.getenv("TELEGRAM_GROUP_CHAT_ID")
-        if single_group_id:
-            return [single_group_id.strip()]
-
-        return []
 
     def load_chat_ids(self) -> List[str]:
         """Load chat IDs from storage"""
@@ -1229,21 +1166,20 @@ If you encounter any issues, please contact the administrator.
     def _convert_markdown_titles(self, text: str) -> str:
         """Convert Markdown titles with multi-level indentation support"""
         import re
-        
-        # Convert ### (h3) to bold format with more indentation  
+
+        # Convert ### (h3) to bold format with more indentation
         text = re.sub(r"^###\s+(.+)$", r"      ▫️ **\1**", text, flags=re.MULTILINE)
-        
+
         # Convert ## (h2) to bold format with indentation
         text = re.sub(r"^##\s+(.+)$", r"    ▪️ **\1**", text, flags=re.MULTILINE)
-        
+
         # Convert # (h1) to bold format
         text = re.sub(r"^#\s+(.+)$", r"🔶 **\1**", text, flags=re.MULTILINE)
-        
+
         # Handle edge case: remove any remaining markdown-style headers that weren't caught
         text = re.sub(r"^#{4,}\s+(.+)$", r"        • *\1*", text, flags=re.MULTILINE)
-        
-        return text
 
+        return text
 
     def format_message(self, text: str, message_type: str) -> str:
         """Format message with appropriate template"""
@@ -1422,8 +1358,8 @@ _Automated Trading Signal System_
     async def send_to_group(
         self,
         message: str,
+        group_ids: str,
         message_type: str = "signal",
-        group_ids: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Send message to specified group(s) or all configured groups"""
         if group_ids is not None:
@@ -1440,26 +1376,7 @@ _Automated Trading Signal System_
                     "errors": [],
                     "retry_stats": {},
                 }
-        else:
-            target_groups = self.group_chat_ids if self.group_chat_ids else []
-
-            if not target_groups and self.group_chat_id:
-                target_groups = [self.group_chat_id]
-
-        if not target_groups:
-            return {
-                "success": False,
-                "error": "No group chat IDs configured or provided",
-                "total_chats": 0,
-                "sent_chats": [],
-                "failed_chats": [],
-                "success_count": 0,
-                "failed_count": 0,
-                "errors": [],
-                "retry_stats": {},
-            }
-
-        return await self.send_to_multiple_chats(target_groups, message, message_type)
+            return await self.send_to_multiple_chats(target_groups, message, message_type)
 
     async def send_to_all_users(
         self, message: str, message_type: str = "signal"
@@ -1609,7 +1526,6 @@ _Automated Trading Signal System_
             "langgraph_chat_enabled": self.enable_langgraph_chat,
             "active_chat_threads": active_threads,
             "subscribed_users": subscribed_users,
-            "configured_groups": len(self.group_chat_ids) if self.group_chat_ids else 0,
             "thread_details": (
                 {
                     user_id: {
@@ -1662,7 +1578,6 @@ _Automated Trading Signal System_
             }
 
             user_chat_count = len(self.load_chat_ids())
-            group_chat_count = len(self.group_chat_ids) if self.group_chat_ids else 0
 
             health_status = {
                 "status": "healthy",
@@ -1678,8 +1593,7 @@ _Automated Trading Signal System_
                 },
                 "chat_counts": {
                     "subscribed_users": user_chat_count,
-                    "configured_groups": group_chat_count,
-                    "total_chats": user_chat_count + group_chat_count,
+                    "total_chats": user_chat_count,
                 },
                 "retry_capabilities": {
                     "retryable_error_types": list(self.retryable_errors),
@@ -1688,10 +1602,7 @@ _Automated Trading Signal System_
                 "timestamp": datetime.now().isoformat(),
             }
 
-            self.logger.info(
-                f"Health check passed - Bot: @{me.username}, "
-                f"Users: {user_chat_count}, Groups: {group_chat_count}"
-            )
+            self.logger.info(f"Health check passed - Bot: @{me.username}, ")
             return health_status
 
         except Exception as e:

@@ -27,7 +27,6 @@ class TradingConfig:
     langgraph_server_url: str
     user_id: str
     graph_name: str
-    group_id: str
     timezone: str = "UTC"
     execution_interval: int = 15  # minutes
     thread_rebuild_hours: int = 24  # hours
@@ -67,7 +66,6 @@ class TradingSignalScheduler:
         self.bot_task = None
         self.setup_telegram_bot()
 
-        self.group_id = config.group_id
         self.enable_backtest_processing = config.enable_backtest_processing
 
     def setup_telegram_bot(self):
@@ -403,7 +401,9 @@ class TradingSignalScheduler:
                                     await self.telegram_bot.send_to_group_and_channel(
                                         message=f"*{symbol} Trading Signal:*\n\n{content}",
                                         message_type="signal",
-                                        group_ids=self.group_id,
+                                        group_ids=os.getenv(
+                                            "TELEGRAM_GROUP_CHAT_ID"
+                                        ),
                                         channel_ids=os.getenv(
                                             "TELEGRAM_TRADING_SIGNAL_CHANNEL_ID"
                                         ),  # 使用环境变量配置的channel
@@ -780,7 +780,6 @@ def load_config() -> TradingConfig:
     config_dict["log_level"] = getattr(
         logging, os.getenv("LOG_LEVEL", "INFO").upper(), DEFAULT_LOG_LEVEL
     )
-    config_dict["group_id"] = os.getenv("TELEGRAM_GROUP_CHAT_ID")
     config_dict["enable_backtest_processing"] = (
         os.getenv("ENABLE_BACKTEST_PROCESSING", "False").lower() == "true"
     )
