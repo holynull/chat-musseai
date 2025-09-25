@@ -78,14 +78,14 @@ class TradingSignalScheduler:
                 self.telegram_bot = EnhancedTelegramBotService(
                     bot_token=bot_token, chat_storage_file="telegram_users.json"
                 )
-                self.logger.info("Enhanced Telegram bot service initialized successfully")
+                self.logger.info(
+                    "Enhanced Telegram bot service initialized successfully"
+                )
             except Exception as e:
                 self.logger.error(f"Failed to initialize Telegram bot service: {e}")
                 self.telegram_bot = None
         else:
-            self.logger.warning(
-                "TELEGRAM_BOT_TOKEN not found, Telegram bot disabled"
-            )
+            self.logger.warning("TELEGRAM_BOT_TOKEN not found, Telegram bot disabled")
 
     def setup_logging(self, config: TradingConfig):
         """Setup logging configuration"""
@@ -270,13 +270,13 @@ class TradingSignalScheduler:
         if len(messages) == 0:
             self.logger.error(f"Messages len is : 0")
             return None
-        
+
         last_ai_message = None
         for m in reversed(messages):
             if isinstance(m, dict) and m.get("type", "") == "ai":
                 last_ai_message = m
                 break
-        
+
         if not last_ai_message:
             self.logger.error(f"Can't find last AiMessage. in: {messages}")
             return None
@@ -294,11 +294,11 @@ class TradingSignalScheduler:
         else:
             self.logger.error("content is None or type unknown.")
             return None
-        
+
         if content_txt == "":
             self.logger.error(f"text is None or empty string.")
             return None
-        
+
         return content_txt
 
     async def execute_signal_for_symbol_async(
@@ -318,7 +318,7 @@ class TradingSignalScheduler:
             # Get thread with automatic rebuild if needed
             thread_id, new_thread = self.create_or_get_thread(symbol)
             result["thread_id"] = thread_id
-            
+
             content = f"""任务：分析对话历史中{symbol.lower()}的交易信号并执行相应操作
 
 执行步骤：
@@ -361,7 +361,7 @@ class TradingSignalScheduler:
             result_count = 0
             run_id_trading_signal = ""
             run_id_signal_backtest = ""
-            
+
             async for _chunk in chunks:
                 chunk = _chunk.data
                 if chunk.get("error", None):
@@ -372,7 +372,7 @@ class TradingSignalScheduler:
                     result_count += 1
                     event = chunk.get("event", "")
                     data = chunk.get("data", {})
-                    
+
                     if event and event == "on_chain_start":
                         if chunk.get("name", "") == "graph_signal_generator":
                             if run_id_trading_signal == "":
@@ -386,7 +386,7 @@ class TradingSignalScheduler:
                                 self.logger.info(
                                     f"Catch graph_signal_backtest run_id:{run_id_signal_backtest}"
                                 )
-                    
+
                     if event == "on_chain_end":
                         if (
                             chunk.get("name", "") == "graph_signal_generator"
@@ -395,18 +395,19 @@ class TradingSignalScheduler:
                             self.logger.info("Get a generated trading signal.")
                             content = self._parse_last_ai_content(data)
                             self.logger.info(f"{symbol}'s new signal: \n{content}")
-                            
+
                             # Send trading signal via enhanced Telegram bot
                             if content and self.telegram_bot:
                                 try:
                                     # Send to groups
                                     if self.group_id:
-                                        await self.telegram_bot.send_to_group(
+                                        await self.telegram_bot.send_to_group_and_channel(
                                             message=f"*{symbol} Trading Signal:*\n\n{content}",
                                             message_type="signal",
                                             group_ids=self.group_id,
+                                            channel_ids=os.getenv('TELEGRAM_TRADING_SIGNAL_CHANNEL_ID'),  # 使用环境变量配置的channel
                                         )
-                                    
+
                                     # Also send to all subscribed users
                                     # await self.telegram_bot.send_to_all_users(
                                     #     message=f"*{symbol} Trading Signal:*\n\n{content}",
@@ -421,7 +422,7 @@ class TradingSignalScheduler:
                                 self.logger.warning(
                                     "Telegram bot service not available, skipping notification"
                                 )
-                        
+
                         if (
                             chunk.get("name", "") == "graph_signal_backtest"
                             and chunk.get("run_id", "run_id") == run_id_signal_backtest
@@ -429,7 +430,7 @@ class TradingSignalScheduler:
                             self.logger.info("Get a backtest result.")
                             content = self._parse_last_ai_content(data)
                             self.logger.info(f"{symbol}'s backtest result: \n{content}")
-                            
+
                             if (
                                 content
                                 and self.telegram_bot
@@ -443,11 +444,11 @@ class TradingSignalScheduler:
                                             message_type="backtest",
                                             group_ids=self.group_id,
                                         )
-                                    
+
                                     # Also send to all subscribed users
                                     await self.telegram_bot.send_to_all_users(
                                         message=f"*{symbol} Backtest Result:*\n\n{content}",
-                                        message_type="backtest"
+                                        message_type="backtest",
                                     )
                                 except Exception as e:
                                     self.logger.error(
@@ -458,7 +459,7 @@ class TradingSignalScheduler:
                                 self.logger.warning(
                                     "Telegram bot service not available or backtest processing disabled, skipping backtest notification"
                                 )
-            
+
             result["status"] = "SUCCESS"
             result["end_time"] = datetime.now()
             self.logger.info(
@@ -634,23 +635,23 @@ class TradingSignalScheduler:
                 # Create event loop for bot service
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                
+
                 # Start bot in background task
                 self.bot_task = loop.create_task(self.start_bot_service())
-                
+
                 # Run bot startup
                 loop.run_until_complete(self.start_bot_service())
-                
+
                 # Start event loop in background thread
                 def run_bot_loop():
                     try:
                         loop.run_forever()
                     except Exception as e:
                         self.logger.error(f"Bot event loop error: {e}")
-                
+
                 bot_thread = threading.Thread(target=run_bot_loop, daemon=True)
                 bot_thread.start()
-                
+
                 self.logger.info("Telegram bot service started in background")
 
             self.setup_scheduler()
@@ -746,7 +747,7 @@ def load_config() -> TradingConfig:
     config_dict["enable_backtest_processing"] = (
         os.getenv("ENABLE_BACKTEST_PROCESSING", "False").lower() == "true"
     )
-    
+
     return TradingConfig(**config_dict)
 
 

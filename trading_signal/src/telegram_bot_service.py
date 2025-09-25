@@ -105,6 +105,114 @@ class EnhancedTelegramBotService:
 
         if self.enable_langgraph_chat and self.langgraph_server_url:
             self.setup_langgraph_client()
+        
+        # Load channel IDs
+        self.channel_ids = self._load_channel_ids()
+        if self.channel_ids:
+            self.logger.info(f"Channel IDs configured: {self.channel_ids}")
+        else:
+            self.logger.warning("No channel IDs configured, channel messaging disabled")
+
+    def _load_channel_ids(self) -> List[str]:
+        """Load channel IDs from environment variables"""
+        channel_ids_str = os.getenv("TELEGRAM_CHANNEL_IDS")
+        if channel_ids_str:
+            try:
+                channel_ids = [
+                    cid.strip() for cid in channel_ids_str.split(",") if cid.strip()
+                ]
+                return channel_ids
+            except Exception as e:
+                self.logger.error(f"Failed to parse TELEGRAM_CHANNEL_IDS: {e}")
+    
+        single_channel_id = os.getenv("TELEGRAM_CHANNEL_ID")
+        if single_channel_id:
+            return [single_channel_id.strip()]
+    
+        return []
+    
+    async def send_to_channel(
+        self,
+        message: str,
+        message_type: str = "signal",
+        channel_ids: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send message to specified channel(s) or all configured channels"""
+        if channel_ids is not None:
+            target_channels = [cid.strip() for cid in channel_ids.split(",") if cid.strip()]
+            if not target_channels:
+                return {
+                    "success": False,
+                    "error": "Invalid channel_ids parameter provided",
+                    "total_chats": 0,
+                    "sent_chats": [],
+                    "failed_chats": [],
+                    "success_count": 0,
+                    "failed_count": 0,
+                    "errors": [],
+                    "retry_stats": {},
+                }
+        else:
+            target_channels = self.channel_ids if self.channel_ids else []
+    
+        if not target_channels:
+            return {
+                "success": False,
+                "error": "No channel IDs configured or provided",
+                "total_chats": 0,
+                "sent_chats": [],
+                "failed_chats": [],
+                "success_count": 0,
+                "failed_count": 0,
+                "errors": [],
+                "retry_stats": {},
+            }
+    
+        return await self.send_to_multiple_chats(target_channels, message, message_type)
+    
+    async def send_to_group_and_channel(
+        self,
+        message: str,
+        message_type: str = "signal",
+        group_ids: Optional[str] = None,
+        channel_ids: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send message to both groups and channels simultaneously""" 
+        results = {}
+        # Send to groups
+        if group_ids or self.group_chat_ids:
+            group_result = await self.send_to_group(message, message_type, group_ids)
+            results["group"] = group_result
+            self.logger.info(f"Group send result: {group_result['success_count']}/{group_result['total_chats']} successful")
+        
+        # Send to channels
+        if channel_ids or self.channel_ids:
+            channel_result = await self.send_to_channel(message, message_type, channel_ids)
+            results["channel"] = channel_result
+            self.logger.info(f"Channel send result: {channel_result['success_count']}/{channel_result['total_chats']} successful")
+        
+        # Combine results
+        total_sent = sum(r.get("success_count", 0) for r in results.values())
+        total_failed = sum(r.get("failed_count", 0) for r in results.values())
+        total_chats = sum(r.get("total_chats", 0) for r in results.values())
+        
+        combined_result = {
+            "success": total_sent > 0,
+            "message_type": message_type,
+            "total_chats": total_chats,
+            "success_count": total_sent,
+            "failed_count": total_failed,
+            "detailed_results": results,
+            "summary": {
+                "groups_sent": results.get("group", {}).get("success_count", 0),
+                "channels_sent": results.get("channel", {}).get("success_count", 0),
+                "groups_failed": results.get("group", {}).get("failed_count", 0),
+                "channels_failed": results.get("channel", {}).get("failed_count", 0),
+            }
+        }
+        
+        return combined_result
+
 
     def setup_langgraph_client(self):
         """Initialize LangGraph clients for chat processing"""
