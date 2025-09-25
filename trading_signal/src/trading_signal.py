@@ -427,35 +427,49 @@ class TradingSignalScheduler:
                             output = data.get("output", {})
                             messages = output.get("messages", [])
                             _messages = reversed(messages)
-                            content_txt = None
+                            content_txt = ""
                             last_tool_message = None
                             last_tool_message_index = -1
                             for _i, message in enumerate(_messages):
                                 if (
-                                    message.get("type" == "tool")
+                                    message.get("type") == "tool"
                                     and message.get("name") == "backtest_trading_signal"
                                 ):
                                     last_tool_message = message
                                     last_tool_message_index = _i
                                     break
                             if last_tool_message and last_tool_message_index > 0:
-                                content = _messages[last_tool_message_index - 1].get(
-                                    "content"
-                                )
-                                if content and isinstance(content, str):
-                                    content_txt = content
-                                elif content and isinstance(content, list):
-                                    if not content or len(content) == 0:
-                                        self.logger.error("content len is 0 or is None")
+                                contents = [
+                                    messages[
+                                        len(messages) - last_tool_message_index - 2
+                                    ].get("content"),
+                                    messages[
+                                        len(messages) - last_tool_message_index
+                                    ].get("content"),
+                                ]
+                                for content in contents:
+                                    if content and isinstance(content, str):
+                                        content_txt += "\n" + content
+                                    elif content and isinstance(content, list):
+                                        if not content or len(content) == 0:
+                                            self.logger.error(
+                                                "content len is 0 or is None"
+                                            )
+                                        else:
+                                            text = cast(dict, content[0]).get(
+                                                "text", ""
+                                            )
+                                            content_txt += "\n" + text
                                     else:
-                                        text = cast(dict, content[0]).get("text", "")
-                                        content_txt = text
-                                else:
-                                    self.logger.error(
-                                        "content is None or type unknown."
-                                    )
+                                        self.logger.error(
+                                            "content is None or type unknown."
+                                        )
+                            else:
+                                self.logger.error(
+                                    "Can't find backtest_trading_signal tool message."
+                                )
 
-                            if content_txt:
+                            if content_txt != "":
                                 self.logger.info(
                                     f"{symbol}'s backtest result: \n{content_txt}"
                                 )
@@ -482,7 +496,7 @@ class TradingSignalScheduler:
                                         "Telegram bot service not available or backtest processing disabled, skipping backtest notification"
                                     )
                             else:
-                                self.logger.error(f"content_txt is None ")
+                                self.logger.error(f"content_txt is empty str. ")
 
             result["status"] = "SUCCESS"
             result["end_time"] = datetime.now()
