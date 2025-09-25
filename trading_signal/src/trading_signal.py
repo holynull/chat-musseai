@@ -400,19 +400,14 @@ class TradingSignalScheduler:
                             if content and self.telegram_bot:
                                 try:
                                     # Send to groups
-                                    if self.group_id:
-                                        await self.telegram_bot.send_to_group_and_channel(
-                                            message=f"*{symbol} Trading Signal:*\n\n{content}",
-                                            message_type="signal",
-                                            group_ids=self.group_id,
-                                            channel_ids=os.getenv('TELEGRAM_TRADING_SIGNAL_CHANNEL_ID'),  # 使用环境变量配置的channel
-                                        )
-
-                                    # Also send to all subscribed users
-                                    # await self.telegram_bot.send_to_all_users(
-                                    #     message=f"*{symbol} Trading Signal:*\n\n{content}",
-                                    #     message_type="signal"
-                                    # )
+                                    await self.telegram_bot.send_to_group_and_channel(
+                                        message=f"*{symbol} Trading Signal:*\n\n{content}",
+                                        message_type="signal",
+                                        group_ids=self.group_id,
+                                        channel_ids=os.getenv(
+                                            "TELEGRAM_TRADING_SIGNAL_CHANNEL_ID"
+                                        ),  # 使用环境变量配置的channel
+                                    )
                                 except Exception as e:
                                     self.logger.error(
                                         f"Failed to send Telegram notification for {symbol} signal: {e}"
@@ -428,37 +423,66 @@ class TradingSignalScheduler:
                             and chunk.get("run_id", "run_id") == run_id_signal_backtest
                         ):
                             self.logger.info("Get a backtest result.")
-                            content = self._parse_last_ai_content(data)
-                            self.logger.info(f"{symbol}'s backtest result: \n{content}")
-
-                            if (
-                                content
-                                and self.telegram_bot
-                                and self.enable_backtest_processing
-                            ):
-                                try:
-                                    # Send to groups
-                                    if self.group_id:
-                                        await self.telegram_bot.send_to_group(
-                                            message=f"*{symbol} Backtest Result:*\n\n{content}",
-                                            message_type="backtest",
-                                            group_ids=self.group_id,
-                                        )
-
-                                    # Also send to all subscribed users
-                                    await self.telegram_bot.send_to_all_users(
-                                        message=f"*{symbol} Backtest Result:*\n\n{content}",
-                                        message_type="backtest",
-                                    )
-                                except Exception as e:
-                                    self.logger.error(
-                                        f"Failed to send Telegram notification for {symbol} backtest: {e}"
-                                    )
-                                    self.logger.debug(f"{traceback.format_exc()}")
-                            else:
-                                self.logger.warning(
-                                    "Telegram bot service not available or backtest processing disabled, skipping backtest notification"
+                            # content = self._parse_last_ai_content(data)
+                            output = data.get("output", {})
+                            messages = output.get("messages", [])
+                            _messages = reversed(messages)
+                            content_txt = None
+                            last_tool_message = None
+                            last_tool_message_index = -1
+                            for _i, message in enumerate(_messages):
+                                if (
+                                    message.get("type" == "tool")
+                                    and message.get("name") == "backtest_trading_signal"
+                                ):
+                                    last_tool_message = message
+                                    last_tool_message_index = _i
+                                    break
+                            if last_tool_message and last_tool_message_index > 0:
+                                content = _messages[last_tool_message_index - 1].get(
+                                    "content"
                                 )
+                                if content and isinstance(content, str):
+                                    content_txt = content
+                                elif content and isinstance(content, list):
+                                    if not content or len(content) == 0:
+                                        self.logger.error("content len is 0 or is None")
+                                    else:
+                                        text = cast(dict, content[0]).get("text", "")
+                                        content_txt = text
+                                else:
+                                    self.logger.error(
+                                        "content is None or type unknown."
+                                    )
+
+                            if content_txt:
+                                self.logger.info(
+                                    f"{symbol}'s backtest result: \n{content_txt}"
+                                )
+                                if (
+                                    self.telegram_bot
+                                    and self.enable_backtest_processing
+                                ):
+                                    try:
+                                        await self.telegram_bot.send_to_group_and_channel(
+                                            message=f"*{symbol} Backtest Result:*\n\n{content_txt}",
+                                            message_type="backtest",
+                                            group_ids=None,
+                                            channel_ids=os.getenv(
+                                                "TELEGRAM_BACKTEST_CHANNEL_ID"
+                                            ),  # 使用环境变量配置的channel
+                                        )
+                                    except Exception as e:
+                                        self.logger.error(
+                                            f"Failed to send Telegram notification for {symbol} backtest: {e}"
+                                        )
+                                        self.logger.debug(f"{traceback.format_exc()}")
+                                else:
+                                    self.logger.warning(
+                                        "Telegram bot service not available or backtest processing disabled, skipping backtest notification"
+                                    )
+                            else:
+                                self.logger.error(f"content_txt is None ")
 
             result["status"] = "SUCCESS"
             result["end_time"] = datetime.now()
