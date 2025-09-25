@@ -1121,17 +1121,21 @@ If you encounter any issues, please contact the administrator.
     def _convert_markdown_titles(self, text: str) -> str:
         """Convert Markdown titles with multi-level indentation support"""
         import re
-
-        # Convert ### (h3) to bold format with more indentation
-        text = re.sub(r"^###\\s+(.+)$", r"      ▫ *\\1*", text, flags=re.MULTILINE)
-
+        
+        # Convert ### (h3) to bold format with more indentation  
+        text = re.sub(r"^###\s+(.+)$", r"      ▫️ **\1**", text, flags=re.MULTILINE)
+        
         # Convert ## (h2) to bold format with indentation
-        text = re.sub(r"^##\\s+(.+)$", r"    ▪ *\\1*", text, flags=re.MULTILINE)
-
+        text = re.sub(r"^##\s+(.+)$", r"    ▪️ **\1**", text, flags=re.MULTILINE)
+        
         # Convert # (h1) to bold format
-        text = re.sub(r"^#\\s+(.+)$", r"🔶 *\\1*", text, flags=re.MULTILINE)
-
+        text = re.sub(r"^#\s+(.+)$", r"🔶 **\1**", text, flags=re.MULTILINE)
+        
+        # Handle edge case: remove any remaining markdown-style headers that weren't caught
+        text = re.sub(r"^#{4,}\s+(.+)$", r"        • *\1*", text, flags=re.MULTILINE)
+        
         return text
+
 
     def format_message(self, text: str, message_type: str) -> str:
         """Format message with appropriate template"""
