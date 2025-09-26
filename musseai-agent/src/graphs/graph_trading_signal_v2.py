@@ -76,7 +76,7 @@ Respond with either:
 - "[SIGNAL_DETECTED]" if complete trading signals are found
 - "[NO_SIGNAL]" if no complete signals exist
 
-Provide your analysis and conclusion."""
+"""  # Provide your analysis and conclusion.
     )
 
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)

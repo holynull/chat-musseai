@@ -184,12 +184,12 @@ For ongoing signals, base your decision on performance analysis and market condi
 **Note**:
 - Respond in the same language as the previous user's message, regardless of the language used in this prompt."""
             )
-            state["messages"] += [response, human_message]
+            state["messages"] += [human_message]
             return Command(goto=trading_signal_graph.get_name(), update=state)
         else:
             # No regeneration needed, update state and end
             logger.info("Signal regeneration not required based on analysis")
-            state["messages"].append(response)
+            # state["messages"].append(response)
             return Command(goto=END, update=state)
 
     except Exception as e:
