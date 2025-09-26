@@ -480,10 +480,10 @@ class TradingSignalScheduler:
                                     try:
                                         await self.telegram_bot.send_to_channel(
                                             message=f"*{symbol} Backtest Result:*\n\n{content_txt}",
-                                            message_type="backtest",
-                                            channel_ids=os.getenv(
+											channel_ids=os.getenv(
                                                 "TELEGRAM_BACKTEST_CHANNEL_ID"
-                                            ),  # 使用环境变量配置的channel
+                                            ), 
+                                            message_type="backtest",
                                         )
                                     except Exception as e:
                                         self.logger.error(

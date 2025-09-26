@@ -118,7 +118,9 @@ class EnhancedTelegramBotService:
                     "errors": [],
                     "retry_stats": {},
                 }
-            return await self.send_to_multiple_chats(target_channels, message, message_type)
+            return await self.send_to_multiple_chats(
+                target_channels, message, message_type
+            )
 
     async def send_to_group_and_channel(
         self,
@@ -131,7 +133,11 @@ class EnhancedTelegramBotService:
         results = {}
         # Send to groups
         if group_ids:
-            group_result = await self.send_to_group(message, message_type, group_ids)
+            group_result = await self.send_to_group(
+                message,
+                group_ids,
+                message_type,
+            )
             results["group"] = group_result
             self.logger.info(
                 f"Group send result: {group_result['success_count']}/{group_result['total_chats']} successful"
@@ -140,7 +146,9 @@ class EnhancedTelegramBotService:
         # Send to channels
         if channel_ids:
             channel_result = await self.send_to_channel(
-                message, message_type, channel_ids
+                message,
+                channel_ids,
+                message_type,
             )
             results["channel"] = channel_result
             self.logger.info(
@@ -1376,7 +1384,9 @@ _Automated Trading Signal System_
                     "errors": [],
                     "retry_stats": {},
                 }
-            return await self.send_to_multiple_chats(target_groups, message, message_type)
+            return await self.send_to_multiple_chats(
+                target_groups, message, message_type
+            )
 
     async def send_to_all_users(
         self, message: str, message_type: str = "signal"
