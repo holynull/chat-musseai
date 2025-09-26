@@ -29,16 +29,17 @@ _llm = ChatAnthropic(
 )
 
 
-class TradingStrategyGraphState(TypedDict):
+class BacktestState(TypedDict):
     # Messages have the type "list". The `add_messages` function
     # in the annotation defines how this state key should be updated
     # (in this case, it appends messages to the list, rather than overwriting them)
     messages: Annotated[list, add_messages]
     time_zone: str
     symbol: str
+    last_trading_signal_content: str
 
 
-graph_builder = StateGraph(TradingStrategyGraphState)
+graph_builder = StateGraph(BacktestState)
 
 from tools.tools_trading_signal_backtest import tools
 
@@ -55,8 +56,8 @@ system_template = SystemMessagePromptTemplate.from_template(system_prompt)
 
 
 def call_model_trading_strategy(
-    state: TradingStrategyGraphState, config: RunnableConfig
-) -> TradingStrategyGraphState:
+    state: BacktestState, config: RunnableConfig
+) -> BacktestState:
     """
     Main LLM node for generating trading strategies.
     Uses enhanced prompt and specialized tools for short-term trading analysis.
@@ -73,23 +74,58 @@ def call_model_trading_strategy(
 
 
 async def acall_model_trading_strategy(
-    state: TradingStrategyGraphState, config: RunnableConfig
-) -> TradingStrategyGraphState:
+    state: BacktestState, config: RunnableConfig
+) -> BacktestState:
     """
     Async version of the main LLM node for trading strategy generation.
     """
+    his_ai_message_size = -5
+    messages = state["messages"]
+    ai_messages = [
+        cast(AIMessage, m)
+        for m in messages
+        if m.get("type") == "ai" and len(m.get("tool_calls", []) == 0)
+    ]
+    if len(ai_messages) == 0:
+        logger.error("No AI Messages to backtest")
+        return {"messages": [AIMessage()]}
+    last_ai_messages = ai_messages[his_ai_message_size:]
+    his_ai_content = ""
+    for m in last_ai_messages:
+        if isinstance(m.content, str):
+            his_ai_content += m.content
+        elif isinstance(m, list) and len(m.content) > 0:
+            his_ai_content += m.content[0].get("text", "")
+        else:
+            logger.error(f"AIMessage content type error: {m.content}, backtest")
+            his_ai_content += ""
+    if his_ai_content == "":
+        logger.error(
+            f"No content in last {0-his_ai_message_size} AI messages. backtest"
+        )
+        return {"messages": [AIMessage()]}
     llm_with_tools = _llm.bind_tools(tools)
     system_message = system_template.format_messages(
         time_zone=state["time_zone"],
+        last_trading_signal_content=state["last_trading_signal_content"],
     )
-    response = cast(
-        AIMessage,
-        await llm_with_tools.ainvoke(system_message + state["messages"], config),
-    )
-    return {"messages": [response]}
+    human = None
+    for m in reversed(state["messages"]):
+        if isinstance(m, HumanMessage):
+            human = m
+            break
+    if human:
+        response = cast(
+            AIMessage,
+            await llm_with_tools.ainvoke(system_message + [human], config),
+        )
+        return {"messages": [response]}
+    else:
+        logger.error(f"No HumanMessage. backtest")
+        return {"messages": [AIMessage()]}
 
 
-async def judgement_regenerate_signals(state: TradingStrategyGraphState):
+async def judgement_regenerate_signals(state: BacktestState):
     """
     Analyze backtest results and determine if signal regeneration is needed.
 

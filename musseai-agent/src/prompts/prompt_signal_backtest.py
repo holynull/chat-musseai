@@ -28,4 +28,7 @@ Timezone: {time_zone}
 ## Complete Workflow:
 1. Get market data (getLatestQuote, get_indicators)
 2. Get current time: now("{time_zone}")
-3. Include risk warning in user's language"""
+3. Include risk warning in user's language
+
+Last trading signal content:
+{last_trading_signal_content}"""
