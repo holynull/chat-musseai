@@ -199,7 +199,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 			// pdf_files: currentPDFs,
 		};
 
-		const stream = client.runs.stream(currentThreadId, "network", {
+		const stream = client.runs.stream(currentThreadId, "trading_signal", {
 			input,
 			streamMode: "events",
 			config: {

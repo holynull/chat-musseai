@@ -28,7 +28,7 @@ _llm = ChatAnthropic(
 )
 
 
-class TradingStrategyGraphState(TypedDict):
+class GraphState(TypedDict):
     # Messages have the type "list". The `add_messages` function
     # in the annotation defines how this state key should be updated
     # (in this case, it appends messages to the list, rather than overwriting them)
@@ -37,30 +37,8 @@ class TradingStrategyGraphState(TypedDict):
     time_zone: str
 
 
-async def node_find_history_signal(state: TradingStrategyGraphState):
-    his_ai_message_size = -5
-    messages = state["messages"]
-    ai_messages = [
-        cast(AIMessage, m)
-        for m in messages
-        if m.get("type") == "ai" and len(m.get("tool_calls", []) == 0)
-    ]
-    if len(ai_messages) == 0:
-        state["messages"] = [human_message]
-        return Command(goto=signal_graph.get_name(), update=state)
-    last_ai_messages = ai_messages[his_ai_message_size:]
-    his_ai_content = ""
-    for m in last_ai_messages:
-        if isinstance(m.content, str):
-            his_ai_content += m.content
-        elif isinstance(m, list) and len(m.content) > 0:
-            his_ai_content += m.content[0].get("text", "")
-        else:
-            logger.error(f"AIMessage content type error: {m.content}, node_find_history_signal")
-            his_ai_content += ""
-    if his_ai_content == "":
-        logger.error(f"No content in last {0-his_ai_message_size} AI messages. node_find_history_signal")
-        return Command(END, update=state)
+async def node_find_history_signal(state: GraphState):
+
     system_prompt = """You are a professional cryptocurrency trading signal analyzer. Your task is to determine whether the conversation history contains complete, actionable trading signals.
 
 ## Trading Signal Requirements:
@@ -98,16 +76,14 @@ Respond with either:
 - "[SIGNAL_DETECTED]" if complete trading signals are found
 - "[NO_SIGNAL]" if no complete signals exist
 
-
-Conversation History:
-{his_ai_content}"""
+Provide your analysis and conclusion."""
     )
 
     system_template = SystemMessagePromptTemplate.from_template(system_prompt)
     system_message = system_template.format_messages()
     response = cast(
         AIMessage,
-        await _llm.ainvoke(system_message + [human_message]),
+        await _llm.ainvoke(system_message + state["messages"][:-1] + [human_message]),
     )
     # More robust detection logic
     response_content = response.content.upper() if response.content else ""
@@ -117,15 +93,7 @@ Conversation History:
         logger.info(
             f"Complete trading signal detected in conversation history - routing to backtest"
         )
-        return Command(
-            goto=backtest_graph.get_name(),
-            update={
-                "messages": state["messages"],
-                "symbol": state["symbol"],
-                "time_zone": state["time_zone"],
-                "last_trading_signal_content": response.content,
-            },
-        )
+        return Command(goto=backtest_graph.get_name(), update=state)
     else:
         logger.info(f"No complete trading signal found - routing to signal generation")
         human_message = HumanMessage(
@@ -139,11 +107,13 @@ Conversation History:
         return Command(goto=signal_graph.get_name(), update=state)
 
 
-graph_builder = StateGraph(TradingStrategyGraphState)
+graph_builder = StateGraph(GraphState)
 graph_builder.add_node(signal_graph)
 graph_builder.add_node(backtest_graph)
 graph_builder.add_node(node_find_history_signal, node_find_history_signal.__name__)
 
 graph_builder.add_edge(START, node_find_history_signal.__name__)
+graph_builder.add_edge(signal_graph.get_name(), END)
+graph_builder.add_edge(backtest_graph.get_name(), END)
 graph = graph_builder.compile()
 graph.name = GRAPH_NAME

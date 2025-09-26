@@ -28,7 +28,7 @@ _llm = ChatAnthropic(
 )
 
 
-class TradingStrategyGraphState(TypedDict):
+class TradingSignalGraphState(TypedDict):
     # Messages have the type "list". The `add_messages` function
     # in the annotation defines how this state key should be updated
     # (in this case, it appends messages to the list, rather than overwriting them)
@@ -37,7 +37,7 @@ class TradingStrategyGraphState(TypedDict):
     symbol:str
 
 
-graph_builder = StateGraph(TradingStrategyGraphState)
+graph_builder = StateGraph(TradingSignalGraphState)
 
 from tools.tools_trading_signal import tools
 
@@ -54,8 +54,8 @@ system_template = SystemMessagePromptTemplate.from_template(system_prompt)
 
 
 def call_model_trading_strategy(
-    state: TradingStrategyGraphState, config: RunnableConfig
-) -> TradingStrategyGraphState:
+    state: TradingSignalGraphState, config: RunnableConfig
+) -> TradingSignalGraphState:
     """
     Main LLM node for generating trading strategies.
     Uses enhanced prompt and specialized tools for short-term trading analysis.
@@ -72,8 +72,8 @@ def call_model_trading_strategy(
 
 
 async def acall_model_trading_strategy(
-    state: TradingStrategyGraphState, config: RunnableConfig
-) -> TradingStrategyGraphState:
+    state: TradingSignalGraphState, config: RunnableConfig
+) -> TradingSignalGraphState:
     """
     Async version of the main LLM node for trading strategy generation.
     """
