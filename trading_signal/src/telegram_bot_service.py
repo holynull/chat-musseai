@@ -1113,7 +1113,7 @@ If you encounter any issues, please contact the administrator.
 
     def format_message(self, text: str, message_type: str) -> str:
         """
-        Enhanced message formatting with complete Telegram compatibility and table support
+        Enhanced message formatting with duplicate detection
         """
         try:
             # Input validation
@@ -1126,19 +1126,31 @@ If you encounter any issues, please contact the administrator.
             if not message_type:
                 message_type = "update"
 
-            # Step 1: Clean input text - remove any existing footers
-            cleaned_text = self._remove_existing_footers(text)
+            # Step 1: Check if text is already a formatted message
+            if self._is_already_formatted_message(text):
+                self.logger.debug("Input text is already formatted, returning as-is")
+                # Just validate and return
+                is_valid, error_msg = self._validate_telegram_markdown_with_tables(text)
+                if not is_valid:
+                    self.logger.warning(
+                        f"Pre-formatted message validation failed: {error_msg}"
+                    )
+                    return self._fix_formatting_issues(text)
+                return text
 
-            # Step 2: Detect and convert tables BEFORE other processing
+            # Step 2: Clean input text - remove any existing headers/footers
+            cleaned_text = self._clean_input_text(text)
+
+            # Step 3: Detect and convert tables BEFORE other processing
             text_with_tables = self._advanced_table_format(cleaned_text)
 
-            # Step 3: Sanitize content
+            # Step 4: Sanitize content
             sanitized_text = self._sanitize_message_content(text_with_tables)
 
-            # Step 4: Convert remaining markdown titles
+            # Step 5: Convert remaining markdown titles
             formatted_text = self._convert_markdown_titles(sanitized_text)
 
-            # Step 5: Validate markdown syntax
+            # Step 6: Validate markdown syntax
             is_valid, error_msg = self._validate_telegram_markdown_with_tables(
                 formatted_text
             )
@@ -1147,7 +1159,7 @@ If you encounter any issues, please contact the administrator.
                 formatted_text = self._selective_escape_preserve_tables(formatted_text)
                 self.logger.info("Applied selective escaping while preserving tables")
 
-            # Step 6: Generate message header
+            # Step 7: Generate message header
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
 
             header_mapping = {
@@ -1161,7 +1173,7 @@ If you encounter any issues, please contact the administrator.
 
             header = header_mapping.get(message_type.lower(), "📈 *Trading Update*")
 
-            # Step 7: Build complete message (确保只有一个尾部)
+            # Step 8: Build complete message
             complete_message = f"""{header}
     ⏰ *Time:* {timestamp}
 
@@ -1170,7 +1182,7 @@ If you encounter any issues, please contact the administrator.
     ---
     _Automated Trading Signal System_"""
 
-            # Step 8: Handle message length
+            # Step 9: Handle message length
             if len(complete_message) > 4000:
                 self.logger.warning(
                     f"Message too long ({len(complete_message)} chars), optimizing..."
@@ -1179,7 +1191,7 @@ If you encounter any issues, please contact the administrator.
                     header, timestamp, formatted_text
                 )
 
-            # Step 9: Final validation
+            # Step 10: Final validation
             final_is_valid, final_error = self._validate_telegram_markdown_with_tables(
                 complete_message
             )
@@ -1190,7 +1202,7 @@ If you encounter any issues, please contact the administrator.
                 )
 
             self.logger.debug(
-                f"Successfully formatted {message_type} message with tables ({len(complete_message)} chars)"
+                f"Successfully formatted {message_type} message ({len(complete_message)} chars)"
             )
 
             return complete_message
@@ -1205,6 +1217,343 @@ If you encounter any issues, please contact the administrator.
 
     ---
     Automated Trading Signal System"""
+
+    def _is_already_formatted_message(self, text: str) -> bool:
+        """
+        Check if the input text is already a formatted message
+
+        Args:
+            text (str): Input text to check
+
+        Returns:
+            bool: True if text appears to be already formatted
+        """
+        if not text:
+            return False
+
+        # Patterns that indicate a formatted message
+        formatted_patterns = [
+            # Header patterns
+            r"🔔\s*\*?New Trading Signal\*?",
+            r"📊\s*\*?Backtest Result\*?",
+            r"🚨\s*\*?Trading Alert\*?",
+            r"📈\s*\*?Market Analysis\*?",
+            r"📢\s*\*?Trading Update\*?",
+            r"🔔\s*\*?Notification\*?",
+            # Time pattern
+            r"⏰\s*\*?Time:\*?\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+UTC",
+            # Footer patterns
+            r"---.*Automated Trading Signal System",
+            r"_Automated Trading Signal System_",
+        ]
+
+        # Check if text contains both header and time patterns
+        has_header = False
+        has_time = False
+
+        for pattern in formatted_patterns:
+            if re.search(pattern, text, re.IGNORECASE | re.MULTILINE):
+                if (
+                    "Trading Signal" in pattern
+                    or "Backtest" in pattern
+                    or "Alert" in pattern
+                ):
+                    has_header = True
+                elif "Time:" in pattern:
+                    has_time = True
+
+        # If has both header and time, likely already formatted
+        if has_header and has_time:
+            return True
+
+        # Additional check: if text starts with emoji and contains structured content
+        if re.match(r"^[🔔📊🚨📈📢].+⏰", text, re.DOTALL):
+            return True
+
+        return False
+
+    def _clean_input_text(self, text: str) -> str:
+        """
+        Clean input text by removing existing headers and footers
+
+        Args:
+            text (str): Input text to clean
+
+        Returns:
+            str: Cleaned text content only
+        """
+        if not text:
+            return ""
+
+        cleaned_text = text
+
+        # Remove header patterns (more comprehensive)
+        header_patterns = [
+            r"^🔔\s*\*?New Trading Signal\*?\s*\n",
+            r"^📊\s*\*?Backtest Result\*?\s*\n",
+            r"^🚨\s*\*?Trading Alert\*?\s*\n",
+            r"^📈\s*\*?Market Analysis\*?\s*\n",
+            r"^📢\s*\*?Trading Update\*?\s*\n",
+            r"^🔔\s*\*?Notification\*?\s*\n",
+            # Remove time lines
+            r"^⏰\s*\*?Time:\*?\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+UTC\s*\n",
+            r"⏰\s*\*?Time:\*?\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+UTC\s*\n",
+        ]
+
+        # Remove headers
+        for pattern in header_patterns:
+            cleaned_text = re.sub(
+                pattern, "", cleaned_text, flags=re.MULTILINE | re.IGNORECASE
+            )
+
+        # Remove footers
+        footer_patterns = [
+            r"\n?---\s*\n?_?Automated Trading Signal System_?\s*$",
+            r"\n?---\s*\n?Automated Trading Signal System\s*$",
+            r"\n?_Automated Trading Signal System_\s*$",
+            r"\n?Automated Trading Signal System\s*$",
+            r"\n?---\s*$",
+        ]
+
+        for pattern in footer_patterns:
+            cleaned_text = re.sub(
+                pattern, "", cleaned_text, flags=re.MULTILINE | re.IGNORECASE
+            )
+
+        # Clean up extra whitespace
+        cleaned_text = re.sub(r"^\n+", "", cleaned_text)  # Remove leading newlines
+        cleaned_text = re.sub(
+            r"\n{3,}", "\n\n", cleaned_text
+        )  # Reduce multiple newlines
+        cleaned_text = cleaned_text.strip()
+
+        return cleaned_text
+
+    def _fix_formatting_issues(self, text: str) -> str:
+        """
+        Fix formatting issues in pre-formatted messages
+
+        Args:
+            text (str): Pre-formatted text with potential issues
+
+        Returns:
+            str: Fixed text
+        """
+        fixed_text = text
+
+        # Remove duplicate headers
+        duplicate_header_pattern = (
+            r"(🔔\s*\*?New Trading Signal\*?\s*\n⏰\s*\*?Time:\*?[^\n]+\n)\s*\1"
+        )
+        fixed_text = re.sub(
+            duplicate_header_pattern, r"\1", fixed_text, flags=re.MULTILINE
+        )
+
+        # Remove duplicate footers
+        duplicate_footer_pattern = r"(---\s*\n.*Automated Trading Signal System)\s*\n\s*---\s*\n.*Automated Trading Signal System"
+        fixed_text = re.sub(
+            duplicate_footer_pattern, r"\1", fixed_text, flags=re.MULTILINE | re.DOTALL
+        )
+
+        # Fix multiple consecutive separators
+        fixed_text = re.sub(r"---\s*\n\s*---", "---", fixed_text)
+
+        # Clean up excessive whitespace
+        fixed_text = re.sub(r"\n{4,}", "\n\n\n", fixed_text)
+
+        return fixed_text
+
+    def _extract_core_content(self, text: str) -> str:
+        """
+        Extract only the core content from a potentially formatted message
+
+        Args:
+            text (str): Input text (formatted or unformatted)
+
+        Returns:
+            str: Core content without headers/footers
+        """
+        if not text:
+            return ""
+
+        lines = text.split("\n")
+        content_lines = []
+
+        skip_patterns = [
+            r"^[🔔📊🚨📈📢].*",  # Header emojis
+            r"^⏰.*Time:.*UTC.*",  # Time lines
+            r"^---$",  # Separators
+            r"^_?Automated Trading Signal System_?$",
+            r"^_?Automated Trading Signal System_?$",  # Footer text
+            r"^\s*$",  # Empty lines at start/end
+        ]
+
+        in_content = False
+        content_started = False
+
+        for line in lines:
+            line = line.strip()
+
+            # Skip header patterns
+            is_header = any(
+                re.match(pattern, line, re.IGNORECASE) for pattern in skip_patterns[:2]
+            )
+
+            # Skip footer patterns
+            is_footer = any(
+                re.match(pattern, line, re.IGNORECASE) for pattern in skip_patterns[2:]
+            )
+
+            if is_header and not content_started:
+                continue
+            elif is_footer:
+                break  # Stop processing when we hit footer
+            elif line and not is_header and not is_footer:
+                content_started = True
+                content_lines.append(line)
+            elif content_started and line == "":
+                content_lines.append("")  # Preserve internal empty lines
+
+        # Clean up the extracted content
+        content = "\n".join(content_lines).strip()
+
+        # Remove leading/trailing separators if any
+        content = re.sub(r"^---\s*\n?", "", content)
+        content = re.sub(r"\n?\s*---\s*$", "", content)
+
+        return content
+
+    # 更新现有方法以使用新的清理逻辑
+    def _remove_existing_footers(self, text: str) -> str:
+        """
+        Enhanced footer removal that handles various formats
+        """
+        if not text:
+            return ""
+
+        # More comprehensive footer patterns
+        footer_patterns = [
+            # Standard footers
+            r"\n?---\s*\n?_?Automated Trading Signal System_?\s*\n?$",
+            r"\n?---\s*\n?Automated Trading Signal System\s*\n?$",
+            r"\n?_Automated Trading Signal System_\s*\n?$",
+            r"\n?Automated Trading Signal System\s*\n?$",
+            # Multi-language footers
+            r"\n?---\s*\n?_?自动交易信号系统_?\s*\n?$",
+            r"\n?自动交易信号系统\s*\n?$",
+            # Standalone separators at the end
+            r"\n?---\s*\n?$",
+            # Variations with "Automated System"
+            r"\n?---\s*\n?_?Automated System_?\s*\n?$",
+            r"\n?_Automated System_\s*\n?$",
+        ]
+
+        cleaned_text = text
+        for pattern in footer_patterns:
+            cleaned_text = re.sub(
+                pattern, "", cleaned_text, flags=re.MULTILINE | re.IGNORECASE
+            )
+
+        # Remove trailing whitespace and normalize newlines
+        cleaned_text = re.sub(r"\s+$", "", cleaned_text)
+        cleaned_text = re.sub(r"\n{3,}$", "\n\n", cleaned_text)
+
+        return cleaned_text
+
+    # 测试方法 - 可以用于调试
+    def test_message_formatting(
+        self, test_message: str, message_type: str = "signal"
+    ) -> Dict[str, Any]:
+        """
+        Test method to debug message formatting issues
+
+        Args:
+            test_message (str): Message to test
+            message_type (str): Type of message
+
+        Returns:
+            Dict[str, Any]: Detailed formatting analysis
+        """
+        result = {
+            "original_message": test_message,
+            "message_type": message_type,
+            "is_already_formatted": self._is_already_formatted_message(test_message),
+            "cleaned_content": self._clean_input_text(test_message),
+            "core_content": self._extract_core_content(test_message),
+        }
+
+        try:
+            # Test the actual formatting
+            formatted = self.format_message(test_message, message_type)
+            result.update(
+                {
+                    "formatted_message": formatted,
+                    "formatting_successful": True,
+                    "final_length": len(formatted),
+                    "has_duplicates": self._check_for_duplicates(formatted),
+                }
+            )
+
+        except Exception as e:
+            result.update({"formatting_successful": False, "error": str(e)})
+
+        return result
+
+    def _check_for_duplicates(self, text: str) -> Dict[str, Any]:
+        """
+        Check for duplicate headers, footers, or other repeated content
+
+        Args:
+            text (str): Text to check for duplicates
+
+        Returns:
+            Dict[str, Any]: Analysis of duplicates found
+        """
+        duplicates = {
+            "duplicate_headers": False,
+            "duplicate_footers": False,
+            "duplicate_timestamps": False,
+            "issues_found": [],
+        }
+
+        # Check for duplicate headers
+        header_pattern = r"🔔\s*\*?New Trading Signal\*?"
+        header_matches = re.findall(header_pattern, text, re.IGNORECASE)
+        if len(header_matches) > 1:
+            duplicates["duplicate_headers"] = True
+            duplicates["issues_found"].append(
+                f"Found {len(header_matches)} duplicate headers"
+            )
+
+        # Check for duplicate timestamps
+        time_pattern = r"⏰\s*\*?Time:\*?\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+UTC"
+        time_matches = re.findall(time_pattern, text, re.IGNORECASE)
+        if len(time_matches) > 1:
+            duplicates["duplicate_timestamps"] = True
+            duplicates["issues_found"].append(
+                f"Found {len(time_matches)} duplicate timestamps"
+            )
+
+        # Check for duplicate footers
+        footer_pattern = r"---.*Automated Trading Signal System"
+        footer_matches = re.findall(footer_pattern, text, re.IGNORECASE | re.DOTALL)
+        if len(footer_matches) > 1:
+            duplicates["duplicate_footers"] = True
+            duplicates["issues_found"].append(
+                f"Found {len(footer_matches)} duplicate footers"
+            )
+
+        # Check for duplicate separator lines
+        separator_pattern = r"^---$"
+        separator_matches = re.findall(separator_pattern, text, re.MULTILINE)
+        if (
+            len(separator_matches) > 2
+        ):  # Allow up to 2 (one before content, one before footer)
+            duplicates["issues_found"].append(
+                f"Found {len(separator_matches)} separator lines (expected ≤2)"
+            )
+
+        return duplicates
 
     def _remove_existing_footers(self, text: str) -> str:
         """
@@ -2052,7 +2401,7 @@ If you encounter any issues, please contact the administrator.
                 result_lines.pop()
 
             # 添加统一尾部
-            result_lines.extend(["", "---", "Automated Trading Signal System"])
+            # result_lines.extend(["", "---", "Automated Trading Signal System"])
 
         return "\n".join(result_lines)
 
@@ -2070,11 +2419,11 @@ If you encounter any issues, please contact the administrator.
 
         safe_content = self._escape_telegram_markdown(clean_content[:2000])
 
-    #     fallback_message = f"""📢 {message_type.upper()}
-    # Time: {timestamp}
+        #     fallback_message = f"""📢 {message_type.upper()}
+        # Time: {timestamp}
 
-    # {safe_content}"""
-        fallback_message=safe_content
+        # {safe_content}"""
+        fallback_message = safe_content
 
         if table_data:
             fallback_message += f"\n\n📊 **Table Data:**\n{table_data}"
