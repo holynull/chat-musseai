@@ -141,7 +141,7 @@ class EnhancedTelegramBotService:
                     "errors": [],
                     "retry_stats": {},
                 }
-            return await self.send_to_multiple_chats_enhanced(
+            return await self.send_formatted_message_safely(
                 target_channels, message, message_type
             )
 
@@ -1409,129 +1409,731 @@ If you encounter any issues, please contact the administrator.
 
         return text
 
-    def format_message(self, text: str, message_type: str) -> str:
+    def _detect_and_convert_tables(self, text: str) -> str:
         """
-        Enhanced message formatting with complete Telegram compatibility
+        Detect Markdown tables and convert them to Telegram-friendly format
 
         Args:
-            text (str): Raw message content
-            message_type (str): Type of message ('signal', 'backtest', etc.)
+            text (str): Text potentially containing Markdown tables
 
+        Returns:
+            str: Text with tables converted to readable format
+        """
+        import re
+
+        # Regex to match Markdown table pattern
+        table_pattern = r'(\n\s*\|[^\n]+\|\s*\n\s*\|[-\s\|:]+\|\s*\n(?:\s*\|[^\n]+\|\s*\n?)*)'
+
+        def convert_table(match):
+            table_text = match.group(1).strip()
+            lines = [line.strip() for line in table_text.split('\n') if line.strip()]
+
+            if len(lines) < 3:  # Need header, separator, and at least one data row
+                return table_text
+
+            try:
+                # Parse header row
+                header_line = lines[0]
+                headers = [cell.strip() for cell in header_line.split('|')[1:-1]]
+
+                # Skip separator line (lines[1])
+
+                # Parse data rows
+                data_rows = []
+                for line in lines[2:]:
+                    if '|' in line:
+                        cells = [cell.strip() for cell in line.split('|')[1:-1]]
+                        if len(cells) == len(headers):
+                            data_rows.append(cells)
+
+                # Convert to Telegram-friendly format
+                if not data_rows:
+                    return table_text
+
+                # Create formatted table
+                formatted_lines = []
+
+                # Add header with emoji
+                formatted_lines.append("📊 **Table Data:**")
+                formatted_lines.append("")
+
+                # Method 1: Vertical list format (most readable on mobile)
+                for i, row in enumerate(data_rows):
+                    formatted_lines.append(f"**Entry {i+1}:**")
+                    for j, (header, value) in enumerate(zip(headers, row)):
+                        # Clean header and value
+                        clean_header = header.replace('*', '').replace('_', '').strip()
+                        clean_value = value.replace('*', '').replace('_', '').strip()
+                        formatted_lines.append(f"  • {clean_header}: `{clean_value}`")
+                    formatted_lines.append("")
+
+                return "\n".join(formatted_lines)
+
+            except Exception as e:
+                self.logger.warning(f"Table conversion failed: {e}")
+                # Fallback: convert to simple list
+                return self._table_fallback_format(table_text)
+
+        # Apply table conversion
+        converted_text = re.sub(table_pattern, convert_table, text, flags=re.MULTILINE)
+        return converted_text
+
+    def _table_fallback_format(self, table_text: str) -> str:
+        """
+        Fallback table formatting when parsing fails
+        
+        Args:
+            table_text (str): Raw table text
+            
+        Returns:
+            str: Simple formatted version
+        """
+        lines = table_text.split('\n')
+        formatted_lines = ["📋 **Data Table:**", ""]
+        
+        for line in lines:
+            if '|' in line and not line.strip().startswith('|---'):
+                # Extract cells and format as bullet points
+                cells = [cell.strip() for cell in line.split('|') if cell.strip()]
+                if cells:
+                    formatted_line = " | ".join(f"`{cell}`" for cell in cells)
+                    formatted_lines.append(f"  {formatted_line}")
+        
+        return "\n".join(formatted_lines)
+    
+    def _advanced_table_format(self, text: str) -> str:
+        """
+        Advanced table formatting with multiple layout options
+        
+        Args:
+            text (str): Text with potential tables
+            
+        Returns:
+            str: Text with optimally formatted tables
+        """
+        import re
+        
+        # Enhanced table detection
+        table_pattern = r'(\n\s*\|[^\n]+\|\s*\n\s*\|[-\s\|:]+\|\s*\n(?:\s*\|[^\n]+\|\s*\n?)*)'
+        
+        def smart_table_converter(match):
+            table_text = match.group(1).strip()
+            lines = [line.strip() for line in table_text.split('\n') if line.strip()]
+            
+            if len(lines) < 3:
+                return table_text
+            
+            try:
+                # Parse table structure
+                header_line = lines[0]
+                headers = [cell.strip() for cell in header_line.split('|')[1:-1]]
+                
+                # Parse data rows
+                data_rows = []
+                for line in lines[2:]:
+                    if '|' in line:
+                        cells = [cell.strip() for cell in line.split('|')[1:-1]]
+                        if len(cells) == len(headers):
+                            data_rows.append(cells)
+                
+                if not data_rows:
+                    return table_text
+                
+                # Determine best format based on table characteristics
+                return self._choose_table_format(headers, data_rows)
+                
+            except Exception as e:
+                self.logger.debug(f"Advanced table parsing failed: {e}")
+                return self._table_fallback_format(table_text)
+        
+        return re.sub(table_pattern, smart_table_converter, text, flags=re.MULTILINE)
+    
+    def _choose_table_format(self, headers: list, data_rows: list) -> str:
+        """
+        Choose the best table format based on content characteristics
+        
+        Args:
+            headers (list): Table headers
+            data_rows (list): Table data rows
+            
+        Returns:
+            str: Optimally formatted table
+        """
+        num_cols = len(headers)
+        num_rows = len(data_rows)
+        
+        # Calculate content characteristics
+        max_cell_length = max(
+            max(len(str(cell)) for cell in row) 
+            for row in data_rows + [headers]
+        )
+        
+        total_width = sum(len(str(cell)) for cell in headers) + num_cols * 3  # spaces and separators
+        
+        # Choose format based on characteristics
+        if num_cols <= 2 and num_rows <= 5:
+            # Small table: Use inline format
+            return self._format_table_inline(headers, data_rows)
+        elif num_cols <= 3 and max_cell_length <= 15:
+            # Medium table: Use compact format
+            return self._format_table_compact(headers, data_rows)
+        elif num_cols <= 4 and total_width <= 60:
+            # Wide table: Use aligned format
+            return self._format_table_aligned(headers, data_rows)
+        else:
+            # Large table: Use vertical list format
+            return self._format_table_vertical(headers, data_rows)
+    
+    def _format_table_inline(self, headers: list, data_rows: list) -> str:
+        """Inline format for small tables (2 columns, ≤5 rows)"""
+        formatted = ["📊 **Quick Stats:**", ""]
+        
+        for row in data_rows:
+            if len(row) >= 2:
+                key = row[0].replace('*', '').replace('_', '').strip()
+                value = row[1].replace('*', '').replace('_', '').strip()
+                formatted.append(f"**{key}:** `{value}`")
+        
+        return "\n".join(formatted)
+    
+    def _format_table_compact(self, headers: list, data_rows: list) -> str:
+        """Compact format for medium tables (≤3 columns, short content)"""
+        formatted = ["📋 **Data Summary:**", ""]
+        
+        # Add headers
+        header_line = " | ".join(f"**{h}**" for h in headers)
+        formatted.append(header_line)
+        formatted.append("─" * min(40, len(header_line)))
+        
+        # Add rows
+        for row in data_rows:
+            clean_row = [cell.replace('*', '').replace('_', '').strip() for cell in row]
+            row_line = " | ".join(f"`{cell}`" for cell in clean_row)
+            formatted.append(row_line)
+        
+        return "\n".join(formatted)
+    
+    def _format_table_aligned(self, headers: list, data_rows: list) -> str:
+        """Aligned format for wider tables with good readability"""
+        formatted = ["📊 **Detailed Table:**", "```"]
+        
+        # Calculate column widths
+        all_rows = [headers] + data_rows
+        col_widths = []
+        for i in range(len(headers)):
+            max_width = max(len(str(row[i])) if i < len(row) else 0 for row in all_rows)
+            col_widths.append(min(max_width + 2, 20))  # Cap at 20 chars
+        
+        # Format header
+        header_line = "|".join(h.center(w) for h, w in zip(headers, col_widths))
+        separator_line = "|".join("─" * w for w in col_widths)
+        
+        formatted.append(header_line)
+        formatted.append(separator_line)
+        
+        # Format rows
+        for row in data_rows:
+            padded_row = []
+            for i, (cell, width) in enumerate(zip(row, col_widths)):
+                if i < len(row):
+                    cell_str = str(cell)[:width-2]  # Truncate if too long
+                    padded_row.append(cell_str.ljust(width))
+                else:
+                    padded_row.append(" " * width)
+            
+            row_line = "|".join(padded_row)
+            formatted.append(row_line)
+        
+        formatted.append("```")
+        return "\n".join(formatted)
+    
+    def _format_table_vertical(self, headers: list, data_rows: list) -> str:
+        """Vertical list format for large/complex tables"""
+        formatted = ["📊 **Comprehensive Data:**", ""]
+        
+        for i, row in enumerate(data_rows, 1):
+            formatted.append(f"**📌 Record {i}:**")
+            
+            for j, (header, value) in enumerate(zip(headers, row)):
+                clean_header = header.replace('*', '').replace('_', '').strip()
+                clean_value = str(value).replace('*', '').replace('_', '').strip()
+                
+                # Add appropriate emoji for common data types
+                emoji = self._get_data_emoji(clean_header.lower(), clean_value)
+                formatted.append(f"  {emoji} **{clean_header}:** `{clean_value}`")
+            
+            formatted.append("")  # Empty line between records
+        
+        return "\n".join(formatted)
+    
+    def _get_data_emoji(self, header: str, value: str) -> str:
+        """Get appropriate emoji for data field"""
+        header_lower = header.lower()
+        value_lower = value.lower()
+        
+        # Price/Money indicators
+        if any(word in header_lower for word in ['price', 'cost', 'fee', 'amount', 'value']):
+            return "💰"
+        if '$' in value or '€' in value or '£' in value:
+            return "💰"
+        
+        # Percentage indicators
+        if '%' in value or 'percent' in header_lower:
+            if '+' in value or value_lower.startswith('up'):
+                return "📈"
+            elif '-' in value or value_lower.startswith('down'):
+                return "📉"
+            else:
+                return "📊"
+        
+        # Volume/Quantity indicators
+        if any(word in header_lower for word in ['volume', 'quantity', 'count', 'total']):
+            return "📦"
+        
+        # Time indicators
+        if any(word in header_lower for word in ['time', 'date', 'timestamp', 'when']):
+            return "⏰"
+        
+        # Symbol/Asset indicators
+        if any(word in header_lower for word in ['symbol', 'asset', 'coin', 'token', 'pair']):
+            return "🪙"
+        
+        # Status indicators
+        if any(word in header_lower for word in ['status', 'state', 'condition']):
+            if any(word in value_lower for word in ['active', 'open', 'buy', 'bullish']):
+                return "🟢"
+            elif any(word in value_lower for word in ['inactive', 'closed', 'sell', 'bearish']):
+                return "🔴"
+            else:
+                return "🟡"
+        
+        # Default
+        return "▫️"
+    
+    # 更新主要的格式化方法
+    def format_message(self, text: str, message_type: str) -> str:
+        """
+        Enhanced message formatting with complete Telegram compatibility and table support
+        
+        Args:
+            text (str): Raw message content
+            message_type (str): Type of message
+            
         Returns:
             str: Formatted message ready for Telegram transmission
         """
         try:
             # Input validation
             if not text or not isinstance(text, str):
-                self.logger.warning(
-                    f"Invalid text input for message formatting: {type(text)}"
-                )
+                self.logger.warning(f"Invalid text input for message formatting: {type(text)}")
                 text = str(text) if text else "No content available"
-
+            
             if not message_type:
                 message_type = "update"
-
-            # Step 1: Sanitize raw content
-            sanitized_text = self._sanitize_message_content(text)
-
-            # Step 2: Convert markdown titles to Telegram-compatible format
+            
+            # Step 1: Detect and convert tables BEFORE other processing
+            text_with_tables = self._advanced_table_format(text)
+            
+            # Step 2: Sanitize content
+            sanitized_text = self._sanitize_message_content(text_with_tables)
+            
+            # Step 3: Convert remaining markdown titles
             formatted_text = self._convert_markdown_titles(sanitized_text)
-
-            # Step 3: Validate markdown syntax
-            is_valid, error_msg = self._validate_telegram_markdown(formatted_text)
+            
+            # Step 4: Validate markdown syntax (but skip table areas)
+            is_valid, error_msg = self._validate_telegram_markdown_with_tables(formatted_text)
             if not is_valid:
                 self.logger.warning(f"Markdown validation failed: {error_msg}")
-                # Fallback: escape all special characters for safety
-                formatted_text = self._escape_telegram_markdown(sanitized_text)
-                self.logger.info("Applied safe text escaping as fallback")
-
-            # Step 4: Generate message header based on type
+                # Fallback: escape special characters but preserve table formatting
+                formatted_text = self._selective_escape_preserve_tables(formatted_text)
+                self.logger.info("Applied selective escaping while preserving tables")
+            
+            # Step 5: Generate message header
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-
+            
             header_mapping = {
                 "signal": "🔔 *New Trading Signal*",
-                "backtest": "📊 *Backtest Result*",
+                "backtest": "📊 *Backtest Result*", 
                 "alert": "🚨 *Trading Alert*",
                 "analysis": "📈 *Market Analysis*",
                 "update": "📢 *Trading Update*",
-                "notification": "🔔 *Notification*",
+                "notification": "🔔 *Notification*"
             }
-
+            
             header = header_mapping.get(message_type.lower(), "📈 *Trading Update*")
-
-            # Step 5: Build complete message
+            
+            # Step 6: Build complete message
             complete_message = f"""{header}
     ⏰ *Time:* {timestamp}
-
+    
     {formatted_text}
-
+    
     ---
     _Automated Trading Signal System_"""
-
-            # Step 6: Handle message length limits
-            if len(complete_message) > 4000:  # Leave buffer under Telegram's 4096 limit
-                self.logger.warning(
-                    f"Message too long ({len(complete_message)} chars), splitting..."
+            
+            # Step 7: Handle message length
+            if len(complete_message) > 4000:
+                self.logger.warning(f"Message too long ({len(complete_message)} chars), optimizing...")
+                complete_message = self._optimize_long_message_with_tables(
+                    header, timestamp, formatted_text
                 )
-
-                # Try to shorten by removing excessive formatting first
-                simplified_message = f"""{header}
-    ⏰ {timestamp}
-
-    {formatted_text}
-
-    ---
-    Automated Trading Signal System"""
-
-                if len(simplified_message) <= 4000:
-                    complete_message = simplified_message
-                    self.logger.info("Message shortened by simplifying formatting")
-                else:
-                    # If still too long, we'll return the first part and log the issue
-                    # The calling method should handle message splitting
-                    self.logger.error(
-                        f"Message still too long after simplification: {len(simplified_message)} chars"
-                    )
-                    complete_message = simplified_message[:4000] + "..."
-
-            # Step 7: Final validation
-            final_is_valid, final_error = self._validate_telegram_markdown(
-                complete_message
-            )
+            
+            # Step 8: Final validation
+            final_is_valid, final_error = self._validate_telegram_markdown_with_tables(complete_message)
             if not final_is_valid:
                 self.logger.error(f"Final message validation failed: {final_error}")
-                # Last resort: create a plain text version
-                plain_message = f"""{message_type.upper()} - {timestamp}
-
-    {self._escape_telegram_markdown(sanitized_text)}
-
-    ---
-    Automated Trading Signal System"""
-                complete_message = plain_message
-                self.logger.info("Applied plain text formatting as final fallback")
-
-            # Log successful formatting
-            self.logger.debug(
-                f"Successfully formatted {message_type} message ({len(complete_message)} chars)"
-            )
-
+                complete_message = self._create_safe_fallback_with_tables(
+                    message_type, timestamp, sanitized_text
+                )
+            
+            self.logger.debug(f"Successfully formatted {message_type} message with tables ({len(complete_message)} chars)")
+            
             return complete_message
-
+            
         except Exception as e:
-            # Emergency fallback for any unexpected errors
             self.logger.error(f"Critical error in message formatting: {e}")
-
-            # Create minimal safe message
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-            emergency_message = f"""📢 TRADING UPDATE
+            return f"""📢 TRADING UPDATE
     Time: {timestamp}
-
+    
     {self._escape_telegram_markdown(str(text)[:3000])}
-
+    
     ---
     Automated Trading Signal System"""
-
-            return emergency_message
+    
+    def _validate_telegram_markdown_with_tables(self, text: str) -> tuple:
+        """
+        Enhanced validation that preserves table formatting
+        
+        Args:
+            text (str): Text to validate
+            
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        try:
+            # Extract table sections to validate separately
+            table_pattern = r'```[^`]+```'
+            tables = re.findall(table_pattern, text)
+            
+            # Remove tables for general markdown validation
+            text_without_tables = re.sub(table_pattern, '[TABLE]', text)
+            
+            # Validate non-table content
+            is_valid, error_msg = self._validate_telegram_markdown(text_without_tables)
+            
+            if not is_valid:
+                return False, error_msg
+            
+            # Validate table sections (they should be in code blocks, so safer)
+            for table in tables:
+                # Tables in code blocks are generally safe, but check for basic issues
+                if table.count('```') % 2 != 0:
+                    return False, "Unmatched code block markers in table"
+            
+            return True, ""
+            
+        except Exception as e:
+            return False, f"Table validation error: {str(e)}"
+    
+    def _selective_escape_preserve_tables(self, text: str) -> str:
+        """
+        Escape special characters while preserving table formatting
+        
+        Args:
+            text (str): Text with tables to selectively escape
+            
+        Returns:
+            str: Safely escaped text with preserved tables
+        """
+        # Pattern to match formatted tables and code blocks
+        protected_patterns = [
+            r'```[^`]*```',  # Code blocks (including table formatting)
+            r'📊 \*\*[^*]+\*\*:',  # Table headers
+            r'📋 \*\*[^*]+\*\*:',  # Table headers
+            r'  [▫️•] \*\*[^*]+\*\*: `[^`]*`',  # Table rows
+        ]
+        
+        # Store protected content
+        protected_content = {}
+        placeholder_counter = 0
+        
+        # Replace protected content with placeholders
+        working_text = text
+        for pattern in protected_patterns:
+            matches = re.finditer(pattern, working_text)
+            for match in matches:
+                placeholder = f"__PROTECTED_{placeholder_counter}__"
+                protected_content[placeholder] = match.group(0)
+                working_text = working_text.replace(match.group(0), placeholder, 1)
+                placeholder_counter += 1
+        
+        # Escape the remaining content
+        escaped_text = self._escape_telegram_markdown(working_text)
+        
+        # Restore protected content
+        for placeholder, original in protected_content.items():
+            escaped_text = escaped_text.replace(placeholder, original)
+        
+        return escaped_text
+    
+    def _optimize_long_message_with_tables(self, header: str, timestamp: str, content: str) -> str:
+        """
+        Optimize long messages while preserving table readability
+        
+        Args:
+            header (str): Message header
+            timestamp (str): Timestamp string
+            content (str): Formatted content with tables
+            
+        Returns:
+            str: Optimized message
+        """
+        # Try simplified header first
+        simplified_message = f"""{header}
+    ⏰ {timestamp}
+    
+    {content}
+    
+    ---
+    Automated System"""
+        
+        if len(simplified_message) <= 4000:
+            return simplified_message
+        
+        # If still too long, try to compress tables
+        compressed_content = self._compress_table_content(content)
+        
+        compressed_message = f"""{header}
+    ⏰ {timestamp}
+    
+    {compressed_content}
+    
+    ---
+    Automated System"""
+        
+        if len(compressed_message) <= 4000:
+            return compressed_message
+        
+        # Last resort: truncate but preserve table structure
+        return self._truncate_preserve_tables(compressed_message)
+    
+    def _compress_table_content(self, content: str) -> str:
+        """
+        Compress table content while maintaining readability
+        
+        Args:
+            content (str): Content with tables
+            
+        Returns:
+            str: Compressed content
+        """
+        # Replace verbose table introductions
+        replacements = {
+            "📊 **Comprehensive Data:**": "📊 **Data:**",
+            "📋 **Data Summary:**": "📋 **Summary:**",
+            "📊 **Detailed Table:**": "📊 **Table:**",
+            "📊 **Quick Stats:**": "📊 **Stats:**",
+            "**📌 Record ": "**Record ",
+        }
+        
+        compressed = content
+        for old, new in replacements.items():
+            compressed = compressed.replace(old, new)
+        
+        # Compress excessive whitespace in tables
+        compressed = re.sub(r'\n\n\n+', '\n\n', compressed)
+        
+        # Shorten long data values in tables
+        compressed = re.sub(r'`([^`]{25,})`', lambda m: f'`{m.group(1)[:22]}...`', compressed)
+        
+        return compressed
+    
+    def _truncate_preserve_tables(self, message: str) -> str:
+        """
+        Truncate message while preserving table structure
+        
+        Args:
+            message (str): Long message to truncate
+            
+        Returns:
+            str: Truncated message with intact tables
+        """
+        lines = message.split('\n')
+        result_lines = []
+        current_length = 0
+        in_table = False
+        table_start_index = -1
+        
+        for i, line in enumerate(lines):
+            line_length = len(line) + 1  # +1 for newline
+            
+            # Check if we're starting a table
+            if any(marker in line for marker in ['📊 **', '📋 **', '```']):
+                in_table = True
+                table_start_index = len(result_lines)
+            
+            # Check if we're ending a table
+            if in_table and (line.strip() == '' and i < len(lines) - 1 and 
+                            not any(marker in lines[i+1] for marker in ['  •', '  ▫️', '**Record', '```'])):
+                in_table = False
+            
+            # If adding this line would exceed limit
+            if current_length + line_length > 3800:  # Leave room for footer
+                if in_table:
+                    # Complete the current table
+                    result_lines.append("  ...")
+                    result_lines.append("")
+                
+                # Add truncation notice
+                result_lines.append("📄 **[Message truncated due to length]**")
+                result_lines.append("")
+                break
+            
+            result_lines.append(line)
+            current_length += line_length
+        
+        # Ensure we end with the footer
+        if not any("Automated" in line for line in result_lines[-3:]):
+            result_lines.extend(["---", "Automated Trading Signal System"])
+        
+        return '\n'.join(result_lines)
+    
+    def _create_safe_fallback_with_tables(self, message_type: str, timestamp: str, content: str) -> str:
+        """
+        Create safe fallback message that preserves basic table data
+        
+        Args:
+            message_type (str): Type of message
+            timestamp (str): Timestamp
+            content (str): Original content
+            
+        Returns:
+            str: Safe fallback message
+        """
+        # Extract basic table data if present
+        table_data = self._extract_basic_table_data(content)
+        
+        safe_content = self._escape_telegram_markdown(content[:2000])
+        
+        fallback_message = f"""📢 {message_type.upper()}
+    Time: {timestamp}
+    
+    {safe_content}"""
+        
+        if table_data:
+            fallback_message += f"\n\n📊 **Table Data:**\n{table_data}"
+        
+        fallback_message += "\n\n---\nAutomated Trading Signal System"
+        
+        return fallback_message
+    
+    def _extract_basic_table_data(self, content: str) -> str:
+        """
+        Extract basic table data for fallback display
+        
+        Args:
+            content (str): Content with potential tables
+            
+        Returns:
+            str: Basic table data as simple list
+        """
+        # Look for table-like patterns
+        table_patterns = [
+            r'  [▫️•] \*\*([^*]+)\*\*: `([^`]+)`',  # Vertical table format
+            r'\*\*([^*]+):\*\* `([^`]+)`',  # Inline format
+        ]
+        
+        extracted = []
+        for pattern in table_patterns:
+            matches = re.findall(pattern, content)
+            for key, value in matches[:10]:  # Limit to first 10 entries
+                clean_key = key.strip()
+                clean_value = value.strip()
+                extracted.append(f"• {clean_key}: {clean_value}")
+        
+        return '\n'.join(extracted) if extracted else ""
+    
+    # 添加表格预览功能
+    def preview_table_formatting(self, markdown_table: str) -> Dict[str, Any]:
+        """
+        Preview how a Markdown table will be formatted for Telegram
+        
+        Args:
+            markdown_table (str): Raw Markdown table
+            
+        Returns:
+            Dict[str, Any]: Preview information
+        """
+        try:
+            # Test table conversion
+            converted = self._advanced_table_format(markdown_table)
+            
+            # Analyze table characteristics
+            lines = markdown_table.strip().split('\n')
+            table_lines = [line for line in lines if '|' in line]
+            
+            if len(table_lines) >= 3:
+                header_line = table_lines[0]
+                headers = [cell.strip() for cell in header_line.split('|')[1:-1]]
+                data_lines = table_lines[2:]  # Skip separator
+                
+                preview_info = {
+                    "original_table": markdown_table,
+                    "converted_table": converted,
+                    "table_stats": {
+                        "columns": len(headers),
+                        "data_rows": len(data_lines),
+                        "headers": headers,
+                        "original_length": len(markdown_table),
+                        "converted_length": len(converted)
+                    },
+                    "format_used": self._detect_format_used(converted),
+                    "readability_score": self._calculate_table_readability(converted),
+                    "telegram_compatibility": True
+                }
+                
+                return preview_info
+            else:
+                return {
+                    "error": "Invalid table format",
+                    "original_table": markdown_table,
+                    "telegram_compatibility": False
+                }
+                
+        except Exception as e:
+            return {
+                "error": f"Table preview failed: {str(e)}",
+                "original_table": markdown_table,
+                "telegram_compatibility": False
+            }
+    
+    def _detect_format_used(self, converted_text: str) -> str:
+        """Detect which table format was used"""
+        if "📊 **Quick Stats:**" in converted_text:
+            return "inline"
+        elif "📋 **Data Summary:**" in converted_text:
+            return "compact"
+        elif "```" in converted_text:
+            return "aligned"
+        elif "📊 **Comprehensive Data:**" in converted_text or "**Record" in converted_text:
+            return "vertical"
+        else:
+            return "fallback"
+    
+    def _calculate_table_readability(self, converted_text: str) -> str:
+        """Calculate readability score for converted table"""
+        lines = converted_text.split('\n')
+        non_empty_lines = [line for line in lines if line.strip()]
+        
+        if len(non_empty_lines) <= 10:
+            return "excellent"
+        elif len(non_empty_lines) <= 20:
+            return "good"
+        elif len(non_empty_lines) <= 30:
+            return "fair"
+        else:
+            return "poor"
 
     async def send_formatted_message_safely(
         self, chat_ids: List[str], message: str, message_type: str = "signal"
@@ -1539,7 +2141,7 @@ If you encounter any issues, please contact the administrator.
         """
         Enhanced message sending with automatic splitting for long messages
 
-        Args:
+        Args
             chat_ids (List[str]): List of chat IDs to send to
             message (str): Raw message content
             message_type (str): Message type
@@ -2076,7 +2678,7 @@ If you encounter any issues, please contact the administrator.
                     "errors": [],
                     "retry_stats": {},
                 }
-            return await self.send_to_multiple_chats_enhanced(
+            return await self.send_formatted_message_safely(
                 target_groups, message, message_type
             )
 
@@ -2099,7 +2701,7 @@ If you encounter any issues, please contact the administrator.
                 "retry_stats": {},
             }
 
-        result = await self.send_to_multiple_chats_enhanced(
+        result = await self.send_formatted_message_safely(
             chat_ids, message, message_type
         )
 
