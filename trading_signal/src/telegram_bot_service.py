@@ -1761,6 +1761,102 @@ If you encounter any issues, please contact the administrator.
         # Default
         return "▫️"
 
+    async def _send_single_message_with_retry(
+        self, chat_id: str, formatted_message: str, semaphore: asyncio.Semaphore
+    ) -> Dict[str, Any]:
+        """Send message to a single chat with intelligent retry mechanism"""
+        async with semaphore:
+            last_error = None
+            error_category = "unknown"
+
+            for attempt in range(self.max_retries + 1):
+                try:
+                    if attempt > 0:
+                        self.logger.info(
+                            f"Retry attempt {attempt}/{self.max_retries} for chat {chat_id}"
+                        )
+
+                    await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=formatted_message,
+                        parse_mode="Markdown",
+                        disable_web_page_preview=True,
+                    )
+
+                    await asyncio.sleep(self.send_delay)
+
+                    if attempt > 0:
+                        self.logger.info(
+                            f"Successfully sent to {chat_id} after {attempt} retries"
+                        )
+
+                    return {
+                        "chat_id": chat_id,
+                        "success": True,
+                        "error": None,
+                        "attempts": attempt + 1,
+                        "retry_category": error_category if attempt > 0 else None,
+                    }
+
+                except TelegramError as e:
+                    last_error = e
+                    is_retryable, error_category = self._classify_error(e)
+
+                    self.logger.warning(
+                        f"Attempt {attempt + 1} failed for chat {chat_id}: {e} "
+                        f"(retryable: {is_retryable}, category: {error_category})"
+                    )
+
+                    if not is_retryable:
+                        self.logger.error(
+                            f"Permanent error for chat {chat_id}, not retrying: {e}"
+                        )
+                        return {
+                            "chat_id": chat_id,
+                            "success": False,
+                            "error": f"Permanent Telegram error: {e}",
+                            "attempts": attempt + 1,
+                            "retry_category": error_category,
+                            "is_permanent": True,
+                        }
+
+                    if attempt >= self.max_retries:
+                        break
+
+                    retry_delay = self._calculate_retry_delay(attempt, error_category)
+                    self.logger.debug(
+                        f"Waiting {retry_delay:.2f}s before retry {attempt + 1} for chat {chat_id}"
+                    )
+                    await asyncio.sleep(retry_delay)
+
+                except Exception as e:
+                    last_error = e
+                    is_retryable, error_category = self._classify_error(e)
+
+                    self.logger.warning(
+                        f"Unexpected error attempt {attempt + 1} for chat {chat_id}: {e} "
+                        f"(retryable: {is_retryable}, category: {error_category})"
+                    )
+
+                    if not is_retryable or attempt >= self.max_retries:
+                        break
+
+                    retry_delay = self._calculate_retry_delay(attempt, error_category)
+                    await asyncio.sleep(retry_delay)
+
+            # All retries exhausted
+            error_msg = f"Failed after {self.max_retries + 1} attempts: {last_error}"
+            self.logger.error(f"All retries exhausted for chat {chat_id}: {error_msg}")
+
+            return {
+                "chat_id": chat_id,
+                "success": False,
+                "error": error_msg,
+                "attempts": self.max_retries + 1,
+                "retry_category": error_category,
+                "is_permanent": False,
+            }
+
     # 更新主要的格式化方法
     def format_message(self, text: str, message_type: str) -> str:
         """
