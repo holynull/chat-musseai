@@ -2070,15 +2070,16 @@ If you encounter any issues, please contact the administrator.
 
         safe_content = self._escape_telegram_markdown(clean_content[:2000])
 
-        fallback_message = f"""📢 {message_type.upper()}
-    Time: {timestamp}
+    #     fallback_message = f"""📢 {message_type.upper()}
+    # Time: {timestamp}
 
-    {safe_content}"""
+    # {safe_content}"""
+        fallback_message=safe_content
 
         if table_data:
             fallback_message += f"\n\n📊 **Table Data:**\n{table_data}"
 
-        fallback_message += "\n\n---\nAutomated Trading Signal System"
+        # fallback_message += "\n\n---\nAutomated Trading Signal System"
 
         return fallback_message
 
