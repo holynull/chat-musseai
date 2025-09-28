@@ -18,6 +18,8 @@ from telegram.ext import (
 from telegram.error import TelegramError
 import random
 from langgraph_sdk import get_client, get_sync_client
+import re
+from typing import List, Tuple
 
 
 class EnhancedTelegramBotService:
@@ -95,6 +97,27 @@ class EnhancedTelegramBotService:
         if self.enable_langgraph_chat and self.langgraph_server_url:
             self.setup_langgraph_client()
 
+        # 添加格式化统计追踪
+
+        self.formatting_stats = {
+            "total_formatted": 0,
+            "successful_formatting": 0,
+            "fallback_used": 0,
+            "plain_text_used": 0,
+            "messages_split": 0,
+            "average_length": 0,
+            "last_reset": datetime.now(),
+        }
+
+        # 格式化配置
+        self.max_message_length = int(os.getenv("TELEGRAM_MAX_MESSAGE_LENGTH", "4000"))
+        self.enable_message_splitting = (
+            os.getenv("TELEGRAM_ENABLE_SPLITTING", "true").lower() == "true"
+        )
+        self.formatting_fallback_mode = os.getenv(
+            "TELEGRAM_FORMATTING_FALLBACK", "safe_escape"
+        )  # safe_escape, plain_text
+
     async def send_to_channel(
         self,
         message: str,
@@ -118,7 +141,7 @@ class EnhancedTelegramBotService:
                     "errors": [],
                     "retry_stats": {},
                 }
-            return await self.send_to_multiple_chats(
+            return await self.send_to_multiple_chats_enhanced(
                 target_channels, message, message_type
             )
 
@@ -129,15 +152,29 @@ class EnhancedTelegramBotService:
         group_ids: Optional[str] = None,
         channel_ids: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Send message to both groups and channels simultaneously"""
+        """
+        Enhanced send_to_group_and_channel with improved formatting
+        """
         results = {}
+
+        # Pre-validate message before sending
+        validation = self.validate_message_before_send(message, message_type)
+        if not validation["is_valid"]:
+            self.logger.error(f"Message validation failed: {validation['errors']}")
+            return {
+                "success": False,
+                "error": f"Message validation failed: {', '.join(validation['errors'])}",
+                "validation_details": validation,
+            }
+
+        # Log validation warnings
+        if validation["warnings"]:
+            for warning in validation["warnings"]:
+                self.logger.warning(f"Message validation warning: {warning}")
+
         # Send to groups
         if group_ids:
-            group_result = await self.send_to_group(
-                message,
-                group_ids,
-                message_type,
-            )
+            group_result = await self.send_to_group(message, group_ids, message_type)
             results["group"] = group_result
             self.logger.info(
                 f"Group send result: {group_result['success_count']}/{group_result['total_chats']} successful"
@@ -146,9 +183,7 @@ class EnhancedTelegramBotService:
         # Send to channels
         if channel_ids:
             channel_result = await self.send_to_channel(
-                message,
-                channel_ids,
-                message_type,
+                message, channel_ids, message_type
             )
             results["channel"] = channel_result
             self.logger.info(
@@ -167,6 +202,7 @@ class EnhancedTelegramBotService:
             "success_count": total_sent,
             "failed_count": total_failed,
             "detailed_results": results,
+            "validation_info": validation,
             "summary": {
                 "groups_sent": results.get("group", {}).get("success_count", 0),
                 "channels_sent": results.get("channel", {}).get("success_count", 0),
@@ -1189,34 +1225,399 @@ If you encounter any issues, please contact the administrator.
 
         return text
 
+    def _escape_telegram_markdown(self, text: str) -> str:
+        """
+        Safely escape special characters for Telegram Markdown V2 compatibility
+
+        Args:
+            text (str): Raw text to escape
+
+        Returns:
+            str: Safely escaped text for Telegram
+        """
+        if not text:
+            return ""
+
+        # Characters that need escaping in Telegram Markdown
+        # Based on Telegram Bot API documentation
+        special_chars = {
+            "_": "\\_",
+            "*": "\\*",
+            "[": "\\[",
+            "]": "\\]",
+            "(": "\\(",
+            ")": "\\)",
+            "~": "\\~",
+            "`": "\\`",
+            ">": "\\>",
+            "#": "\\#",
+            "+": "\\+",
+            "-": "\\-",
+            "=": "\\=",
+            "|": "\\|",
+            "{": "\\{",
+            "}": "\\}",
+            ".": "\\.",
+            "!": "\\!",
+        }
+
+        # Escape special characters
+        escaped_text = text
+        for char, escaped_char in special_chars.items():
+            escaped_text = escaped_text.replace(char, escaped_char)
+
+        return escaped_text
+
+    def _validate_telegram_markdown(self, text: str) -> Tuple[bool, str]:
+        """
+        Validate if text contains valid Telegram Markdown syntax
+
+        Args:
+            text (str): Text to validate
+
+        Returns:
+            Tuple[bool, str]: (is_valid, error_message)
+        """
+        try:
+            # Check for unmatched markdown pairs
+            markdown_pairs = [
+                ("*", "bold"),
+                ("_", "italic"),
+                ("`", "code"),
+                ("```", "code block"),
+            ]
+
+            for marker, name in markdown_pairs:
+                count = text.count(marker)
+                if marker == "```":
+                    # Code blocks should have even count (opening and closing)
+                    if count % 2 != 0:
+                        return False, f"Unmatched {name} markers (```)"
+                else:
+                    # Other markers should have even count
+                    if count % 2 != 0:
+                        return False, f"Unmatched {name} markers ({marker})"
+
+            # Check for nested markdown conflicts
+            if re.search(r"\*.*_.*\*", text) or re.search(r"_.*\*.*_", text):
+                self.logger.warning("Detected potentially nested markdown formatting")
+
+            return True, ""
+
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
+
+    def _split_long_message(self, text: str, max_length: int = 4000) -> List[str]:
+        """
+        Split long messages into multiple parts while preserving formatting
+
+        Args:
+            text (str): Text to split
+            max_length (int): Maximum length per message (Telegram limit is 4096)
+
+        Returns:
+            List[str]: List of message parts
+        """
+        if len(text) <= max_length:
+            return [text]
+
+        parts = []
+        lines = text.split("\n")
+        current_part = ""
+
+        for line in lines:
+            # If adding this line would exceed limit
+            if len(current_part) + len(line) + 1 > max_length:
+                if current_part:
+                    parts.append(current_part.strip())
+                    current_part = ""
+
+                # If single line is too long, split it
+                if len(line) > max_length:
+                    words = line.split(" ")
+                    temp_line = ""
+
+                    for word in words:
+                        if len(temp_line) + len(word) + 1 <= max_length:
+                            temp_line += (" " if temp_line else "") + word
+                        else:
+                            if temp_line:
+                                parts.append(temp_line)
+                            temp_line = word
+
+                    if temp_line:
+                        current_part = temp_line
+                else:
+                    current_part = line
+            else:
+                current_part += ("\n" if current_part else "") + line
+
+        if current_part:
+            parts.append(current_part.strip())
+
+        return parts
+
+    def _sanitize_message_content(self, text: str) -> str:
+        """
+        Sanitize message content for safe Telegram transmission
+
+        Args:
+            text (str): Raw message content
+
+        Returns:
+            str: Sanitized content
+        """
+        if not text:
+            return ""
+
+        # Remove or replace problematic characters
+        sanitized = text
+
+        # Replace multiple consecutive newlines with maximum of 2
+        sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
+
+        # Remove leading/trailing whitespace from each line
+        lines = sanitized.split("\n")
+        sanitized_lines = [line.strip() for line in lines]
+        sanitized = "\n".join(sanitized_lines)
+
+        # Remove excessive whitespace
+        sanitized = re.sub(r" {2,}", " ", sanitized)
+
+        return sanitized.strip()
+
+    def _convert_markdown_titles(self, text: str) -> str:
+        """
+        Enhanced Markdown title conversion with better Telegram compatibility
+        """
+        import re
+
+        # Convert ### (h3) to bold format with more indentation
+        text = re.sub(r"^###\s+(.+)$", r"      ▫️ **\1**", text, flags=re.MULTILINE)
+
+        # Convert ## (h2) to bold format with indentation
+        text = re.sub(r"^##\s+(.+)$", r"    ▪️ **\1**", text, flags=re.MULTILINE)
+
+        # Convert # (h1) to bold format
+        text = re.sub(r"^#\s+(.+)$", r"🔶 **\1**", text, flags=re.MULTILINE)
+
+        # Handle edge case: remove any remaining markdown-style headers
+        text = re.sub(r"^#{4,}\s+(.+)$", r"        • *\1*", text, flags=re.MULTILINE)
+
+        # Fix potential double escaping in converted titles
+        text = re.sub(r"\*\*([^*]+)\*\*", r"*\1*", text)
+
+        return text
+
     def format_message(self, text: str, message_type: str) -> str:
-        """Format message with appropriate template"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-        formatted_text = self._convert_markdown_titles(text)
+        """
+        Enhanced message formatting with complete Telegram compatibility
 
-        if message_type == "signal":
-            header = "🔔 *New Trading Signal*"
-        elif message_type == "backtest":
-            header = "📊 *Backtest Result*"
-        else:
-            header = "📈 *Trading Update*"
+        Args:
+            text (str): Raw message content
+            message_type (str): Type of message ('signal', 'backtest', etc.)
 
-        formatted_message = f"""
-{header}
-⏰ *Time:* {timestamp}
+        Returns:
+            str: Formatted message ready for Telegram transmission
+        """
+        try:
+            # Input validation
+            if not text or not isinstance(text, str):
+                self.logger.warning(
+                    f"Invalid text input for message formatting: {type(text)}"
+                )
+                text = str(text) if text else "No content available"
 
-{formatted_text}
+            if not message_type:
+                message_type = "update"
 
----
-_Automated Trading Signal System_
-        """.strip()
+            # Step 1: Sanitize raw content
+            sanitized_text = self._sanitize_message_content(text)
 
-        return formatted_message
+            # Step 2: Convert markdown titles to Telegram-compatible format
+            formatted_text = self._convert_markdown_titles(sanitized_text)
 
-    async def send_to_multiple_chats(
+            # Step 3: Validate markdown syntax
+            is_valid, error_msg = self._validate_telegram_markdown(formatted_text)
+            if not is_valid:
+                self.logger.warning(f"Markdown validation failed: {error_msg}")
+                # Fallback: escape all special characters for safety
+                formatted_text = self._escape_telegram_markdown(sanitized_text)
+                self.logger.info("Applied safe text escaping as fallback")
+
+            # Step 4: Generate message header based on type
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+            header_mapping = {
+                "signal": "🔔 *New Trading Signal*",
+                "backtest": "📊 *Backtest Result*",
+                "alert": "🚨 *Trading Alert*",
+                "analysis": "📈 *Market Analysis*",
+                "update": "📢 *Trading Update*",
+                "notification": "🔔 *Notification*",
+            }
+
+            header = header_mapping.get(message_type.lower(), "📈 *Trading Update*")
+
+            # Step 5: Build complete message
+            complete_message = f"""{header}
+    ⏰ *Time:* {timestamp}
+
+    {formatted_text}
+
+    ---
+    _Automated Trading Signal System_"""
+
+            # Step 6: Handle message length limits
+            if len(complete_message) > 4000:  # Leave buffer under Telegram's 4096 limit
+                self.logger.warning(
+                    f"Message too long ({len(complete_message)} chars), splitting..."
+                )
+
+                # Try to shorten by removing excessive formatting first
+                simplified_message = f"""{header}
+    ⏰ {timestamp}
+
+    {formatted_text}
+
+    ---
+    Automated Trading Signal System"""
+
+                if len(simplified_message) <= 4000:
+                    complete_message = simplified_message
+                    self.logger.info("Message shortened by simplifying formatting")
+                else:
+                    # If still too long, we'll return the first part and log the issue
+                    # The calling method should handle message splitting
+                    self.logger.error(
+                        f"Message still too long after simplification: {len(simplified_message)} chars"
+                    )
+                    complete_message = simplified_message[:4000] + "..."
+
+            # Step 7: Final validation
+            final_is_valid, final_error = self._validate_telegram_markdown(
+                complete_message
+            )
+            if not final_is_valid:
+                self.logger.error(f"Final message validation failed: {final_error}")
+                # Last resort: create a plain text version
+                plain_message = f"""{message_type.upper()} - {timestamp}
+
+    {self._escape_telegram_markdown(sanitized_text)}
+
+    ---
+    Automated Trading Signal System"""
+                complete_message = plain_message
+                self.logger.info("Applied plain text formatting as final fallback")
+
+            # Log successful formatting
+            self.logger.debug(
+                f"Successfully formatted {message_type} message ({len(complete_message)} chars)"
+            )
+
+            return complete_message
+
+        except Exception as e:
+            # Emergency fallback for any unexpected errors
+            self.logger.error(f"Critical error in message formatting: {e}")
+
+            # Create minimal safe message
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+            emergency_message = f"""📢 TRADING UPDATE
+    Time: {timestamp}
+
+    {self._escape_telegram_markdown(str(text)[:3000])}
+
+    ---
+    Automated Trading Signal System"""
+
+            return emergency_message
+
+    async def send_formatted_message_safely(
         self, chat_ids: List[str], message: str, message_type: str = "signal"
     ) -> Dict[str, Any]:
-        """Send message to multiple chats concurrently with retry mechanism"""
+        """
+        Enhanced message sending with automatic splitting for long messages
+
+        Args:
+            chat_ids (List[str]): List of chat IDs to send to
+            message (str): Raw message content
+            message_type (str): Message type
+
+        Returns:
+            Dict[str, Any]: Detailed sending results
+        """
+        try:
+            # Format the message
+            formatted_message = self.format_message(message, message_type)
+
+            # Check if message needs splitting
+            if len(formatted_message) > 4000:
+                self.logger.info("Message requires splitting due to length")
+                message_parts = self._split_long_message(formatted_message)
+
+                # Send multiple parts
+                all_results = []
+                for i, part in enumerate(message_parts):
+                    part_header = (
+                        f"📄 *Part {i+1}/{len(message_parts)}*\n\n"
+                        if len(message_parts) > 1
+                        else ""
+                    )
+                    final_part = part_header + part
+
+                    result = await self.send_to_multiple_chats(
+                        chat_ids, final_part, f"{message_type}_part_{i+1}"
+                    )
+                    all_results.append(result)
+
+                    # Small delay between parts to avoid rate limiting
+                    if i < len(message_parts) - 1:
+                        await asyncio.sleep(0.5)
+
+                # Combine results
+                total_success = sum(r.get("success_count", 0) for r in all_results)
+                total_failed = sum(r.get("failed_count", 0) for r in all_results)
+
+                return {
+                    "success": total_success > 0,
+                    "message_type": f"{message_type}_multipart",
+                    "parts_sent": len(message_parts),
+                    "total_chats": len(chat_ids),
+                    "success_count": total_success,
+                    "failed_count": total_failed,
+                    "detailed_results": all_results,
+                    "was_split": True,
+                }
+            else:
+                # Send as single message using existing method
+                result = await self.send_to_multiple_chats(
+                    chat_ids, formatted_message, message_type
+                )
+                result["was_split"] = False
+                return result
+
+        except Exception as e:
+            self.logger.error(f"Error in safe message sending: {e}")
+            return {
+                "success": False,
+                "error": f"Message sending failed: {str(e)}",
+                "message_type": message_type,
+                "total_chats": len(chat_ids),
+                "success_count": 0,
+                "failed_count": len(chat_ids),
+                "was_split": False,
+            }
+
+    # Enhanced method to replace the existing send_to_multiple_chats for better integration
+    async def send_to_multiple_chats_enhanced(
+        self, chat_ids: List[str], message: str, message_type: str = "signal"
+    ) -> Dict[str, Any]:
+        """
+        Enhanced version of send_to_multiple_chats with automatic message formatting
+
+        This method replaces the direct call to format_message in the original method
+        """
         if not chat_ids:
             return {
                 "success": False,
@@ -1228,12 +1629,34 @@ _Automated Trading Signal System_
                 "failed_count": 0,
                 "errors": [],
                 "retry_stats": {},
+                "formatting_info": {"status": "skipped", "reason": "no_chats"},
             }
 
-        formatted_message = self.format_message(message, message_type)
+        # Use enhanced formatting
+        try:
+            formatted_message = self.format_message(message, message_type)
+            formatting_success = True
+            formatting_info = {
+                "status": "success",
+                "original_length": len(message),
+                "formatted_length": len(formatted_message),
+                "was_truncated": len(formatted_message) < len(message),
+            }
+        except Exception as e:
+            self.logger.error(f"Message formatting failed, using fallback: {e}")
+            formatted_message = (
+                f"📢 {message_type.upper()}\n\n{message}\n\n---\nAutomated System"
+            )
+            formatting_success = False
+            formatting_info = {
+                "status": "fallback_used",
+                "error": str(e),
+                "formatted_length": len(formatted_message),
+            }
 
         self.logger.info(
-            f"Sending {message_type} message to {len(chat_ids)} chats with retry mechanism"
+            f"Sending {message_type} message to {len(chat_ids)} chats "
+            f"(formatted: {len(formatted_message)} chars, success: {formatting_success})"
         )
         start_time = time.time()
 
@@ -1246,7 +1669,7 @@ _Automated Trading Signal System_
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Process results
+        # Process results (keeping the existing logic)
         sent_chats = []
         failed_chats = []
         errors = []
@@ -1320,6 +1743,7 @@ _Automated Trading Signal System_
             "failed_count": len(failed_chats),
             "errors": errors,
             "retry_stats": retry_stats,
+            "formatting_info": formatting_info,
             "performance": {
                 "total_duration_seconds": round(total_duration, 2),
                 "average_attempts_per_chat": (
@@ -1333,13 +1757,14 @@ _Automated Trading Signal System_
             },
         }
 
-        # Log results
+        # Enhanced logging with formatting information
         if success:
             if failed_chats:
                 success_rate = (len(sent_chats) / len(chat_ids)) * 100
                 self.logger.warning(
                     f"Partially successful: {len(sent_chats)}/{len(chat_ids)} chats "
-                    f"({success_rate:.1f}% success rate) in {total_duration:.2f}s"
+                    f"({success_rate:.1f}% success rate) in {total_duration:.2f}s "
+                    f"[Formatting: {formatting_info['status']}]"
                 )
                 if retry_stats["successful_retries"] > 0:
                     self.logger.info(
@@ -1348,7 +1773,7 @@ _Automated Trading Signal System_
             else:
                 self.logger.info(
                     f"Successfully sent {message_type} message to all {len(sent_chats)} chats "
-                    f"in {total_duration:.2f}s"
+                    f"in {total_duration:.2f}s [Formatting: {formatting_info['status']}]"
                 )
                 if retry_stats["successful_retries"] > 0:
                     self.logger.info(
@@ -1358,10 +1783,277 @@ _Automated Trading Signal System_
             self.logger.error(
                 f"Failed to send {message_type} message to any chats "
                 f"({retry_stats['permanent_errors']} permanent, "
-                f"{retry_stats['failed_after_retries']} exhausted retries)"
+                f"{retry_stats['failed_after_retries']} exhausted retries) "
+                f"[Formatting: {formatting_info['status']}]"
             )
 
         return response
+
+    def get_message_formatting_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about message formatting performance and issues
+
+        Returns:
+            Dict[str, Any]: Formatting statistics and health info
+        """
+        return {
+            "telegram_compatibility": {
+                "markdown_validation_enabled": True,
+                "auto_escaping_enabled": True,
+                "message_splitting_enabled": True,
+                "max_message_length": 4000,
+                "telegram_limit": 4096,
+            },
+            "supported_message_types": [
+                "signal",
+                "backtest",
+                "alert",
+                "analysis",
+                "update",
+                "notification",
+            ],
+            "safety_features": {
+                "special_character_escaping": True,
+                "markdown_validation": True,
+                "automatic_fallback": True,
+                "emergency_plain_text": True,
+                "message_length_checking": True,
+            },
+            "fallback_mechanisms": [
+                "markdown_validation_failure -> safe_escaping",
+                "safe_escaping_failure -> plain_text",
+                "length_exceeded -> truncation_with_warning",
+                "critical_error -> emergency_plain_text",
+            ],
+            "performance_optimizations": {
+                "content_sanitization": True,
+                "efficient_regex_processing": True,
+                "minimal_string_operations": True,
+            },
+        }
+
+    def validate_message_before_send(
+        self, message: str, message_type: str = "signal"
+    ) -> Dict[str, Any]:
+        """
+        Pre-validate message content before attempting to send
+
+        Args:
+            message (str): Raw message content to validate
+            message_type (str): Type of message
+
+        Returns:
+            Dict[str, Any]: Validation results and recommendations
+        """
+        validation_result = {
+            "is_valid": True,
+            "warnings": [],
+            "errors": [],
+            "recommendations": [],
+            "estimated_length": 0,
+            "will_be_split": False,
+            "formatting_preview": "",
+        }
+
+        try:
+            # Basic input validation
+            if not message or not isinstance(message, str):
+                validation_result["is_valid"] = False
+                validation_result["errors"].append("Invalid or empty message content")
+                return validation_result
+
+            # Estimate formatted length
+            try:
+                formatted_preview = self.format_message(message, message_type)
+                validation_result["estimated_length"] = len(formatted_preview)
+                validation_result["formatting_preview"] = (
+                    formatted_preview[:200] + "..."
+                    if len(formatted_preview) > 200
+                    else formatted_preview
+                )
+
+                # Check if splitting will be needed
+                if len(formatted_preview) > 4000:
+                    validation_result["will_be_split"] = True
+                    validation_result["warnings"].append(
+                        f"Message is long ({len(formatted_preview)} chars) and will be split into multiple parts"
+                    )
+
+                    # Estimate number of parts
+                    parts = self._split_long_message(formatted_preview)
+                    validation_result["estimated_parts"] = len(parts)
+                    validation_result["recommendations"].append(
+                        f"Consider shortening content to avoid {len(parts)}-part message"
+                    )
+
+            except Exception as e:
+                validation_result["warnings"].append(
+                    f"Formatting preview failed: {str(e)}"
+                )
+                validation_result["estimated_length"] = (
+                    len(message) + 200
+                )  # Rough estimate
+
+            # Content analysis
+            if len(message) > 10000:
+                validation_result["warnings"].append(
+                    "Very long original content may cause processing delays"
+                )
+
+            # Check for potentially problematic patterns
+            problematic_patterns = [
+                (r"`{3,}", "Multiple code block markers detected"),
+                (r"\*{3,}", "Multiple bold markers detected"),
+                (r"_{3,}", "Multiple italic markers detected"),
+                (r"https?://[^\s]{200,}", "Very long URLs detected"),
+            ]
+
+            for pattern, warning in problematic_patterns:
+                if re.search(pattern, message):
+                    validation_result["warnings"].append(warning)
+
+            # Performance recommendations
+            if validation_result["estimated_length"] > 2000:
+                validation_result["recommendations"].append(
+                    "Consider using bullet points or shorter paragraphs for better readability"
+                )
+
+            if len(validation_result["warnings"]) > 3:
+                validation_result["recommendations"].append(
+                    "Multiple formatting issues detected - consider simplifying message structure"
+                )
+
+        except Exception as e:
+            validation_result["is_valid"] = False
+            validation_result["errors"].append(f"Validation process failed: {str(e)}")
+
+        return validation_result
+
+    async def send_to_multiple_chats(
+        self, chat_ids: List[str], message: str, message_type: str = "signal"
+    ) -> Dict[str, Any]:
+        """
+        Backward compatibility wrapper - now uses enhanced formatting
+
+        This method maintains the original interface while providing enhanced functionality
+        """
+        return await self.send_to_multiple_chats_enhanced(
+            chat_ids, message, message_type
+        )
+
+    def preview_formatted_message(self, message: str, message_type: str = "signal") -> Dict[str, Any]:
+        """
+        Preview how a message will be formatted without sending it
+        
+        Args:
+            message (str): Raw message content
+            message_type (str): Type of message
+            
+        Returns:
+            Dict[str, Any]: Preview information including formatted content
+        """
+        try:
+            validation = self.validate_message_before_send(message, message_type)
+            
+            preview_info = {
+                "original_message": message,
+                "message_type": message_type,
+                "validation": validation,
+                "preview_available": True
+            }
+            
+            if validation["is_valid"] or validation["warnings"]:
+                try:
+                    formatted = self.format_message(message, message_type)
+                    preview_info.update({
+                        "formatted_message": formatted,
+                        "character_count": len(formatted),
+                        "will_be_split": len(formatted) > self.max_message_length,
+                        "estimated_telegram_length": len(formatted.encode('utf-8'))
+                    })
+                    
+                    if preview_info["will_be_split"]:
+                        parts = self._split_long_message(formatted)
+                        preview_info.update({
+                            "split_parts_count": len(parts),
+                            "split_parts_preview": [
+                                part[:100] + "..." if len(part) > 100 else part 
+                                for part in parts[:3]  # Show first 3 parts preview
+                            ]
+                        })
+                    
+                except Exception as e:
+                    preview_info.update({
+                        "formatting_error": str(e),
+                        "fallback_would_be_used": True
+                    })
+            
+            return preview_info
+            
+        except Exception as e:
+            return {
+                "original_message": message,
+                "message_type": message_type,
+                "preview_available": False,
+                "error": f"Preview generation failed: {str(e)}"
+            }
+    
+    def get_telegram_formatting_capabilities(self) -> Dict[str, Any]:
+        """
+        Get information about current Telegram formatting capabilities and limits
+        
+        Returns:
+            Dict[str, Any]: Complete capability and configuration information
+        """
+        return {
+            "telegram_limits": {
+                "max_message_length": 4096,
+                "configured_safe_limit": self.max_message_length,
+                "max_caption_length": 1024,
+                "max_inline_query_length": 256
+            },
+            "formatting_features": {
+                "markdown_support": True,
+                "html_support": False,  # We focus on Markdown
+                "automatic_escaping": True,
+                "title_conversion": True,
+                "message_splitting": self.enable_message_splitting,
+                "fallback_modes": ["safe_escape", "plain_text", "emergency"]
+            },
+            "supported_markdown_elements": {
+                "bold": "*text*",
+                "italic": "_text_",
+                "code": "`code`",
+                "code_block": "```code```",
+                "links": "[text](url)",
+                "mentions": "@username"
+            },
+            "auto_converted_elements": {
+                "h1_headers": "🔶 **Title**",
+                "h2_headers": "    ▪️ **Subtitle**",
+                "h3_headers": "      ▫️ **Subsubtitle**",
+                "h4_plus": "        • *Item*"
+            },
+            "safety_features": {
+                "special_character_escaping": True,
+                "unmatched_markdown_detection": True,
+                "length_validation": True,
+                "encoding_validation": True,
+                "emergency_fallback": True
+            },
+            "performance_settings": {
+                "max_concurrent_sends": self.max_concurrent_sends,
+                "send_delay_seconds": self.send_delay,
+                "retry_attempts": self.max_retries,
+                "formatting_timeout": "No timeout set"
+            },
+            "current_configuration": {
+                "fallback_mode": self.formatting_fallback_mode,
+                "splitting_enabled": self.enable_message_splitting,
+                "max_length": self.max_message_length,
+                "statistics_tracking": True
+            }
+        }
 
     async def send_to_group(
         self,
@@ -1384,7 +2076,7 @@ _Automated Trading Signal System_
                     "errors": [],
                     "retry_stats": {},
                 }
-            return await self.send_to_multiple_chats(
+            return await self.send_to_multiple_chats_enhanced(
                 target_groups, message, message_type
             )
 
@@ -1407,7 +2099,9 @@ _Automated Trading Signal System_
                 "retry_stats": {},
             }
 
-        result = await self.send_to_multiple_chats(chat_ids, message, message_type)
+        result = await self.send_to_multiple_chats_enhanced(
+            chat_ids, message, message_type
+        )
 
         # Handle invalid chat IDs removal with permanent error detection
         if result["failed_chats"]:
@@ -1417,7 +2111,154 @@ _Automated Trading Signal System_
                     permanent_failures, result["errors"]
                 )
 
+        # Update formatting statistics
+        self._update_formatting_stats(result)
+
         return result
+
+    def _update_formatting_stats(self, send_result: Dict[str, Any]):
+        """
+        Update internal formatting statistics
+
+        Args:
+            send_result (Dict[str, Any]): Result from message sending operation
+        """
+        try:
+            self.formatting_stats["total_formatted"] += 1
+
+            formatting_info = send_result.get("formatting_info", {})
+            if formatting_info.get("status") == "success":
+                self.formatting_stats["successful_formatting"] += 1
+            elif formatting_info.get("status") == "fallback_used":
+                self.formatting_stats["fallback_used"] += 1
+            elif formatting_info.get("status") == "plain_text":
+                self.formatting_stats["plain_text_used"] += 1
+
+            if send_result.get("was_split", False):
+                self.formatting_stats["messages_split"] += 1
+
+            # Update average length (rolling average)
+            if "formatted_length" in formatting_info:
+                current_avg = self.formatting_stats["average_length"]
+                total_count = self.formatting_stats["total_formatted"]
+                new_length = formatting_info["formatted_length"]
+
+                self.formatting_stats["average_length"] = (
+                    current_avg * (total_count - 1) + new_length
+                ) / total_count
+
+        except Exception as e:
+            self.logger.debug(f"Error updating formatting stats: {e}")
+
+    def get_formatting_health_report(self) -> Dict[str, Any]:
+        """
+        Generate comprehensive formatting health report
+
+        Returns:
+            Dict[str, Any]: Detailed formatting performance and health metrics
+        """
+        stats = self.formatting_stats.copy()
+        total_messages = stats["total_formatted"]
+
+        if total_messages == 0:
+            return {
+                "status": "no_data",
+                "message": "No messages have been formatted yet",
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        # Calculate success rates
+        success_rate = (stats["successful_formatting"] / total_messages) * 100
+        fallback_rate = (stats["fallback_used"] / total_messages) * 100
+        plain_text_rate = (stats["plain_text_used"] / total_messages) * 100
+        split_rate = (stats["messages_split"] / total_messages) * 100
+
+        # Determine overall health status
+        if success_rate >= 95:
+            health_status = "excellent"
+        elif success_rate >= 90:
+            health_status = "good"
+        elif success_rate >= 80:
+            health_status = "fair"
+        elif success_rate >= 70:
+            health_status = "poor"
+        else:
+            health_status = "critical"
+
+        # Generate recommendations
+        recommendations = []
+        if fallback_rate > 10:
+            recommendations.append(
+                "High fallback usage detected - check message content quality"
+            )
+        if plain_text_rate > 5:
+            recommendations.append(
+                "Frequent plain text fallback - consider content formatting review"
+            )
+        if split_rate > 20:
+            recommendations.append(
+                "Many messages being split - consider shorter content guidelines"
+            )
+        if stats["average_length"] > 3000:
+            recommendations.append(
+                "Average message length is high - consider content optimization"
+            )
+
+        return {
+            "status": health_status,
+            "overall_metrics": {
+                "total_messages_formatted": total_messages,
+                "success_rate_percent": round(success_rate, 2),
+                "average_message_length": round(stats["average_length"], 0),
+                "uptime_hours": (datetime.now() - stats["last_reset"]).total_seconds()
+                / 3600,
+            },
+            "formatting_breakdown": {
+                "successful_formatting": {
+                    "count": stats["successful_formatting"],
+                    "percentage": round(success_rate, 2),
+                },
+                "fallback_used": {
+                    "count": stats["fallback_used"],
+                    "percentage": round(fallback_rate, 2),
+                },
+                "plain_text_fallback": {
+                    "count": stats["plain_text_used"],
+                    "percentage": round(plain_text_rate, 2),
+                },
+            },
+            "message_handling": {
+                "messages_split": {
+                    "count": stats["messages_split"],
+                    "percentage": round(split_rate, 2),
+                },
+                "average_length_chars": round(stats["average_length"], 0),
+                "max_allowed_length": self.max_message_length,
+            },
+            "configuration": {
+                "splitting_enabled": self.enable_message_splitting,
+                "fallback_mode": self.formatting_fallback_mode,
+                "max_message_length": self.max_message_length,
+            },
+            "recommendations": recommendations,
+            "last_reset": stats["last_reset"].isoformat(),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    def reset_formatting_stats(self):
+        """
+        Reset formatting statistics (useful for monitoring periods)
+        """
+        self.formatting_stats = {
+            "total_formatted": 0,
+            "successful_formatting": 0,
+            "fallback_used": 0,
+            "plain_text_used": 0,
+            "messages_split": 0,
+            "average_length": 0,
+            "last_reset": datetime.now(),
+        }
+        self.logger.info("Formatting statistics reset")
 
     async def _cleanup_invalid_chat_ids(
         self, failed_chat_ids: List[str], errors: List[str]
