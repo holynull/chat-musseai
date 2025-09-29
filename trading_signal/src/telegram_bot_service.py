@@ -20,7 +20,7 @@ import random
 from langgraph_sdk import get_client, get_sync_client
 
 # Add telegramify-markdown import for converting to Telegram MarkdownV2
-import telegramify_markdown 
+import telegramify_markdown
 from telegramify_markdown import customize
 
 # Configure telegramify-markdown for optimal Telegram compatibility
@@ -1050,10 +1050,34 @@ class EnhancedTelegramBotService:
 
     # Error classification and retry methods (from telegram_service.py)
     def _classify_error(self, error: Exception) -> Tuple[bool, str]:
-        """Classify error as retryable or permanent"""
+        """
+        Enhanced error classification with specific handling for parsing errors.
+        """
         error_str = str(error).lower()
         error_type = type(error).__name__
 
+        # Handle MarkdownV2 parsing errors as permanent (non-retryable)
+        markdown_parsing_errors = [
+            "can't parse entities",
+            "can't parse message text",
+            "bad request: can't parse entities",
+            "character '-' is reserved",
+            "character '_' is reserved",
+            "character '*' is reserved",
+            "character '[' is reserved",
+            "character ']' is reserved",
+            "character '(' is reserved",
+            "character ')' is reserved",
+            "markdown parsing failed",
+            "invalid markdown",
+        ]
+
+        # Check for MarkdownV2 parsing errors first
+        for parsing_error in markdown_parsing_errors:
+            if parsing_error in error_str:
+                return False, "permanent_markdown_parsing_error"
+
+        # Existing permanent error patterns
         permanent_keywords = [
             "chat not found",
             "user not found",
@@ -1070,12 +1094,15 @@ class EnhancedTelegramBotService:
             if keyword in error_str:
                 return False, f"permanent_{keyword.replace(' ', '_')}"
 
+        # Check retryable error types
         if error_type in self.retryable_errors:
             return True, f"retryable_{error_type.lower()}"
 
+        # Rate limiting
         if "too many requests" in error_str or "rate limit" in error_str:
             return True, "retryable_rate_limit"
 
+        # Other retryable patterns
         retryable_keywords = [
             "timeout",
             "network",
@@ -1091,6 +1118,7 @@ class EnhancedTelegramBotService:
             if keyword in error_str:
                 return True, f"retryable_{keyword.replace(' ', '_')}"
 
+        # Default to retryable for unknown errors (conservative approach)
         return True, "retryable_unknown"
 
     def _calculate_retry_delay(self, attempt: int, error_category: str = "") -> float:
@@ -1112,10 +1140,19 @@ class EnhancedTelegramBotService:
     async def _send_single_message_with_retry(
         self, chat_id: str, formatted_message: str, semaphore: asyncio.Semaphore
     ) -> Dict[str, Any]:
-        """Send message to a single chat with intelligent retry mechanism using MarkdownV2 parsing"""
+        """
+        Enhanced message sending with MarkdownV2 format validation and fallback.
+        """
         async with semaphore:
             last_error = None
             error_category = "unknown"
+
+            # Pre-validate MarkdownV2 format
+            if not self._validate_markdownv2_format(formatted_message):
+                self.logger.warning(
+                    f"Invalid MarkdownV2 format detected for chat {chat_id}, applying fix"
+                )
+                formatted_message = self._safe_markdownv2_conversion(formatted_message)
 
             for attempt in range(self.max_retries + 1):
                 try:
@@ -1127,7 +1164,7 @@ class EnhancedTelegramBotService:
                     await self.bot.send_message(
                         chat_id=chat_id,
                         text=formatted_message,
-                        parse_mode="MarkdownV2",  # 使用 MarkdownV2 模式
+                        parse_mode="MarkdownV2",
                         disable_web_page_preview=True,
                     )
 
@@ -1154,6 +1191,48 @@ class EnhancedTelegramBotService:
                         f"Attempt {attempt + 1} failed for chat {chat_id}: {e} "
                         f"(retryable: {is_retryable}, category: {error_category})"
                     )
+
+                    # Special handling for MarkdownV2 parsing errors
+                    if "permanent_markdown_parsing_error" in error_category:
+                        self.logger.warning(
+                            f"MarkdownV2 parsing error for chat {chat_id}, trying plain text fallback"
+                        )
+
+                        # Try sending as plain text as last resort
+                        try:
+                            plain_text = self._convert_to_plain_text(formatted_message)
+                            await self.bot.send_message(
+                                chat_id=chat_id,
+                                text=plain_text,
+                                disable_web_page_preview=True,
+                            )
+
+                            self.logger.info(
+                                f"Successfully sent plain text fallback to {chat_id}"
+                            )
+
+                            return {
+                                "chat_id": chat_id,
+                                "success": True,
+                                "error": f"Sent as plain text due to MarkdownV2 error: {e}",
+                                "attempts": attempt + 1,
+                                "retry_category": "fallback_plain_text",
+                                "fallback_used": True,
+                            }
+
+                        except Exception as fallback_error:
+                            self.logger.error(
+                                f"Plain text fallback also failed for chat {chat_id}: {fallback_error}"
+                            )
+                            return {
+                                "chat_id": chat_id,
+                                "success": False,
+                                "error": f"MarkdownV2 and plain text both failed: {e} | {fallback_error}",
+                                "attempts": attempt + 1,
+                                "retry_category": error_category,
+                                "is_permanent": True,
+                                "fallback_attempted": True,
+                            }
 
                     if not is_retryable:
                         self.logger.error(
@@ -1205,28 +1284,193 @@ class EnhancedTelegramBotService:
                 "is_permanent": False,
             }
 
+    def _convert_to_plain_text(self, formatted_text: str) -> str:
+        """
+        Convert MarkdownV2 formatted text to plain text for fallback.
+        """
+        import re
+
+        # Remove MarkdownV2 formatting while preserving content
+        text = formatted_text
+
+        # Remove escape characters
+        text = re.sub(r"\\(.)", r"\1", text)
+
+        # Remove bold formatting
+        text = re.sub(r"\*([^*]+)\*", r"\1", text)
+
+        # Remove italic formatting
+        text = re.sub(r"_([^_]+)_", r"\1", text)
+
+        # Remove code formatting
+        text = re.sub(r"`([^`]+)`", r"\1", text)
+
+        # Clean up multiple spaces and newlines
+        text = re.sub(r"\n\s*\n", "\n\n", text)
+        text = re.sub(r"[ \t]+", " ", text)
+
+        return text.strip()
+
     def convert_markdown_to_telegram_markdown(self, markdown_text: str) -> str:
         """
         Convert standard Markdown to Telegram-friendly MarkdownV2 format.
-        Uses telegramify-markdown library for optimal compatibility.
+        Enhanced with comprehensive character escaping and validation.
         """
         try:
-            # Use telegramify-markdown to convert to Telegram MarkdownV2 format
+            # First attempt with telegramify-markdown
             converted_markdown = telegramify_markdown.markdownify(
                 markdown_text,
-                max_line_length=None,  # No line length limit
+                max_line_length=None,
                 normalize_whitespace=True,
             )
 
-            self.logger.debug(
-                f"Converted to Telegram MarkdownV2: {len(markdown_text)} -> {len(converted_markdown)} chars"
-            )
-            return converted_markdown
+            # Validate the conversion result
+            if self._validate_markdownv2_format(converted_markdown):
+                self.logger.debug(
+                    f"Successfully converted to Telegram MarkdownV2: {len(markdown_text)} -> {len(converted_markdown)} chars"
+                )
+                return converted_markdown
+            else:
+                self.logger.warning(
+                    "telegramify-markdown produced invalid MarkdownV2, using fallback"
+                )
+                return self._safe_markdownv2_conversion(markdown_text)
 
         except Exception as e:
-            self.logger.warning(f"Markdown to MarkdownV2 conversion failed: {e}")
-            # Fallback to basic conversion if telegramify fails
-            return self._convert_markdown_titles(markdown_text)
+            self.logger.warning(
+                f"telegramify-markdown conversion failed: {e}, using enhanced fallback"
+            )
+            return self._safe_markdownv2_conversion(markdown_text)
+
+    def _validate_markdownv2_format(self, text: str) -> bool:
+        """
+        Validate if text contains properly escaped MarkdownV2 special characters.
+        Returns True if valid, False otherwise.
+        """
+        import re
+
+        # MarkdownV2 special characters that need escaping when not used for formatting
+        special_chars = r"_*[]()~`>#+-=|{}.!"
+
+        # Check for unescaped special characters (not preceded by \)
+        for char in special_chars:
+            # Pattern to find unescaped special characters
+            pattern = rf"(?<!\\){re.escape(char)}"
+
+            # Skip validation for characters that are commonly used in formatting
+            if char in ["*", "_", "`"] and self._is_formatting_context(text, char):
+                continue
+
+            if re.search(pattern, text):
+                self.logger.debug(f"Found unescaped special character: {char}")
+                return False
+
+        return True
+
+    def _is_formatting_context(self, text: str, char: str) -> bool:
+        """
+        Check if special characters are used in valid formatting context.
+        This is a simplified check - in production you might want more sophisticated logic.
+        """
+        if char == "*":
+            # Check if * appears in pairs for bold formatting
+            return text.count("*") % 2 == 0
+        elif char == "_":
+            # Check if _ appears in pairs for italic formatting
+            return text.count("_") % 2 == 0
+        elif char == "`":
+            # Check if ` appears in pairs for code formatting
+            return text.count("`") % 2 == 0
+
+        return False
+
+    def _safe_markdownv2_conversion(self, text: str) -> str:
+        """
+        Enhanced fallback method with comprehensive MarkdownV2 character escaping.
+        """
+        import re
+
+        # Step 1: Convert basic markdown titles first
+        text = self._convert_markdown_titles(text)
+
+        # Step 2: Escape all MarkdownV2 special characters
+        text = self._escape_markdownv2_characters(text)
+
+        # Step 3: Restore intentional formatting
+        text = self._restore_intentional_formatting(text)
+
+        return text
+
+    def _escape_markdownv2_characters(self, text: str) -> str:
+        """
+        Escape all MarkdownV2 special characters to prevent parsing errors.
+        """
+        # MarkdownV2 requires escaping these characters: _*[]()~`>#+-=|{}.!
+        special_chars = {
+            "_": r"\_",
+            "*": r"\*",
+            "[": r"\[",
+            "]": r"\]",
+            "(": r"\(",
+            ")": r"\)",
+            "~": r"\~",
+            "`": r"\`",
+            ">": r"\>",
+            "#": r"\#",
+            "+": r"\+",
+            "-": r"\-",  # This is the key fix for the original error
+            "=": r"\=",
+            "|": r"\|",
+            "{": r"\{",
+            "}": r"\}",
+            ".": r"\.",
+            "!": r"\!",
+        }
+
+        # Escape each special character
+        for char, escaped in special_chars.items():
+            text = text.replace(char, escaped)
+
+        return text
+
+    def _restore_intentional_formatting(self, text: str) -> str:
+        """
+        Restore intentional bold and italic formatting after escaping.
+        """
+        import re
+
+        # Restore bold formatting: **text** -> *text*
+        text = re.sub(r"\\\*\\\*(.*?)\\\*\\\*", r"*\1*", text)
+
+        # Restore italic formatting: *text* -> _text_ (but be careful with conflicts)
+        # First handle single asterisks that aren't part of double asterisks
+        text = re.sub(r"(?<!\*)\\\*([^*]+?)\\\*(?!\*)", r"_\1_", text)
+
+        # Restore code formatting: `code` -> `code`
+        text = re.sub(r"\\\`(.*?)\\\`", r"`\1`", text)
+
+        return text
+
+    def _convert_markdown_titles(self, text: str) -> str:
+        """
+        Convert Markdown titles with multi-level indentation support.
+        Enhanced to handle edge cases better.
+        """
+        import re
+
+        # Convert ### (h3) to bold format with more indentation
+        text = re.sub(r"^###\s+(.+)$", r"      ▫️ **\1**", text, flags=re.MULTILINE)
+
+        # Convert ## (h2) to bold format with indentation
+        text = re.sub(r"^##\s+(.+)$", r"    ▪️ **\1**", text, flags=re.MULTILINE)
+
+        # Convert # (h1) to bold format
+        text = re.sub(r"^#\s+(.+)$", r"🔶 **\1**", text, flags=re.MULTILINE)
+
+        # Handle edge case: remove any remaining markdown-style headers
+        text = re.sub(r"^#{4,}\s+(.+)$", r"        • *\1*", text, flags=re.MULTILINE)
+
+        return text
 
     def _convert_markdown_titles(self, text: str) -> str:
         """Convert Markdown titles with multi-level indentation support (fallback method)"""
@@ -1248,12 +1492,20 @@ class EnhancedTelegramBotService:
         return text
 
     def format_message(self, text: str, message_type: str) -> str:
-        """Format message with appropriate template using Telegram-optimized MarkdownV2 conversion"""
+        """
+        Enhanced message formatting with safe MarkdownV2 conversion and validation.
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        # Convert markdown to Telegram-friendly MarkdownV2
-        formatted_text = self.convert_markdown_to_telegram_markdown(text)
+        # Convert markdown to Telegram-friendly MarkdownV2 with enhanced safety
+        try:
+            formatted_text = self.convert_markdown_to_telegram_markdown(text)
+        except Exception as e:
+            self.logger.error(f"Failed to format message content: {e}")
+            # Fallback to plain text
+            formatted_text = self._convert_to_plain_text(text)
 
+        # Define headers with proper escaping
         if message_type == "signal":
             header = "🔔 *New Trading Signal*"
         elif message_type == "backtest":
@@ -1261,13 +1513,21 @@ class EnhancedTelegramBotService:
         else:
             header = "📈 *Trading Update*"
 
+        # Create formatted message with safe separators
         formatted_message = f"""{header}
-    ⏰ *Time:* {timestamp}
-
+    ⏰ *Time:* {self._escape_markdownv2_characters(timestamp)}
+    
     {formatted_text}
-
+    
     \\-\\-\\-
     _Automated Trading Signal System_""".strip()
+
+        # Final validation and correction
+        if not self._validate_markdownv2_format(formatted_message):
+            self.logger.warning(
+                "Final message format validation failed, applying correction"
+            )
+            formatted_message = self._safe_markdownv2_conversion(formatted_message)
 
         return formatted_message
 
