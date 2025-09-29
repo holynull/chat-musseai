@@ -21,7 +21,7 @@ from langgraph_sdk import get_client, get_sync_client
 
 # Add telegramify-markdown import for converting to Telegram MarkdownV2
 import telegramify_markdown 
-from telegramify_markdown.customize import customize
+from telegramify_markdown import customize
 
 # Configure telegramify-markdown for optimal Telegram compatibility
 customize.strict_markdown = False
