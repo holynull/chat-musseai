@@ -176,6 +176,18 @@ httpx = ">=0.25.2"
 orjson = ">=3.10.1"
 
 [[package]]
+name = "mistletoe"
+version = "1.4.0"
+description = "A fast, extensible Markdown parser in pure Python."
+optional = false
+python-versions = "~=3.5"
+groups = ["main"]
+files = [
+    {file = "mistletoe-1.4.0-py3-none-any.whl", hash = "sha256:44a477803861de1237ba22e375c6b617690a31d2902b47279d1f8f7ed498a794"},
+    {file = "mistletoe-1.4.0.tar.gz", hash = "sha256:1630f906e5e4bbe66fdeb4d29d277e2ea515d642bb18a9b49b136361a9818c9d"},
+]
+
+[[package]]
 name = "mypy"
 version = "1.18.2"
 description = "Optional static typing for Python"
@@ -503,6 +515,25 @@ files = [
 ]
 
 [[package]]
+name = "telegramify-markdown"
+version = "0.5.1"
+description = "Makes it easy to send Markdown in Telegram MarkdownV2 style"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "telegramify_markdown-0.5.1-py3-none-any.whl", hash = "sha256:a757b9a0f0d681ba7e29638deabc8decc634626bee359d95effaa505a86b756d"},
+    {file = "telegramify_markdown-0.5.1.tar.gz", hash = "sha256:a2c4ca337219607dce13883bdc30bf4faf07bf37e3f748594e8b10e1b5708fae"},
+]
+
+[package.dependencies]
+mistletoe = "1.4.0"
+
+[package.extras]
+mermaid = ["Pillow (>=10.4.0)", "aiohttp (>=3.10.11)"]
+tests = ["mock (>=1.0.1,<4) ; python_version < \"3.4\"", "pytelegrambotapi (>=4.22.0)", "pytest (<6)", "python-dotenv (>=1.0.1)"]
+
+[[package]]
 name = "typing-extensions"
 version = "4.15.0"
 description = "Backported and Experimental Type Hints for Python 3.9+"
@@ -549,4 +580,4 @@ devenv = ["check-manifest", "pytest (>=4.3)", "pytest-cov", "pytest-mock (>=3.3)
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4.0"
-content-hash = "6857a0e2ad5193dd1d256fcfdc5a9a04d79d49a2b332ed1ef69d2eca5aacc617"
+content-hash = "7a8ffb4886f3f05c1eb5ccf580ec1634296b7b59f8ec329b93410e23e6ea317e"

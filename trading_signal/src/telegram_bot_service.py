@@ -19,6 +19,13 @@ from telegram.error import TelegramError
 import random
 from langgraph_sdk import get_client, get_sync_client
 
+# Add telegramify-markdown import for converting to Telegram MarkdownV2
+import telegramify_markdown
+from telegramify_markdown.customize import customize
+
+# Configure telegramify-markdown for optimal Telegram compatibility
+customize.strict_markdown = False
+
 
 class EnhancedTelegramBotService:
     """Enhanced Telegram bot service combining subscription management and notification features"""
@@ -421,42 +428,44 @@ class EnhancedTelegramBotService:
     def get_welcome_message(
         self, chat_type: str, user_name: str = None, is_new_member: bool = False
     ) -> str:
-        """Generate context-aware welcome message"""
+        """Generate context-aware welcome message with Markdown formatting"""
         if is_new_member and chat_type in ["group", "supergroup"]:
             greeting = (
                 f"👋 Welcome to the group, {user_name}!"
                 if user_name
                 else "👋 Welcome to the group!"
             )
-            return (
-                f"🎉 *{greeting}*\\n\\n"
-                "🤖 I'm your Trading Signal Bot! I provide:\\n"
-                "📈 Real-time trading signals for ETH and BTC\\n"
-                "📊 Automated backtest results\\n"
-                "⏰ Updates every 15 minutes\\n\\n"
-                "Use the menu below to get started:"
-            )
+            return f"""🎉 **{greeting}**
+
+    🤖 I'm your Trading Signal Bot! I provide:
+    📈 Real-time trading signals for ETH and BTC
+    📊 Automated backtest results
+    ⏰ Updates every 15 minutes
+
+    Use the menu below to get started:"""
         elif chat_type in ["group", "supergroup"]:
-            return (
-                "🤖 *Trading Signal Bot Menu*\\n\\n"
-                "Hello! I provide automated trading signals and analysis.\\n\\n"
-                "📋 *Available Features:*\\n"
-                "• Real-time ETH/BTC signals\\n"
-                "• Backtest results\\n"
-                "• Portfolio analysis\\n"
-                "• Regular market updates\\n\\n"
-                "Use the menu below to manage your subscription:"
-            )
+            return """🤖 **Trading Signal Bot Menu**
+
+    Hello! I provide automated trading signals and analysis.
+
+    📋 **Available Features:**
+    • Real-time ETH/BTC signals
+    • Backtest results
+    • Portfolio analysis
+    • Regular market updates
+
+    Use the menu below to manage your subscription:"""
         else:
-            return (
-                "👋 *Welcome to Trading Signal Bot!*\\n\\n"
-                "I'm here to help you with cryptocurrency trading signals and analysis.\\n\\n"
-                "🔔 Subscribe to receive:\\n"
-                "📈 Trading signals for ETH and BTC\\n"
-                "📊 Backtest results and analysis\\n"
-                "⏰ Regular market updates\\n\\n"
-                "Use the menu below to get started:"
-            )
+            return """👋 **Welcome to Trading Signal Bot!**
+
+    I'm here to help you with cryptocurrency trading signals and analysis.
+
+    🔔 Subscribe to receive:
+    📈 Trading signals for ETH and BTC
+    📊 Backtest results and analysis
+    ⏰ Regular market updates
+
+    Use the menu below to get started:"""
 
     async def handle_new_chat_members(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -495,7 +504,9 @@ class EnhancedTelegramBotService:
                 )
 
                 await update.message.reply_text(
-                    welcome_text, parse_mode="Markdown", reply_markup=reply_markup
+                    self.convert_markdown_to_telegram_markdown(welcome_text),
+                    parse_mode="MarkdownV2",
+                    reply_markup=reply_markup,
                 )
 
                 self.logger.info(
@@ -634,9 +645,12 @@ class EnhancedTelegramBotService:
                     response = self._convert_markdown_titles(response)
 
                     if response:
+                        converted_response = self.convert_markdown_to_telegram_markdown(
+                            response
+                        )
                         await update.message.reply_text(
-                            response,
-                            parse_mode="Markdown",
+                            converted_response,
+                            parse_mode="MarkdownV2",
                             disable_web_page_preview=True,
                         )
                         self.logger.info(
@@ -707,8 +721,8 @@ class EnhancedTelegramBotService:
             if self.is_rate_limited(user_id):
                 self.logger.info(f"Rate limited private message for {user_id}")
                 await update.message.reply_text(
-                    "Please wait a moment before sending another message.",
-                    parse_mode="Markdown",
+                    "Please wait a moment before sending another message\\.",
+                    parse_mode="MarkdownV2",
                 )
                 return
 
@@ -716,8 +730,8 @@ class EnhancedTelegramBotService:
             if not self.enable_langgraph_chat:
                 # 如果未启用对话功能，显示帮助信息
                 await update.message.reply_text(
-                    "👋 Hello! I'm a trading signal bot. Use /help to see available commands.",
-                    parse_mode="Markdown",
+                    "👋 Hello\\! I'm a trading signal bot\\. Use /help to see available commands\\.",
+                    parse_mode="MarkdownV2",
                     reply_markup=self.create_main_menu(),
                 )
                 return
@@ -732,21 +746,25 @@ class EnhancedTelegramBotService:
             response = self._convert_markdown_titles(response)
 
             if response:
-                await update.message.reply_text(
-                    response, parse_mode="Markdown", disable_web_page_preview=True
+                converted_response = self.convert_markdown_to_telegram_markdown(
+                    response
                 )
-                self.logger.info(f"Responded to private message from user {user_id}")
+                await update.message.reply_text(
+                    converted_response,
+                    parse_mode="MarkdownV2",
+                    disable_web_page_preview=True,
+                )
             else:
                 await update.message.reply_text(
-                    "Sorry, I couldn't process your message right now. Please try again or use /help for available commands.",
-                    parse_mode="Markdown",
+                    "Sorry, I couldn't process your message right now\\. Please try again or use /help for available commands\\.",
+                    parse_mode="MarkdownV2",
                 )
 
         except Exception as e:
             self.logger.error(f"Error handling private message: {e}")
             await update.message.reply_text(
-                "Sorry, there was an error processing your message. Please try again later.",
-                parse_mode="Markdown",
+                "Sorry, there was an error processing your message\\. Please try again later\\.",
+                parse_mode="MarkdownV2",
             )
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -782,11 +800,13 @@ class EnhancedTelegramBotService:
             reply_markup = self.create_main_menu()
 
         await update.message.reply_text(
-            welcome_text, parse_mode="Markdown", reply_markup=reply_markup
+            self.convert_markdown_to_telegram_markdown(welcome_text),
+            parse_mode="MarkdownV2",
+            reply_markup=reply_markup,
         )
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle all button callbacks"""
+        """Handle all button callbacks with MarkdownV2 formatting"""
         query = update.callback_query
         await query.answer()
 
@@ -796,32 +816,33 @@ class EnhancedTelegramBotService:
 
         if query.data == "main_menu" or query.data == "refresh":
             if is_subscribed:
-                text = "🏠 *Main Menu*\\n\\nYou are subscribed to trading signals. Choose an option:"
+                text = "🏠 *Main Menu*\n\nYou are subscribed to trading signals\\. Choose an option:"
                 reply_markup = self.create_main_menu()
             else:
-                text = "🏠 *Main Menu*\\n\\nYou are not subscribed. Would you like to subscribe?"
+                text = "🏠 *Main Menu*\n\nYou are not subscribed\\. Would you like to subscribe?"
                 reply_markup = self.create_subscribe_menu()
 
             await query.edit_message_text(
-                text, parse_mode="Markdown", reply_markup=reply_markup
+                self.convert_markdown_to_telegram_markdown(text),
+                parse_mode="MarkdownV2",
+                reply_markup=reply_markup,
             )
 
         elif query.data == "status":
             if is_subscribed:
                 total_subscribers = len(chat_ids)
-                status_text = (
-                    f"✅ *Subscription Status: ACTIVE*\\n\\n"
-                    f"📊 Total Subscribers: {total_subscribers}\\n"
-                    f"🔔 You will receive trading signals for: ETH, BTC\\n"
-                    f"⏰ Signal frequency: Every 15 minutes\\n\\n"
-                    f"Use the menu below to manage your subscription:"
-                )
+                status_text = f"""✅ *Subscription Status: ACTIVE*
+
+    📊 Total Subscribers: {total_subscribers}
+    🔔 You will receive trading signals for: ETH, BTC
+    ⏰ Signal frequency: Every 15 minutes
+
+    Use the menu below to manage your subscription:"""
             else:
-                status_text = (
-                    "❌ *Subscription Status: INACTIVE*\\n\\n"
-                    "You are not currently subscribed to notifications.\\n"
-                    "Use the menu below to subscribe:"
-                )
+                status_text = """❌ *Subscription Status: INACTIVE*
+
+    You are not currently subscribed to notifications\\.
+    Use the menu below to subscribe:"""
 
             reply_markup = (
                 self.create_main_menu()
@@ -830,35 +851,35 @@ class EnhancedTelegramBotService:
             )
 
             await query.edit_message_text(
-                status_text, parse_mode="Markdown", reply_markup=reply_markup
+                self.convert_markdown_to_telegram_markdown(status_text),
+                parse_mode="MarkdownV2",
+                reply_markup=reply_markup,
             )
 
         elif query.data == "help":
-            help_text = f"""
-🤖 *Trading Signal Bot Help*
+            help_text = f"""🤖 *Trading Signal Bot Help*
 
-This bot provides automated trading signals and backtest results for cryptocurrency pairs.
+    This bot provides automated trading signals and backtest results for cryptocurrency pairs\\.
 
-*Features:*
-📈 Real-time trading signals for ETH and BTC
-📊 Backtest results for generated signals
-⏰ Automated updates every 15 minutes
-🔔 Instant notifications when signals are generated
+    *Features:*
+    📈 Real\\-time trading signals for ETH and BTC
+    📊 Backtest results for generated signals
+    ⏰ Automated updates every 15 minutes
+    🔔 Instant notifications when signals are generated
 
-*How to use:*
-• Use the menu buttons to navigate
-• Subscribe to receive notifications
-• Check your status anytime
-• Unsubscribe when needed
+    *How to use:*
+    • Use the menu buttons to navigate
+    • Subscribe to receive notifications
+    • Check your status anytime
+    • Unsubscribe when needed
 
-*Group Features:*
-• Mention me (@{context.bot.username or "tradingbot"}) to see this menu
-• I'll welcome new members automatically
-• All features work in both private and group chats
+    *Group Features:*
+    • Mention me \\(@{context.bot.username or "tradingbot"}\\) to see this menu
+    • I'll welcome new members automatically
+    • All features work in both private and group chats
 
-*Support:*
-If you encounter any issues, please contact the administrator.
-            """
+    *Support:*
+    If you encounter any issues, please contact the administrator\\."""
 
             keyboard = [
                 [InlineKeyboardButton("◀️ Back to Menu", callback_data="main_menu")]
@@ -866,7 +887,9 @@ If you encounter any issues, please contact the administrator.
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await query.edit_message_text(
-                help_text, parse_mode="Markdown", reply_markup=reply_markup
+                self.convert_markdown_to_telegram_markdown(help_text),
+                parse_mode="MarkdownV2",
+                reply_markup=reply_markup,
             )
 
         elif query.data == "subscribe":
@@ -874,41 +897,41 @@ If you encounter any issues, please contact the administrator.
                 chat_ids.append(chat_id)
                 self.save_chat_ids(chat_ids)
 
-                subscribe_text = (
-                    "🎉 *Successfully Subscribed!*\\n\\n"
-                    "✅ You will now receive trading signals and backtest results.\\n\\n"
-                    "Welcome to our community of traders!"
-                )
+                subscribe_text = """🎉 *Successfully Subscribed\\!*
+
+    ✅ You will now receive trading signals and backtest results\\.
+
+    Welcome to our community of traders\\!"""
                 self.logger.info(f"User subscribed via button: {chat_id}")
             else:
-                subscribe_text = (
-                    "✅ *Already Subscribed!*\\n\\n"
-                    "You are already receiving trading signals.\\n\\n"
-                    "Use the menu below to manage your subscription:"
-                )
+                subscribe_text = """✅ *Already Subscribed\\!*
+
+    You are already receiving trading signals\\.
+
+    Use the menu below to manage your subscription:"""
 
             await query.edit_message_text(
-                subscribe_text,
-                parse_mode="Markdown",
+                self.convert_markdown_to_telegram_markdown(subscribe_text),
+                parse_mode="MarkdownV2",
                 reply_markup=self.create_main_menu(),
             )
 
         elif query.data == "unsubscribe":
             if is_subscribed:
-                confirm_text = (
-                    "⚠️ *Confirm Unsubscribe*\\n\\n"
-                    "Are you sure you want to unsubscribe from trading signal notifications?\\n\\n"
-                    "You will no longer receive signals and backtest results."
-                )
+                confirm_text = """⚠️ *Confirm Unsubscribe*
+
+    Are you sure you want to unsubscribe from trading signal notifications?
+
+    You will no longer receive signals and backtest results\\."""
                 await query.edit_message_text(
-                    confirm_text,
-                    parse_mode="Markdown",
+                    self.convert_markdown_to_telegram_markdown(confirm_text),
+                    parse_mode="MarkdownV2",
                     reply_markup=self.create_unsubscribe_menu(),
                 )
             else:
                 await query.edit_message_text(
-                    "❌ You are not currently subscribed to notifications.",
-                    parse_mode="Markdown",
+                    "❌ You are not currently subscribed to notifications\\.",
+                    parse_mode="MarkdownV2",
                     reply_markup=self.create_subscribe_menu(),
                 )
 
@@ -917,19 +940,21 @@ If you encounter any issues, please contact the administrator.
                 chat_ids.remove(chat_id)
                 self.save_chat_ids(chat_ids)
 
-                unsubscribe_text = (
-                    "😢 *Unsubscribed Successfully*\\n\\n"
-                    "You will no longer receive trading signal notifications.\\n\\n"
-                    "To re-subscribe, use the button below:"
-                )
+                unsubscribe_text = """😢 *Unsubscribed Successfully*
+
+    You will no longer receive trading signal notifications\\.
+
+    To re\\-subscribe, use the button below:"""
                 self.logger.info(f"User unsubscribed via button: {chat_id}")
                 reply_markup = self.create_subscribe_menu()
             else:
-                unsubscribe_text = "❌ You were not subscribed."
+                unsubscribe_text = "❌ You were not subscribed\\."
                 reply_markup = self.create_subscribe_menu()
 
             await query.edit_message_text(
-                unsubscribe_text, parse_mode="Markdown", reply_markup=reply_markup
+                self.convert_markdown_to_telegram_markdown(unsubscribe_text),
+                parse_mode="MarkdownV2",
+                reply_markup=reply_markup,
             )
 
     async def stop_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -942,10 +967,12 @@ If you encounter any issues, please contact the administrator.
             self.save_chat_ids(chat_ids)
 
             await update.message.reply_text(
-                "😢 *Unsubscribed Successfully*\\n\\n"
-                "You will no longer receive trading signal notifications.\\n\\n"
-                "To re-subscribe, simply send /start anytime.",
-                parse_mode="Markdown",
+                self.convert_markdown_to_telegram_markdown(
+                    "😢 *Unsubscribed Successfully*\n\n"
+                    "You will no longer receive trading signal notifications\\.\n\n"
+                    "To re\\-subscribe, simply send /start anytime\\."
+                ),
+                parse_mode="MarkdownV2",
                 reply_markup=self.create_subscribe_menu(),
             )
             self.logger.info(f"User unsubscribed: {chat_id}")
@@ -964,54 +991,61 @@ If you encounter any issues, please contact the administrator.
 
         if chat_id in chat_ids:
             total_subscribers = len(chat_ids)
+            status_text = f"""✅ *Subscription Status: ACTIVE*
+
+        📊 Total Subscribers: {total_subscribers}
+        🔔 You will receive trading signals for: ETH, BTC
+        ⏰ Signal frequency: Every 15 minutes
+
+        Use the menu below to manage your subscription:"""
+
             await update.message.reply_text(
-                f"✅ *Subscription Status: ACTIVE*\\n\\n"
-                f"📊 Total Subscribers: {total_subscribers}\\n"
-                f"🔔 You will receive trading signals for: ETH, BTC\\n"
-                f"⏰ Signal frequency: Every 15 minutes\\n\\n"
-                f"Use the menu below to manage your subscription:",
-                parse_mode="Markdown",
+                self.convert_markdown_to_telegram_markdown(status_text),
+                parse_mode="MarkdownV2",
                 reply_markup=self.create_main_menu(),
             )
         else:
+            status_text = """❌ *Subscription Status: INACTIVE*
+
+        You are not currently subscribed to notifications\\.
+        Use the menu below to subscribe:"""
+
             await update.message.reply_text(
-                "❌ *Subscription Status: INACTIVE*\\n\\n"
-                "You are not currently subscribed to notifications.\\n"
-                "Use the menu below to subscribe:",
-                parse_mode="Markdown",
+                self.convert_markdown_to_telegram_markdown(status_text),
+                parse_mode="MarkdownV2",
                 reply_markup=self.create_subscribe_menu(),
             )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
-        help_text = f"""
-🤖 *Trading Signal Bot Help*
+        help_text = f"""🤖 *Trading Signal Bot Help*
 
-This bot provides automated trading signals and backtest results for cryptocurrency pairs.
+    This bot provides automated trading signals and backtest results for cryptocurrency pairs\\.
 
-*Available Commands:*
-/start - Subscribe to trading signal notifications
-/stop - Unsubscribe from notifications  
-/status - Check your subscription status
-/help - Show this help message
+    *Available Commands:*
+    /start \\- Subscribe to trading signal notifications
+    /stop \\- Unsubscribe from notifications  
+    /status \\- Check your subscription status
+    /help \\- Show this help message
 
-*Features:*
-📈 Real-time trading signals for ETH and BTC
-📊 Backtest results for generated signals
-⏰ Automated updates every 15 minutes
-🔔 Instant notifications when signals are generated
+    *Features:*
+    📈 Real\\-time trading signals for ETH and BTC
+    📊 Backtest results for generated signals
+    ⏰ Automated updates every 15 minutes
+    🔔 Instant notifications when signals are generated
 
-*Group Features:*
-• Mention me (@{context.bot.username or "tradingbot"}) to see the menu
-• I'll automatically welcome new members
-• All subscription features work in groups
+    *Group Features:*
+    • Mention me \\(@{context.bot.username or "tradingbot"}\\) to see the menu
+    • I'll automatically welcome new members
+    • All subscription features work in groups
 
-*Support:*
-If you encounter any issues, please contact the administrator.
-        """
+    *Support:*
+    If you encounter any issues, please contact the administrator\\."""
 
         await update.message.reply_text(
-            help_text, parse_mode="Markdown", reply_markup=self.create_main_menu()
+            self.convert_markdown_to_telegram_markdown(help_text),
+            parse_mode="MarkdownV2",
+            reply_markup=self.create_main_menu(),
         )
 
     # Error classification and retry methods (from telegram_service.py)
@@ -1078,7 +1112,7 @@ If you encounter any issues, please contact the administrator.
     async def _send_single_message_with_retry(
         self, chat_id: str, formatted_message: str, semaphore: asyncio.Semaphore
     ) -> Dict[str, Any]:
-        """Send message to a single chat with intelligent retry mechanism"""
+        """Send message to a single chat with intelligent retry mechanism using MarkdownV2 parsing"""
         async with semaphore:
             last_error = None
             error_category = "unknown"
@@ -1093,7 +1127,7 @@ If you encounter any issues, please contact the administrator.
                     await self.bot.send_message(
                         chat_id=chat_id,
                         text=formatted_message,
-                        parse_mode="Markdown",
+                        parse_mode="MarkdownV2",  # 使用 MarkdownV2 模式
                         disable_web_page_preview=True,
                     )
 
@@ -1171,13 +1205,37 @@ If you encounter any issues, please contact the administrator.
                 "is_permanent": False,
             }
 
+    def convert_markdown_to_telegram_markdown(self, markdown_text: str) -> str:
+        """
+        Convert standard Markdown to Telegram-friendly MarkdownV2 format.
+        Uses telegramify-markdown library for optimal compatibility.
+        """
+        try:
+            # Use telegramify-markdown to convert to Telegram MarkdownV2 format
+            converted_markdown = telegramify_markdown.markdownify(
+                markdown_text,
+                max_line_length=None,  # No line length limit
+                normalize_whitespace=True,
+            )
+
+            self.logger.debug(
+                f"Converted to Telegram MarkdownV2: {len(markdown_text)} -> {len(converted_markdown)} chars"
+            )
+            return converted_markdown
+
+        except Exception as e:
+            self.logger.warning(f"Markdown to MarkdownV2 conversion failed: {e}")
+            # Fallback to basic conversion if telegramify fails
+            return self._convert_markdown_titles(markdown_text)
+
     def _convert_markdown_titles(self, text: str) -> str:
-        """Convert Markdown titles with multi-level indentation support"""
+        """Convert Markdown titles with multi-level indentation support (fallback method)"""
         import re
 
         # Convert ### (h3) to bold format with more indentation
         text = re.sub(r"^###\s+(.+)$", r"      ▫️ **\1**", text, flags=re.MULTILINE)
 
+        # Convert ## (h2) to bold format with indentation
         # Convert ## (h2) to bold format with indentation
         text = re.sub(r"^##\s+(.+)$", r"    ▪️ **\1**", text, flags=re.MULTILINE)
 
@@ -1190,9 +1248,11 @@ If you encounter any issues, please contact the administrator.
         return text
 
     def format_message(self, text: str, message_type: str) -> str:
-        """Format message with appropriate template"""
+        """Format message with appropriate template using Telegram-optimized MarkdownV2 conversion"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-        formatted_text = self._convert_markdown_titles(text)
+
+        # Convert markdown to Telegram-friendly MarkdownV2
+        formatted_text = self.convert_markdown_to_telegram_markdown(text)
 
         if message_type == "signal":
             header = "🔔 *New Trading Signal*"
@@ -1201,15 +1261,13 @@ If you encounter any issues, please contact the administrator.
         else:
             header = "📈 *Trading Update*"
 
-        formatted_message = f"""
-{header}
-⏰ *Time:* {timestamp}
+        formatted_message = f"""{header}
+    ⏰ *Time:* {timestamp}
 
-{formatted_text}
+    {formatted_text}
 
----
-_Automated Trading Signal System_
-        """.strip()
+    \\-\\-\\-
+    _Automated Trading Signal System_""".strip()
 
         return formatted_message
 
