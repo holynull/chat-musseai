@@ -58,6 +58,11 @@ class TradingSignalScheduler:
         self.threads: Dict[str, ThreadInfo] = {}
         self.threads_lock = threading.Lock()
 
+        # Add event loop management
+        self._main_loop = None
+        self._loop_thread = None
+        self._bot_started = False  # Prevent duplicate startup
+
         self.setup_logging(config)
         self.setup_clients()
 
@@ -401,9 +406,7 @@ class TradingSignalScheduler:
                                     await self.telegram_bot.send_to_group_and_channel(
                                         message=f"*{symbol} Trading Signal:*\n\n{content}",
                                         message_type="signal",
-                                        group_ids=os.getenv(
-                                            "TELEGRAM_GROUP_CHAT_ID"
-                                        ),
+                                        group_ids=os.getenv("TELEGRAM_GROUP_CHAT_ID"),
                                         channel_ids=os.getenv(
                                             "TELEGRAM_TRADING_SIGNAL_CHANNEL_ID"
                                         ),  # 使用环境变量配置的channel
@@ -480,9 +483,9 @@ class TradingSignalScheduler:
                                     try:
                                         await self.telegram_bot.send_to_channel(
                                             message=f"*{symbol} Backtest Result:*\n\n{content_txt}",
-											channel_ids=os.getenv(
+                                            channel_ids=os.getenv(
                                                 "TELEGRAM_BACKTEST_CHANNEL_ID"
-                                            ), 
+                                            ),
                                             message_type="backtest",
                                         )
                                     except Exception as e:
@@ -569,20 +572,33 @@ class TradingSignalScheduler:
         return processed_results
 
     def execute_trading_signals_wrapper(self):
-        """Wrapper function to handle async execution in sync scheduler"""
+        """Wrapper function to handle async execution in sync scheduler (FIXED)"""
         try:
-            # Create new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            self.logger.info("Starting trading signals wrapper execution...")
 
+            # Check if there's an existing event loop
             try:
-                # Run the async function
-                loop.run_until_complete(self.execute_trading_signals())
-            finally:
-                loop.close()
+                current_loop = asyncio.get_running_loop()
+                self.logger.info("Detected running event loop, using existing loop")
+                # If there's a running loop, execute in new thread
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run, self.execute_trading_signals()
+                    )
+                    future.result()  # Wait for completion
+
+            except RuntimeError:
+                # No running loop, use asyncio.run directly
+                self.logger.info(
+                    "No running event loop detected, creating new execution context"
+                )
+                asyncio.run(self.execute_trading_signals())
 
         except Exception as e:
             self.logger.error(f"Error in async wrapper: {e}")
+            self.logger.debug(f"Error details: {traceback.format_exc()}")
             raise
 
     async def execute_trading_signals(self):
@@ -664,32 +680,37 @@ class TradingSignalScheduler:
                 self.logger.error(f"Failed to start Telegram bot service: {e}")
 
     def start(self):
-        """Start the scheduler and bot service"""
+        """Start the scheduler and bot service (FIXED)"""
         try:
-            # Start Telegram bot service first
-            if self.telegram_bot:
+            # Start Telegram bot service only once
+            if self.telegram_bot and not self._bot_started:
                 self.logger.info("Starting Telegram bot service...")
-                # Create event loop for bot service
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                try:
+                    # Use separate thread to run the bot
+                    def start_bot_in_thread():
+                        try:
+                            asyncio.run(self.start_bot_service())
+                            self._bot_started = True
+                            self.logger.info(
+                                "Telegram bot started in background thread"
+                            )
+                        except Exception as e:
+                            self.logger.error(
+                                f"Failed to start bot in background thread: {e}"
+                            )
 
-                # Start bot in background task
-                self.bot_task = loop.create_task(self.start_bot_service())
+                    bot_thread = threading.Thread(
+                        target=start_bot_in_thread, daemon=True
+                    )
+                    bot_thread.start()
 
-                # Run bot startup
-                loop.run_until_complete(self.start_bot_service())
+                    # Wait a moment to ensure bot startup
+                    import time
 
-                # Start event loop in background thread
-                def run_bot_loop():
-                    try:
-                        loop.run_forever()
-                    except Exception as e:
-                        self.logger.error(f"Bot event loop error: {e}")
+                    time.sleep(2)
 
-                bot_thread = threading.Thread(target=run_bot_loop, daemon=True)
-                bot_thread.start()
-
-                self.logger.info("Telegram bot service started in background")
+                except Exception as e:
+                    self.logger.error(f"Failed to start Telegram bot service: {e}")
 
             self.setup_scheduler()
             self.logger.info("Trading Signal Scheduler starting...")
@@ -716,19 +737,20 @@ class TradingSignalScheduler:
             raise
 
     def stop(self):
-        """Stop the scheduler and bot service gracefully"""
+        """Stop the scheduler and bot service gracefully (FIXED)"""
+        self.logger.info("Starting graceful shutdown...")
+
         if self.scheduler and self.scheduler.running:
             self.scheduler.shutdown(wait=True)
             self.logger.info("Scheduler stopped successfully")
 
-        # Stop Telegram bot service
-        if self.telegram_bot and self.bot_task:
+        # Stop Telegram bot service with fixed event loop handling
+        if self.telegram_bot and self._bot_started:
             try:
-                # Create a new event loop to stop the bot
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.telegram_bot.stop_bot())
-                loop.close()
+                # Don't create new event loop, use asyncio.run
+                self.logger.info("Stopping Telegram bot service...")
+                asyncio.run(self.telegram_bot.stop_bot())
+                self._bot_started = False
                 self.logger.info("Telegram bot service stopped successfully")
             except Exception as e:
                 self.logger.error(f"Error stopping Telegram bot service: {e}")
@@ -742,7 +764,7 @@ class TradingSignalScheduler:
         if hasattr(self.async_client, "close"):
             self.async_client.close()
 
-        self.logger.info("All resources cleaned up")
+        self.logger.info("All resources cleaned up successfully")
 
 
 def load_config() -> TradingConfig:

@@ -41,26 +41,37 @@ class EnhancedTelegramBotService:
         self.last_interaction = {}
         self.interaction_cooldown = 30  # 30 seconds cooldown
 
-        # Configure concurrent sending limits
+        # FIXED: Enhanced concurrent sending limits with connection pool config
         self.max_concurrent_sends = int(
-            os.getenv("TELEGRAM_MAX_CONCURRENT_SENDS", "10")
+            os.getenv("TELEGRAM_MAX_CONCURRENT_SENDS", "5")  # Reduced from 10 to 5
         )
-        self.send_delay = float(os.getenv("TELEGRAM_SEND_DELAY", "0.05"))  # 50ms delay
+        self.send_delay = float(
+            os.getenv("TELEGRAM_SEND_DELAY", "0.1")
+        )  # Increased to 100ms
 
-        # Retry configuration
-        self.max_retries = int(os.getenv("TELEGRAM_MAX_RETRIES", "3"))
+        # FIXED: Add connection pool configuration
+        self.max_connections = int(os.getenv("TELEGRAM_MAX_CONNECTIONS", "20"))
+        self.pool_timeout = float(os.getenv("TELEGRAM_POOL_TIMEOUT", "30.0"))
+        self.connection_timeout = float(
+            os.getenv("TELEGRAM_CONNECTION_TIMEOUT", "20.0")
+        )
+
+        # Enhanced retry configuration
+        self.max_retries = int(
+            os.getenv("TELEGRAM_MAX_RETRIES", "4")
+        )  # Increased from 3
         self.initial_retry_delay = float(
-            os.getenv("TELEGRAM_INITIAL_RETRY_DELAY", "1.0")
+            os.getenv("TELEGRAM_INITIAL_RETRY_DELAY", "2.0")  # Increased from 1.0
         )
         self.retry_backoff_factor = float(
-            os.getenv("TELEGRAM_RETRY_BACKOFF_FACTOR", "2.0")
+            os.getenv("TELEGRAM_RETRY_BACKOFF_FACTOR", "1.5")  # Reduced from 2.0
         )
-        self.max_retry_delay = float(os.getenv("TELEGRAM_MAX_RETRY_DELAY", "30.0"))
+        self.max_retry_delay = float(os.getenv("TELEGRAM_MAX_RETRY_DELAY", "60.0"))
         self.retry_jitter = bool(
             os.getenv("TELEGRAM_RETRY_JITTER", "True").lower() == "true"
         )
 
-        # Error classification
+        # Error classification (existing code...)
         self.retryable_errors = {
             "TimedOut",
             "NetworkError",
@@ -84,18 +95,18 @@ class EnhancedTelegramBotService:
             "Forbidden",
         }
 
-        # 新增 LangGraph 配置
+        # LangGraph configuration (existing code...)
         self.langgraph_server_url = os.getenv("LANGGRAPH_SERVER_URL")
         self.chat_graph_name = os.getenv("CHAT_GRAPH_NAME", os.getenv("GRAPH_NAME"))
         self.enable_langgraph_chat = (
             os.getenv("ENABLE_LANGGRAPH_CHAT", "false").lower() == "true"
         )
 
-        # LangGraph 客户端
+        # LangGraph clients
         self.async_client = None
         self.sync_client = None
 
-        # 用户对话线程管理
+        # User thread management
         self.user_threads = {}  # {user_id: {thread_id: str, created_at: datetime}}
         self.thread_lock = threading.Lock()
 
@@ -1792,8 +1803,21 @@ class EnhancedTelegramBotService:
             self.logger.error(f"Failed to cleanup invalid chat IDs: {e}")
 
     def setup_bot_handlers(self):
-        """Setup bot handlers"""
-        self.application = Application.builder().token(self.bot_token).build()
+        """Setup bot handlers with enhanced connection configuration"""
+        from telegram.ext import Application
+
+        # FIXED: Configure application with connection limits
+        self.application = (
+            Application.builder()
+            .token(self.bot_token)
+            .concurrent_updates(self.max_concurrent_sends)
+            .connection_pool_size(self.max_connections)
+            .pool_timeout(self.pool_timeout)
+            .read_timeout(self.connection_timeout)
+            .write_timeout(self.connection_timeout)
+            .connect_timeout(self.connection_timeout)
+            .build()
+        )
 
         # Add command handlers
         self.application.add_handler(CommandHandler("start", self.start_command))
@@ -1811,7 +1835,7 @@ class EnhancedTelegramBotService:
             )
         )
 
-        # 修改：添加私聊消息处理器
+        # Add private message handler
         self.application.add_handler(
             MessageHandler(
                 filters.TEXT & filters.ChatType.PRIVATE & (~filters.COMMAND),
