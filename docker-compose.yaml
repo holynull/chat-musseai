@@ -61,46 +61,46 @@ services:
       - SYS_ADMIN
     restart: unless-stopped
 
-  mysql:
-    image: mysql:8.0
-    container_name: musseai-mysql
-    restart: always
-    ports:
-      - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./musseai-agent/src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
-      - ./musseai-agent/src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
-      - ./musseai-agent/src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
-    environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=crypto_portfolio
-      - MYSQL_USER=asset_agent
-      - MYSQL_PASSWORD=asset_agent_123456
+  # mysql:
+  #   image: mysql:8.0
+  #   container_name: musseai-mysql
+  #   restart: always
+  #   ports:
+  #     - "3307:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #     - ./musseai-agent/src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
+  #     - ./musseai-agent/src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
+  #     - ./musseai-agent/src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=root
+  #     - MYSQL_DATABASE=crypto_portfolio
+  #     - MYSQL_USER=asset_agent
+  #     - MYSQL_PASSWORD=asset_agent_123456
 
-  # 合并后的 trading-signal 服务，包含完整的 Telegram bot 功能
-  trading-signal:
-    image: musseai-trading-signal
-    container_name: musseai-trading-signal
-    restart: unless-stopped
-    depends_on:
-      - langgraph-api
-      - langgraph-redis
-    env_file:
-      - ./trading_signal/.env.trading_signal
-    volumes:
-      - trading_signal_data:/app/logs
-      - ./trading_signal/telegram_users.json:/app/telegram_users.json
-    environment:
-      - PYTHONPATH=/app/src
-    networks:
-      - default
-    healthcheck:
-      test: [ "CMD", "python", "-c", "import sys; sys.path.insert(0, 'src'); from telegram_bot_service import EnhancedTelegramBotService; from trading_signal import load_config; load_config()" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+  # # 合并后的 trading-signal 服务，包含完整的 Telegram bot 功能
+  # trading-signal:
+  #   image: musseai-trading-signal
+  #   container_name: musseai-trading-signal
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - langgraph-api
+  #     - langgraph-redis
+  #   env_file:
+  #     - ./trading_signal/.env.trading_signal
+  #   volumes:
+  #     - trading_signal_data:/app/logs
+  #     - ./trading_signal/telegram_users.json:/app/telegram_users.json
+  #   environment:
+  #     - PYTHONPATH=/app/src
+  #   networks:
+  #     - default
+  #   healthcheck:
+  #     test: [ "CMD", "python", "-c", "import sys; sys.path.insert(0, 'src'); from telegram_bot_service import EnhancedTelegramBotService; from trading_signal import load_config; load_config()" ]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 30s
 
 networks:
   default:

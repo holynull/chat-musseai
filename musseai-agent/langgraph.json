@@ -4,7 +4,8 @@
 	],
 	"graphs": {
 		"network": "./src/graphs/graph_network.py:graph",
-		"trading_signal":"./src/graphs/graph_trading_signal_v2.py:graph"
+		"trading_signal": "./src/graphs/graph_trading_signal_v2.py:graph",
+		"swap_v2": "./src/graphs/graph_swap_v2.py:graph"
 	},
 	"env": ".env.musseai_agent",
 	"http": {

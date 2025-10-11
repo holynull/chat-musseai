@@ -51,7 +51,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             
         # 检查是否为Docker内部访问
         host = request.headers.get("host", "").lower()
-        if host.startswith("langgraph-api:8000"):
+        if host.startswith("langgraph-api:8000") or host.startswith("localhost:8080"):
             # Docker内部访问，跳过权限验证
             logger.info(f"Internal Docker access detected from host: {host}, skipping authentication for {request.url.path}")
             response = await call_next(request)

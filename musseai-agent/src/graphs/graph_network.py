@@ -29,7 +29,6 @@ from prompts.prompt_chatbot import system_prompt
 from graphs.graph_wallet import graph as wallet_graph
 from graphs.graph_search import graph as search_graph
 from graphs.graph_swap import graph as swap_graph
-from graphs.graph_image import graph as image_graph
 from graphs.graph_infura import graph as infura_graph
 from graphs.graph_solana import graph as solana_graph
 from graphs.graph_crypto_portfolios import graph as crypto_portfolios_graph
@@ -42,7 +41,6 @@ subgraphs = [
     wallet_graph,
     search_graph,
     swap_graph,
-    image_graph,
     infura_graph,
     solana_graph,
     crypto_portfolios_graph,

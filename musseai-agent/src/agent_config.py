@@ -68,20 +68,6 @@ AGENT_CONFIGS: Dict[str, AgentConfig] = {
         graph_name="graph_search",
         required_env_vars=["GOOGLE_API_KEY", "GOOGLE_CSE_ID"],
     ),
-    "image": AgentConfig(
-        name="Text-to-Image Generation Expert",
-        description="Specialist in generating images from textual descriptions",
-        capabilities=[
-            "Generate images based on textual descriptions",
-            "Return markdown format image links of generated images",
-            "Support multiple image generation styles and parameters",
-            "Process and optimize generated images",
-            "Handle multiple image generation requests in sequence",
-        ],
-        graph_module="graphs.graph_image",
-        graph_name="graph_image",
-        required_env_vars=["STABLE_DIFFUSION_API_KEY"],
-    ),
     "infura": AgentConfig(
         name="Blockchain Data Expert",
         description="Expert in accessing and analyzing blockchain data across multiple networks",
