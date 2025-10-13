@@ -7,6 +7,8 @@ volumes:
     driver: local
   trading_signal_data:
     driver: local
+  swap_bot_data:  
+    driver: local
 
 services:
   langgraph-redis:
@@ -36,6 +38,9 @@ services:
       interval: 5s
 
   langgraph-api:
+    build:
+        context: ./musseai-agent
+        dockerfile: Dockerfile.musseai_agent
     image: musseai-agent
     container_name: musseai-langgraph-api
     ports:
@@ -101,7 +106,35 @@ services:
   #     timeout: 10s
   #     retries: 3
   #     start_period: 30s
-
+  swap-bot:
+      build:
+        context: ./swap_bot
+        dockerfile: Dockerfile.swap_bot
+      image: musseai-swap-bot
+      container_name: musseai-swap-bot
+      restart: unless-stopped
+      depends_on:
+        langgraph-api:
+          condition: service_started
+        langgraph-redis:
+          condition: service_healthy
+      env_file:
+        - ./swap_bot/.env.swap_bot
+      volumes:
+        - swap_bot_data:/app/data
+        - ./swap_bot/logs:/app/logs
+        - ./swap_bot/swap_bot_users.json:/app/data/swap_bot_users.json
+      environment:
+        - PYTHONPATH=/app/src
+        - LANGGRAPH_SERVER_URL=http://langgraph-api:8000
+      networks:
+        - default
+      healthcheck:
+        test: ["CMD", "python", "-c", "import sys; sys.path.insert(0, 'src'); from swap_tg_bot_service import SwapTelegramBotService; print('Swap bot is healthy')"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 30s
 networks:
   default:
     driver: bridge

@@ -1,0 +1,72 @@
+[tool.poetry]
+name = "swap_bot"
+version = "0.1.0"
+description = "Automated trading signal generation and Telegram bot system"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<4.0"
+python-dotenv = ">=1.0.1"
+langgraph-sdk = "^0.1.0"
+python-telegram-bot = "^22.4"
+apscheduler = "^3.10.0"
+telegramify-markdown = "^0.5.1"
+
+[tool.poetry.group.dev.dependencies]
+mypy = ">=1.11.1"
+ruff = ">=0.6.1"
+pytest = "^7.0"
+pytest-asyncio = "^0.21.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.setuptools]
+packages = ["."]
+
+[tool.setuptools.package-dir]
+"." = "src"
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+[tool.ruff]
+lint.select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "D",    # pydocstyle
+    "D401", # First line should be in imperative mood
+    "T201",
+    "UP",
+]
+lint.ignore = [
+    "UP006",
+    "UP007",
+    "UP035",
+    "D417",  # Missing argument descriptions
+    "E501",  # Line too long
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "UP"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
