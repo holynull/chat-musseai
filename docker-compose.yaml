@@ -9,6 +9,8 @@ volumes:
         driver: local
     swap_bot_data:
         driver: local
+    watchtower_logs:
+        driver: local
 
 services:
     langgraph-redis:
