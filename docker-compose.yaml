@@ -1,140 +1,197 @@
 volumes:
-  langgraph-data:
-    driver: local
-  mysql_data:
-    driver: local
-  langgraph_api_data:
-    driver: local
-  trading_signal_data:
-    driver: local
-  swap_bot_data:  
-    driver: local
+    langgraph-data:
+        driver: local
+    mysql_data:
+        driver: local
+    langgraph_api_data:
+        driver: local
+    trading_signal_data:
+        driver: local
+    swap_bot_data:
+        driver: local
 
 services:
-  langgraph-redis:
-    image: redis:6
-    healthcheck:
-      test: redis-cli ping
-      interval: 5s
-      timeout: 1s
-      retries: 5
-    ports:
-      - "6379:6379"
-  langgraph-postgres:
-    image: postgres:16
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - langgraph-data:/var/lib/postgresql/data
-    healthcheck:
-      test: pg_isready -U postgres
-      start_period: 10s
-      timeout: 1s
-      retries: 5
-      interval: 5s
+    langgraph-redis:
+        image: redis:6
+        healthcheck:
+            test: redis-cli ping
+            interval: 5s
+            timeout: 1s
+            retries: 5
+        ports:
+            - "6379:6379"
+    langgraph-postgres:
+        image: postgres:16
+        ports:
+            - "5433:5432"
+        environment:
+            POSTGRES_DB: postgres
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        volumes:
+            - langgraph-data:/var/lib/postgresql/data
+        healthcheck:
+            test: pg_isready -U postgres
+            start_period: 10s
+            timeout: 1s
+            retries: 5
+            interval: 5s
 
-  langgraph-api:
-    build:
-        context: ./musseai-agent
-        dockerfile: Dockerfile.musseai_agent
-    image: musseai-agent
-    container_name: musseai-langgraph-api
-    ports:
-      - "8080:8000"
-    depends_on:
-      langgraph-redis:
-        condition: service_healthy
-      langgraph-postgres:
-        condition: service_healthy
-    env_file:
-      - ./musseai-agent/.env.musseai_agent
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - default
-    volumes:
-      - langgraph_api_data:/logs/
-    # Chrome运行所需的安全配置
-    security_opt:
-      - seccomp:unconfined
-    shm_size: 2gb
-    cap_add:
-      - SYS_ADMIN
-    restart: unless-stopped
+    langgraph-api:
+        build:
+            context: ./musseai-agent
+            dockerfile: Dockerfile.musseai_agent
+        image: musseai-agent
+        container_name: musseai-langgraph-api
+        ports:
+            - "8080:8000"
+        depends_on:
+            langgraph-redis:
+                condition: service_healthy
+            langgraph-postgres:
+                condition: service_healthy
+        env_file:
+            - ./musseai-agent/.env.musseai_agent
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+        networks:
+            - default
+        volumes:
+            - langgraph_api_data:/logs/
+        # Chrome运行所需的安全配置
+        security_opt:
+            - seccomp:unconfined
+        shm_size: 2gb
+        cap_add:
+            - SYS_ADMIN
+        restart: unless-stopped
 
-  # mysql:
-  #   image: mysql:8.0
-  #   container_name: musseai-mysql
-  #   restart: always
-  #   ports:
-  #     - "3307:3306"
-  #   volumes:
-  #     - mysql_data:/var/lib/mysql
-  #     - ./musseai-agent/src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
-  #     - ./musseai-agent/src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
-  #     - ./musseai-agent/src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
-  #   environment:
-  #     - MYSQL_ROOT_PASSWORD=root
-  #     - MYSQL_DATABASE=crypto_portfolio
-  #     - MYSQL_USER=asset_agent
-  #     - MYSQL_PASSWORD=asset_agent_123456
+    mysql:
+        image: mysql:8.0
+        container_name: musseai-mysql
+        restart: always
+        ports:
+            - "3307:3306"
+        volumes:
+            - mysql_data:/var/lib/mysql
+            - ./musseai-agent/src/mysql/crypto_portfolio.sql:/docker-entrypoint-initdb.d/01-crypto_portfolio.sql
+            - ./musseai-agent/src/mysql/insert_assets_cp.sql:/docker-entrypoint-initdb.d/02-insert_assets_cp.sql
+            - ./musseai-agent/src/mysql/auth.sql:/docker-entrypoint-initdb.d/03-auth.sql
+        environment:
+            - MYSQL_ROOT_PASSWORD=root
+            - MYSQL_DATABASE=crypto_portfolio
+            - MYSQL_USER=asset_agent
+            - MYSQL_PASSWORD=asset_agent_123456
 
-  # # 合并后的 trading-signal 服务，包含完整的 Telegram bot 功能
-  # trading-signal:
-  #   image: musseai-trading-signal
-  #   container_name: musseai-trading-signal
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - langgraph-api
-  #     - langgraph-redis
-  #   env_file:
-  #     - ./trading_signal/.env.trading_signal
-  #   volumes:
-  #     - trading_signal_data:/app/logs
-  #     - ./trading_signal/telegram_users.json:/app/telegram_users.json
-  #   environment:
-  #     - PYTHONPATH=/app/src
-  #   networks:
-  #     - default
-  #   healthcheck:
-  #     test: [ "CMD", "python", "-c", "import sys; sys.path.insert(0, 'src'); from telegram_bot_service import EnhancedTelegramBotService; from trading_signal import load_config; load_config()" ]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 30s
-  swap-bot:
-      build:
-        context: ./swap_bot
-        dockerfile: Dockerfile.swap_bot
-      image: musseai-swap-bot
-      container_name: musseai-swap-bot
-      restart: unless-stopped
-      depends_on:
-        langgraph-api:
-          condition: service_started
-        langgraph-redis:
-          condition: service_healthy
-      env_file:
-        - ./swap_bot/.env.swap_bot
-      volumes:
-        - swap_bot_data:/app/data
-        - ./swap_bot/logs:/app/logs
-        - ./swap_bot/swap_bot_users.json:/app/data/swap_bot_users.json
-      environment:
-        - PYTHONPATH=/app/src
-        - LANGGRAPH_SERVER_URL=http://langgraph-api:8000
-      networks:
-        - default
-      healthcheck:
-        test: ["CMD", "python", "-c", "import sys; sys.path.insert(0, 'src'); from swap_tg_bot_service import SwapTelegramBotService; print('Swap bot is healthy')"]
-        interval: 30s
-        timeout: 10s
-        retries: 3
-        start_period: 30s
+    trading-signal:
+        build:
+            context: ./trading_signal
+            dockerfile: Dockerfile.trading_signal
+        image: musseai-trading-signal
+        container_name: musseai-trading-signal
+        restart: unless-stopped
+        depends_on:
+            - langgraph-api
+            - langgraph-redis
+        env_file:
+            - ./trading_signal/.env.trading_signal
+        volumes:
+            - trading_signal_data:/app/logs
+            - ./trading_signal/telegram_users.json:/app/telegram_users.json
+        environment:
+            - PYTHONPATH=/app/src
+        networks:
+            - default
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "import sys; sys.path.insert(0, 'src'); from telegram_bot_service import EnhancedTelegramBotService; from trading_signal import load_config; load_config()",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+        labels:
+            - "com.centurylinklabs.watchtower.enable=true"
+            - "com.centurylinklabs.watchtower.scope=trading-signal"
+    watchtower-trading-signal:
+        image: containrrr/watchtower:latest
+        container_name: musseai-watchtower-trading-signal
+        restart: unless-stopped
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+            - watchtower_logs:/logs
+        environment:
+            # 调度配置 - 每两天凌晨2点重启（避开交易活跃时间）
+            - WATCHTOWER_SCHEDULE=0 0 2 */2 * *
+
+            # 基础配置
+            - WATCHTOWER_CLEANUP=true
+            - WATCHTOWER_REMOVE_VOLUMES=false
+            - WATCHTOWER_INCLUDE_STOPPED=false
+            - WATCHTOWER_INCLUDE_RESTARTING=true
+            - WATCHTOWER_REVIVE_STOPPED=false
+
+            # 只监控有特定标签的容器
+            - WATCHTOWER_LABEL_ENABLE=true
+            - WATCHTOWER_SCOPE=trading-signal
+
+            # 优雅重启配置
+            - WATCHTOWER_TIMEOUT=60s
+            - WATCHTOWER_ROLLING_RESTART=true
+            - WATCHTOWER_LIFECYCLE_HOOKS=true
+
+            # 日志配置
+            - WATCHTOWER_DEBUG=true
+            - WATCHTOWER_LOG_LEVEL=info
+            - WATCHTOWER_LOG_FORMAT=json
+
+            # 通知配置（可选）
+            # - WATCHTOWER_NOTIFICATIONS=email
+            # - WATCHTOWER_NOTIFICATION_EMAIL_FROM=watchtower@yourdomain.com
+            # - WATCHTOWER_NOTIFICATION_EMAIL_TO=admin@yourdomain.com
+            # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=smtp.gmail.com
+            # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=587
+            # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=your-email@gmail.com
+            # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=your-app-password
+
+        labels:
+            - "com.centurylinklabs.watchtower.enable=false" # 防止监控自己
+        networks:
+            - default
+        command: --label-enable --scope trading-signal --schedule "0 0 2 */2 * *" --cleanup --debug
+    # swap-bot:
+    #     build:
+    #       context: ./swap_bot
+    #       dockerfile: Dockerfile.swap_bot
+    #     image: musseai-swap-bot
+    #     container_name: musseai-swap-bot
+    #     restart: unless-stopped
+    #     depends_on:
+    #       langgraph-api:
+    #         condition: service_started
+    #       langgraph-redis:
+    #         condition: service_healthy
+    #     env_file:
+    #       - ./swap_bot/.env.swap_bot
+    #     volumes:
+    #       - swap_bot_data:/app/data
+    #       - ./swap_bot/logs:/app/logs
+    #       - ./swap_bot/swap_bot_users.json:/app/data/swap_bot_users.json
+    #     environment:
+    #       - PYTHONPATH=/app/src
+    #       - LANGGRAPH_SERVER_URL=http://langgraph-api:8000
+    #     networks:
+    #       - default
+    #     healthcheck:
+    #       test: ["CMD", "python", "-c", "import sys; sys.path.insert(0, 'src'); from swap_tg_bot_service import SwapTelegramBotService; print('Swap bot is healthy')"]
+    #       interval: 30s
+    #       timeout: 10s
+    #       retries: 3
+    #       start_period: 30s
 networks:
-  default:
-    driver: bridge
+    default:
+        driver: bridge
